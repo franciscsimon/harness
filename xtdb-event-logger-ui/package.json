@@ -1,0 +1,13 @@
+{
+  "name": "xtdb-event-logger-ui",
+  "version": "1.0.0",
+  "description": "Web UI for visualizing pi.dev events from XTDB",
+  "scripts": {
+    "start": "npx jiti server.ts"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "@hono/node-server": "^1.0.0",
+    "postgres": "^3.4.8"
+  }
+}

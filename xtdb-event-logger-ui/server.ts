@@ -1,0 +1,149 @@
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { streamSSE } from "hono/streaming";
+import {
+  getEvents,
+  getEventsSince,
+  getEvent,
+  getSessions,
+  getStats,
+  getMaxSeq,
+} from "./lib/db.ts";
+import { compactEvent } from "./lib/format.ts";
+import { renderIndex } from "./pages/index.ts";
+import { renderEventDetail } from "./pages/event-detail.ts";
+
+// ─── Config ────────────────────────────────────────────────────────
+
+const UI_PORT = Number(process.env.UI_PORT ?? "3333");
+const POLL_MS = Number(process.env.UI_POLL_MS ?? "500");
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// ─── App ───────────────────────────────────────────────────────────
+
+const app = new Hono();
+
+// ── Static files ───────────────────────────────────────────────────
+
+app.get("/static/:file", (c) => {
+  const file = c.req.param("file");
+  // Only serve known files
+  const allowed: Record<string, string> = {
+    "style.css": "text/css",
+    "stream.js": "application/javascript",
+  };
+  const contentType = allowed[file];
+  if (!contentType) return c.text("Not found", 404);
+
+  try {
+    const content = readFileSync(join(__dirname, "static", file), "utf-8");
+    return c.body(content, 200, { "Content-Type": contentType + "; charset=utf-8" });
+  } catch {
+    return c.text("Not found", 404);
+  }
+});
+
+// ── HTML Pages ─────────────────────────────────────────────────────
+
+app.get("/", async (c) => {
+  const [sessions, stats] = await Promise.all([getSessions(), getStats()]);
+  const html = renderIndex(sessions, stats);
+  return c.html(html);
+});
+
+app.get("/event/:id", async (c) => {
+  const id = c.req.param("id");
+  const row = await getEvent(id);
+  if (!row) return c.html("<h1>Event not found</h1>", 404);
+  return c.html(renderEventDetail(row));
+});
+
+// ── JSON API ───────────────────────────────────────────────────────
+
+app.get("/api/events/stream", async (c) => {
+  return streamSSE(c, async (stream) => {
+    // Send initial batch (last 50 events, newest first → reverse for chronological)
+    let lastSeq = -1;
+    try {
+      const initial = await getEvents({ limit: 50 });
+      const reversed = initial.reverse(); // oldest first for client prepend order
+      for (const row of reversed) {
+        const ev = compactEvent(row);
+        await stream.writeSSE({ event: "event", data: JSON.stringify(ev) });
+        const seq = Number(row.seq);
+        if (seq > lastSeq) lastSeq = seq;
+      }
+
+      // Send initial stats
+      const stats = await getStats();
+      await stream.writeSSE({ event: "stats", data: JSON.stringify(stats) });
+    } catch (err) {
+      console.error("[ui] Initial SSE fetch failed:", err);
+    }
+
+    // Poll loop
+    while (true) {
+      await stream.sleep(POLL_MS);
+
+      try {
+        const newRows = await getEventsSince(lastSeq);
+        for (const row of newRows) {
+          const ev = compactEvent(row);
+          await stream.writeSSE({ event: "event", data: JSON.stringify(ev) });
+          const seq = Number(row.seq);
+          if (seq > lastSeq) lastSeq = seq;
+        }
+
+        // Update stats periodically when there are new events
+        if (newRows.length > 0) {
+          const stats = await getStats();
+          await stream.writeSSE({ event: "stats", data: JSON.stringify(stats) });
+        }
+      } catch (err) {
+        // XTDB might be temporarily unavailable — keep trying
+        console.error("[ui] SSE poll error:", err);
+      }
+    }
+  });
+});
+
+// ── JSON API (after SSE to avoid route conflict) ───────────────────
+
+app.get("/api/events", async (c) => {
+  const category = c.req.query("category") ?? undefined;
+  const eventName = c.req.query("event_name") ?? undefined;
+  const sessionId = c.req.query("session_id") ?? undefined;
+  const afterSeq = c.req.query("after_seq") ? Number(c.req.query("after_seq")) : undefined;
+  const limit = c.req.query("limit") ? Number(c.req.query("limit")) : undefined;
+
+  const rows = await getEvents({ category, eventName, sessionId, afterSeq, limit });
+  return c.json(rows.map(compactEvent));
+});
+
+app.get("/api/events/:id", async (c) => {
+  const id = c.req.param("id");
+  const row = await getEvent(id);
+  if (!row) return c.json({ error: "Not found" }, 404);
+  return c.json(row);
+});
+
+app.get("/api/sessions", async (c) => {
+  const sessions = await getSessions();
+  return c.json(sessions);
+});
+
+app.get("/api/stats", async (c) => {
+  const stats = await getStats();
+  return c.json(stats);
+});
+
+// ─── Start ─────────────────────────────────────────────────────────
+
+console.log(`\n  📊 XTDB Event Stream UI`);
+console.log(`  → http://localhost:${UI_PORT}\n`);
+
+serve({ fetch: app.fetch, port: UI_PORT });
