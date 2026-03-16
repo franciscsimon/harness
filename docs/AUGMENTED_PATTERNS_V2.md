@@ -1,6 +1,6 @@
 # Augmented Coding Patterns V2 — Missing Patterns Implementation
 
-> Status: **IN PROGRESS** — Phase 1+3 done, Phase 2 remaining
+> Status: **IMPLEMENTED** — Phase 1, 2, 3 complete (18/23 patterns)
 > Scope: 23 implementable patterns not yet covered
 > Prerequisite: V1 features (context markers, templates, canary, habits, dashboard, knowledge)
 
@@ -24,10 +24,10 @@ These require more code but are core to the pattern catalog.
 
 | # | Pattern | Type | What to Build |
 |---|---------|------|---------------|
-| P6 | **Background Agent** | Extension + Command | Spawn separate pi sessions for parallel work |
-| P7 | **Yak Shave Delegation** | Extension | Auto-detect yak shaves, offer to spawn side agent |
-| P8 | **Chunking** | Extension + Template | Auto-split large tasks into smaller chunks |
-| P9 | **Silent Misalignment Detection** | Extension | Detect when agent stops following instructions |
+| P6 | **Background Agent** | Extension + Command | ✅ Spawn separate pi sessions for parallel work |
+| P7 | **Yak Shave Delegation** | Extension | ✅ Auto-detect yak shaves, offer to spawn side agent |
+| P8 | **Chunking** | Extension + Template | ✅ Auto-split large tasks into smaller chunks |
+| P9 | **Silent Misalignment Detection** | Extension | ✅ Detect when agent stops following instructions |
 | P10 | **Unvalidated Leaps Detection** | Extension | ✅ Detect large changes without verification |
 
 ### Tier 3 — Medium Value, Low Effort
@@ -36,7 +36,7 @@ These are mostly templates or small UI additions.
 | # | Pattern | Type | What to Build |
 |---|---------|------|---------------|
 | P11 | **Approved Fixtures** | Template | ✅ Visual/fixture-based test workflow |
-| P12 | **Noise Cancellation** | Extension | Filter verbose AI output |
+| P12 | **Noise Cancellation** | Extension | ✅ Filter verbose AI output |
 | P13 | **Knowledge Composition** | Extension + UI | Compose multiple knowledge docs |
 | P14 | **Happy to Delete** | Extension | ✅ Track AI code deletability |
 | P15 | **Show the Agent, Let it Repeat** | Template | ✅ Document processes for automation |
