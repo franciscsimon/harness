@@ -22,6 +22,8 @@ export default function (pi: ExtensionAPI) {
   let lastPayloadBytes = 0;
   let snoozedUntil: Record<string, number> = {};
   let notifiedThisRun = new Set<string>();
+  let errorStreakActive = false;
+  let freshStartActive = false;
 
   function reset() {
     toolNames = [];
@@ -30,6 +32,8 @@ export default function (pi: ExtensionAPI) {
     touchedFiles = [];
     lastPayloadBytes = 0;
     notifiedThisRun.clear();
+    errorStreakActive = false;
+    freshStartActive = false;
   }
 
   function isSnoozed(habit: string): boolean {
@@ -51,6 +55,37 @@ export default function (pi: ExtensionAPI) {
     notifiedThisRun.clear();
   });
 
+  // ── Prompt injection for interceptable events ──
+  // When error streak or fresh start is active, inject corrective prompt
+  pi.on("before_agent_start", async (event, _ctx) => {
+    const injections: string[] = [];
+
+    if (errorStreakActive && config.enabled["error-streak"] && !isSnoozed("error-streak")) {
+      injections.push(
+        "IMPORTANT: Multiple consecutive tool errors were detected. " +
+        "Before proceeding, stop and re-read the error messages carefully. " +
+        "What assumption is wrong? Consider a different approach."
+      );
+      errorStreakActive = false; // Don't inject repeatedly
+    }
+
+    if (freshStartActive && config.enabled["fresh-start"] && !isSnoozed("fresh-start")) {
+      const kb = Math.round(lastPayloadBytes / 1024);
+      injections.push(
+        `IMPORTANT: Context is very large (${kb}KB). ` +
+        "Consider using /compact to reduce context or starting a fresh session. " +
+        "Large contexts reduce output quality and increase latency."
+      );
+      freshStartActive = false;
+    }
+
+    if (injections.length > 0) {
+      return {
+        systemPrompt: (event as any).systemPrompt + "\n\n---\n\n" + injections.join("\n\n"),
+      };
+    }
+  });
+
   // ── Track tool executions ──
   pi.on("tool_execution_start", async (event) => {
     const e = event as any;
@@ -69,6 +104,7 @@ export default function (pi: ExtensionAPI) {
       if (result.alert && !notifiedThisRun.has("error-streak")) {
         ctx.ui.notify(result.prompt, "warn");
         notifiedThisRun.add("error-streak");
+        errorStreakActive = true;
       }
     }
   });
@@ -100,6 +136,7 @@ export default function (pi: ExtensionAPI) {
         if (result.alert && !notifiedThisRun.has("fresh-start")) {
           ctx.ui.notify(result.prompt, "warn");
           notifiedThisRun.add("fresh-start");
+          freshStartActive = true;
         }
       }
     }

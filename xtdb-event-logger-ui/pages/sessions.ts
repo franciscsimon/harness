@@ -21,12 +21,13 @@ export function renderSessions(sessions: SessionSummary[]): string {
         </span>`;
       }).join("");
 
-    // Health score from available data (approximation — no payload data in SessionSummary)
-    const healthInput = {
-      errorRate: 0, turnCount: 0,
-      maxPayloadBytes: 0, durationMs: s.lastTs - s.firstTs,
-    };
-    const score = computeHealthScore(healthInput);
+    // Health score from real session data
+    const score = computeHealthScore({
+      errorRate: s.errorRate,
+      turnCount: s.turnCount,
+      maxPayloadBytes: s.maxPayloadBytes,
+      durationMs: s.durationMs,
+    });
     const hColor = healthColor(score);
     const hLabel = healthLabel(score);
 

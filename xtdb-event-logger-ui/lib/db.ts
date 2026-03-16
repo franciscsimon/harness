@@ -62,6 +62,10 @@ export interface SessionSummary {
   lastEventName: string;
   lastSeq: number;
   byCategory: Record<string, number>;
+  errorRate: number;
+  turnCount: number;
+  maxPayloadBytes: number;
+  durationMs: number;
 }
 
 /**
@@ -220,18 +224,61 @@ export async function getSessionList(): Promise<SessionSummary[]> {
     }
   }
 
+  // 4. Turn counts per session
+  const turns = await sql`
+    SELECT session_id, COUNT(*) AS cnt
+    FROM events WHERE session_id IS NOT NULL AND event_name = 'turn_start'
+    GROUP BY session_id
+  `;
+  const turnMap: Record<string, number> = {};
+  for (const r of turns) turnMap[r.session_id] = Number(r.cnt);
+
+  // 5. Tool error rates per session
+  const toolTotals = await sql`
+    SELECT session_id, COUNT(*) AS cnt
+    FROM events WHERE session_id IS NOT NULL AND event_name = 'tool_execution_end'
+    GROUP BY session_id
+  `;
+  const toolErrors = await sql`
+    SELECT session_id, COUNT(*) AS cnt
+    FROM events WHERE session_id IS NOT NULL AND event_name = 'tool_execution_end' AND is_error = true
+    GROUP BY session_id
+  `;
+  const ttMap: Record<string, number> = {};
+  const teMap: Record<string, number> = {};
+  for (const r of toolTotals) ttMap[r.session_id] = Number(r.cnt);
+  for (const r of toolErrors) teMap[r.session_id] = Number(r.cnt);
+
+  // 6. Max payload per session
+  const payloads = await sql`
+    SELECT session_id, MAX(provider_payload_bytes) AS max_bytes
+    FROM events WHERE session_id IS NOT NULL AND provider_payload_bytes IS NOT NULL
+    GROUP BY session_id
+  `;
+  const plMap: Record<string, number> = {};
+  for (const r of payloads) plMap[r.session_id] = Number(r.max_bytes);
+
   // Sort by last_ts DESC in JS
   const sorted = [...agg].sort((a: any, b: any) => Number(b.last_ts) - Number(a.last_ts));
 
-  return sorted.map((r: any) => ({
-    sessionId: r.session_id,
-    eventCount: Number(r.cnt),
-    firstTs: Number(r.first_ts),
-    lastTs: Number(r.last_ts),
-    lastEventName: lastMap[r.session_id]?.name ?? "—",
-    lastSeq: lastMap[r.session_id]?.seq ?? Number(r.max_seq),
-    byCategory: catMap[r.session_id] ?? {},
-  }));
+  return sorted.map((r: any) => {
+    const sid = r.session_id;
+    const tt = ttMap[sid] ?? 0;
+    const te = teMap[sid] ?? 0;
+    return {
+      sessionId: sid,
+      eventCount: Number(r.cnt),
+      firstTs: Number(r.first_ts),
+      lastTs: Number(r.last_ts),
+      lastEventName: lastMap[sid]?.name ?? "—",
+      lastSeq: lastMap[sid]?.seq ?? Number(r.max_seq),
+      byCategory: catMap[sid] ?? {},
+      errorRate: tt > 0 ? te / tt : 0,
+      turnCount: turnMap[sid] ?? 0,
+      maxPayloadBytes: plMap[sid] ?? 0,
+      durationMs: Number(r.last_ts) - Number(r.first_ts),
+    };
+  });
 }
 
 /**
@@ -419,6 +466,40 @@ export async function getSessionKnowledge(sessionId: string): Promise<SessionKno
     durationMs: lastTs - firstTs,
     eventCount: events.length,
   };
+}
+
+/**
+ * Get most common error patterns across all sessions.
+ */
+export interface ErrorPattern {
+  toolName: string;
+  count: number;
+  sessionCount: number;
+}
+
+export async function getErrorPatterns(): Promise<ErrorPattern[]> {
+  const rows = await sql`
+    SELECT tool_name, COUNT(*) AS cnt
+    FROM events
+    WHERE event_name = 'tool_execution_end' AND is_error = true AND tool_name IS NOT NULL
+    GROUP BY tool_name
+    ORDER BY cnt DESC
+  `;
+  // Count distinct sessions per erroring tool
+  const sesRows = await sql`
+    SELECT tool_name, COUNT(DISTINCT session_id) AS ses_cnt
+    FROM events
+    WHERE event_name = 'tool_execution_end' AND is_error = true AND tool_name IS NOT NULL
+    GROUP BY tool_name
+  `;
+  const sesMap: Record<string, number> = {};
+  for (const r of sesRows) sesMap[r.tool_name] = Number(r.ses_cnt);
+
+  return rows.map((r: any) => ({
+    toolName: r.tool_name,
+    count: Number(r.cnt),
+    sessionCount: sesMap[r.tool_name] ?? 0,
+  }));
 }
 
 /**

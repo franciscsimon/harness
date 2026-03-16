@@ -97,6 +97,7 @@ export function renderSessionDetail(sessionId: string, events: EventRow[]): stri
 
   // Track if we've entered context rot zone
   let inRotZone = false;
+  let prevInRotZone = false;
 
   // Render each event as a timeline row
   const rows = events.map((ev) => {
@@ -113,21 +114,37 @@ export function renderSessionDetail(sessionId: string, events: EventRow[]): stri
     let ctxAttrs = "";
     let ctxClasses = "";
 
+    let ctxBadgeHtml = "";
     if (ctxMsgs != null) ctxAttrs += ` data-ctx-msgs="${ctxMsgs}"`;
     if (ctxBytes != null) {
       ctxAttrs += ` data-ctx-bytes="${ctxBytes}"`;
       const health = ctxHealthColor(ctxBytes);
       ctxClasses += ` ctx-health-${health}`;
       if (ctxBytes >= CTX_ROT_THRESHOLD) inRotZone = true;
+
+      // Visible context badge with tooltip
+      const kbStr = Math.round(ctxBytes / 1024);
+      const msgsStr = ctxMsgs != null ? `${ctxMsgs} msgs, ` : "";
+      ctxBadgeHtml = `<span class="ctx-badge ctx-badge-${health}" title="Context: ${msgsStr}${kbStr}KB payload">${kbStr}KB</span>`;
     }
 
     // Mark events in rot zone
-    if (inRotZone) ctxClasses += " ctx-rot-zone";
+    let rotBannerHtml = "";
+    if (inRotZone) {
+      ctxClasses += " ctx-rot-zone";
+      // Show rot zone label on the first event that crosses the threshold
+      if (ctxBytes != null && ctxBytes >= CTX_ROT_THRESHOLD && !prevInRotZone) {
+        rotBannerHtml = `<div class="ctx-rot-banner">⚠️ Context rot zone — consider compacting or starting fresh</div>`;
+      }
+    }
+    const prevInRotZoneFlag = inRotZone;
 
     // Compaction resets the rot zone
     if (ev.event_name === "session_compact") inRotZone = false;
 
-    return `<div class="tl-event${ctxClasses}"
+    prevInRotZone = prevInRotZoneFlag;
+
+    return `${rotBannerHtml}<div class="tl-event${ctxClasses}"
       data-event-name="${esc(ev.event_name)}"
       data-category="${esc(ev.category)}"
       data-seq="${ev.seq}"
@@ -141,6 +158,7 @@ export function renderSessionDetail(sessionId: string, events: EventRow[]): stri
       <span class="cat-dot" style="background:${color}"></span>
       <span class="tl-name">${esc(ev.event_name)}</span>
       <span class="cat-badge" style="background:${color}">${esc(ev.category)}</span>
+      ${ctxBadgeHtml}
       <span class="tl-fields">${fieldHtml}</span>
       <span class="tl-time">${relativeTime(ev.ts)}</span>
       <a class="tl-detail-link" href="/event/${encodeURIComponent(ev._id)}">detail →</a>
@@ -177,6 +195,7 @@ export function renderSessionDetail(sessionId: string, events: EventRow[]): stri
     <div class="ses-detail-actions">
       <button class="btn" id="btn-expand-all">Expand All</button>
       <button class="btn" id="btn-collapse-all">Collapse All</button>
+      <a class="btn" href="/sessions/${encodeURIComponent(sessionId)}/knowledge">📝 Knowledge</a>
     </div>
     ${sparkline}
   </header>

@@ -1,10 +1,11 @@
-import type { DashboardSession, ToolUsageStat } from "../lib/db.ts";
+import type { DashboardSession, ToolUsageStat, ErrorPattern } from "../lib/db.ts";
 import { computeHealthScore, healthColor, healthLabel } from "../lib/health.ts";
 import { relativeTime } from "../lib/format.ts";
 
 export function renderDashboard(
   sessions: DashboardSession[],
   tools: ToolUsageStat[],
+  errors: ErrorPattern[] = [],
 ): string {
   const totalEvents = sessions.reduce((s, r) => s + r.eventCount, 0);
   const avgEvents = sessions.length > 0 ? Math.round(totalEvents / sessions.length) : 0;
@@ -90,6 +91,20 @@ export function renderDashboard(
     <div class="dash-section">
       <h2>Tool Usage</h2>
       <div class="tool-bars">${toolBars || '<p class="empty-msg">No tool data.</p>'}</div>
+    </div>
+
+    <div class="dash-section">
+      <h2>Error Patterns</h2>
+      ${errors.length > 0
+        ? `<table class="error-patterns-table">
+          <thead><tr><th>Tool</th><th>Errors</th><th>Sessions</th></tr></thead>
+          <tbody>${errors.map((e) => `<tr>
+            <td><code>${esc(e.toolName)}</code></td>
+            <td class="error-count">${e.count}</td>
+            <td>${e.sessionCount} session${e.sessionCount !== 1 ? "s" : ""}</td>
+          </tr>`).join("")}</tbody>
+        </table>`
+        : '<p class="empty-msg">No errors recorded.</p>'}
     </div>
   </main>
   <script>

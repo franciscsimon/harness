@@ -16,6 +16,7 @@ import {
   getDashboardSessions,
   getToolUsageStats,
   getSessionKnowledge,
+  getErrorPatterns,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -75,8 +76,8 @@ app.get("/sessions", async (c) => {
 });
 
 app.get("/dashboard", async (c) => {
-  const [sessions, tools] = await Promise.all([getDashboardSessions(), getToolUsageStats()]);
-  return c.html(renderDashboard(sessions, tools));
+  const [sessions, tools, errors] = await Promise.all([getDashboardSessions(), getToolUsageStats(), getErrorPatterns()]);
+  return c.html(renderDashboard(sessions, tools, errors));
 });
 
 app.get("/sessions/:id{.+}/knowledge", async (c) => {
@@ -191,7 +192,7 @@ app.get("/api/stats", async (c) => {
 });
 
 app.get("/api/dashboard", async (c) => {
-  const [sessions, tools] = await Promise.all([getDashboardSessions(), getToolUsageStats()]);
+  const [sessions, tools, errors] = await Promise.all([getDashboardSessions(), getToolUsageStats(), getErrorPatterns()]);
   const ranked = sessions.map((s) => ({
     ...s,
     healthScore: computeHealthScore(s),
@@ -204,6 +205,7 @@ app.get("/api/dashboard", async (c) => {
     overallErrorRate: sessions.length > 0 ? sessions.reduce((s, r) => s + r.errorRate, 0) / sessions.length : 0,
     sessions: ranked,
     toolUsage: tools,
+    errorPatterns: errors,
   });
 });
 
