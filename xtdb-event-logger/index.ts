@@ -85,34 +85,58 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  // ── Eager init: connect endpoints immediately (handles /reload case) ──
+  // When loaded mid-session via /reload, session_start already fired.
+  // Init endpoints now so events aren't stuck in the buffer forever.
+  (async () => {
+    for (const ep of candidates) {
+      try {
+        await ep.init(config);
+        liveEndpoints.push(ep);
+      } catch (err) {
+        console.error(`[xtdb-logger] ${ep.name} eager init failed: ${err}`);
+      }
+    }
+    if (liveEndpoints.length > 0) {
+      ready = true;
+      // Flush anything buffered during init
+      for (const b of buffer) {
+        emitToAll(b.normalized, b.jsonld);
+      }
+      buffer.length = 0;
+    }
+  })();
+
   // ── Register all 30 event handlers ──
 
   for (const eventName of ALL_EVENT_NAMES) {
-    // ── session_start: init endpoints + flush buffer ──
+    // ── session_start: re-init if needed + UI feedback ──
     if (eventName === "session_start") {
       pi.on("session_start", async (_event, ctx) => {
-        // Init endpoints — at least one must succeed
-        for (const ep of candidates) {
-          try {
-            await ep.init(config);
-            liveEndpoints.push(ep);
-          } catch (err) {
-            console.error(`[xtdb-logger] ${ep.name} init failed: ${err}`);
-          }
-        }
-
+        // If endpoints already initialized eagerly, skip re-init
         if (liveEndpoints.length === 0) {
-          ctx.ui.notify("[xtdb-logger] No endpoints available. Event logging DISABLED.", "error");
-          return;
-        }
+          for (const ep of candidates) {
+            try {
+              await ep.init(config);
+              liveEndpoints.push(ep);
+            } catch (err) {
+              console.error(`[xtdb-logger] ${ep.name} init failed: ${err}`);
+            }
+          }
 
-        ready = true;
+          if (liveEndpoints.length === 0) {
+            ctx.ui.notify("[xtdb-logger] No endpoints available. Event logging DISABLED.", "error");
+            return;
+          }
 
-        // Flush pre-connect buffer
-        for (const b of buffer) {
-          emitToAll(b.normalized, b.jsonld);
+          ready = true;
+
+          // Flush pre-connect buffer
+          for (const b of buffer) {
+            emitToAll(b.normalized, b.jsonld);
+          }
+          buffer.length = 0;
         }
-        buffer.length = 0;
 
         // Capture session_start itself
         capture("session_start", _event, metaFromCtx(ctx));
