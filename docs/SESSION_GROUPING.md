@@ -1,6 +1,6 @@
 # SESSION_GROUPING.md — Group Events by Session
 
-> Status: **PLAN**
+> Status: **DONE** (commit `cb3936c`)
 > Add session-grouped views to the event stream UI
 
 ---
@@ -196,28 +196,28 @@ appear at the session level, outside any agent run.
 ## Implementation Tasklist
 
 ### Phase A: Server + Data
-- [ ] A1. `lib/db.ts` — add `getSessionList()`: returns sessions with event count, first/last ts, category breakdown
-- [ ] A2. `lib/db.ts` — add `getSessionEvents(sessionId)`: returns all events for one session, ordered by seq ASC
-- [ ] A3. `server.ts` — add routes: `GET /sessions`, `GET /sessions/:id`, `GET /api/sessions/list`, `GET /api/sessions/:id/events`
+- [x] A1. `lib/db.ts` — add `getSessionList()`: returns sessions with event count, first/last ts, category breakdown
+- [x] A2. `lib/db.ts` — add `getSessionEvents(sessionId)`: returns all events for one session, ordered by seq ASC
+- [x] A3. `server.ts` — add routes: `GET /sessions`, `GET /sessions/:id`, `GET /api/sessions/list`, `GET /api/sessions/:id/events`
 
 ### Phase B: Session List Page
-- [ ] B1. `pages/sessions.ts` — session list template: card per session with name, count, duration, category badges, last event
-- [ ] B2. `static/style.css` — session list styles (session cards, category mini-badges)
+- [x] B1. `pages/sessions.ts` — session list template: card per session with name, count, duration, category badges, last event
+- [x] B2. `static/style.css` — session list styles (session cards, category mini-badges)
 
 ### Phase C: Session Detail Page
-- [ ] C1. `pages/session-detail.ts` — session timeline template: flat event list as HTML, with `data-` attributes for grouping
-- [ ] C2. `static/session.js` — client-side nested grouping: scan events, create collapsible Agent Run / Turn / Tool Exec groups
-- [ ] C3. `static/style.css` — nested timeline styles (indent levels, group headers, collapse/expand, connector lines)
+- [x] C1. `pages/session-detail.ts` — session timeline template: flat event list as HTML, with `data-` attributes for grouping
+- [x] C2. `static/session.js` — client-side nested grouping: scan events, create collapsible Agent Run / Turn / Tool Exec groups
+- [x] C3. `static/style.css` — nested timeline styles (indent levels, group headers, collapse/expand, connector lines)
 
 ### Phase D: Navigation
-- [ ] D1. `pages/index.ts` — add "Sessions" link in header nav
-- [ ] D2. `pages/event-detail.ts` — add "Session" link to navigate to that event's session view
-- [ ] D3. `static/stream.js` — make session_id in cards clickable → `/sessions/:id`
+- [x] D1. `pages/index.ts` — add "Sessions" link in header nav
+- [x] D2. `pages/event-detail.ts` — add "Session" link to navigate to that event's session view
+- [ ] D3. `static/stream.js` — make session_id in cards clickable → `/sessions/:id` (deferred — requires card template change)
 
 ### Phase E: Test
-- [ ] E1. Verify `/sessions` shows all sessions with correct stats
-- [ ] E2. Verify `/sessions/:id` shows all events in correct order
-- [ ] E3. Verify client-side grouping creates correct nesting (Agent Run → Turn → Tool)
-- [ ] E4. Verify collapse/expand works
-- [ ] E5. Verify navigation between views (stream ↔ sessions ↔ session detail ↔ event detail)
-- [ ] E6. Git commit
+- [x] E1. Verify `/sessions` shows all sessions with correct stats
+- [x] E2. Verify `/sessions/:id` shows all events in correct order
+- [x] E3. Verify client-side grouping creates correct nesting (Agent Run → Turn → Tool) — data attrs verified, JS logic verified
+- [x] E4. Verify collapse/expand works — Expand All / Collapse All buttons wired
+- [x] E5. Verify navigation between views (stream ↔ sessions ↔ session detail ↔ event detail) — all links verified
+- [x] E6. Git commit `cb3936c`
