@@ -83,6 +83,8 @@ h1 a:hover { text-decoration: underline; }
 }
 .btn:hover { background: #2d3148; }
 .btn-sm { font-size: 11px; padding: 2px 8px; }
+.btn-danger { color: #ef4444; border-color: rgba(239,68,68,0.3); }
+.btn-danger:hover { background: rgba(239,68,68,0.15); }
 
 /* ─── Filter Bar ──────────────────────────────────────────────── */
 

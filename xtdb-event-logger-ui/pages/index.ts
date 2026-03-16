@@ -37,6 +37,7 @@ export function renderIndex(sessions: string[], stats: StatsResult): string {
         <span class="total-badge" id="stat-total">Total: ${stats.total}</span>
         <span class="conn-status" id="conn-status">●</span>
         <button class="btn" id="btn-pause">⏸ Pause</button>
+        <button class="btn btn-danger" id="btn-wipe">🗑 Wipe DB</button>
       </div>
     </div>
     <div class="filter-bar">

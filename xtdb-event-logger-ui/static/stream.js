@@ -215,6 +215,27 @@
     });
   }, 10000);
 
+  // ── Wipe DB button ──
+  var btnWipe = document.getElementById("btn-wipe");
+  if (btnWipe) {
+    btnWipe.addEventListener("click", function () {
+      if (!confirm("⚠️ This will permanently erase ALL events from the database.\n\nAre you sure?")) return;
+      btnWipe.disabled = true;
+      btnWipe.textContent = "⏳ Wiping...";
+      fetch("/api/wipe", { method: "POST" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          alert("✅ " + data.message);
+          window.location.reload();
+        })
+        .catch(function (err) {
+          alert("❌ Wipe failed: " + err);
+          btnWipe.disabled = false;
+          btnWipe.textContent = "🗑 Wipe DB";
+        });
+    });
+  }
+
   // ── Start ──
   connect();
 })();

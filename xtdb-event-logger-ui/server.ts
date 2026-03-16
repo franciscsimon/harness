@@ -16,6 +16,7 @@ import {
   getDashboardSessions,
   getToolUsageStats,
   getSessionKnowledge,
+  wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
 import { computeHealthScore, healthColor } from "./lib/health.ts";
@@ -212,6 +213,11 @@ app.get("/api/sessions/:id{.+}/knowledge", async (c) => {
   if (!knowledge) return c.json({ error: "Session not found" }, 404);
   const md = generateKnowledgeMarkdown(id, knowledge);
   return c.text(md, 200, { "Content-Type": "text/markdown; charset=utf-8" });
+});
+
+app.post("/api/wipe", async (c) => {
+  const deleted = await wipeAllEvents();
+  return c.json({ deleted, message: `Erased ${deleted} events` });
 });
 
 // ─── Start ─────────────────────────────────────────────────────────

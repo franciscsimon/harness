@@ -422,6 +422,19 @@ export async function getSessionKnowledge(sessionId: string): Promise<SessionKno
 }
 
 /**
+ * Delete all events from the database.
+ * Uses ERASE (hard delete) so rows don't linger in XTDB's temporal history.
+ */
+export async function wipeAllEvents(): Promise<number> {
+  const before = await sql`SELECT COUNT(*) AS cnt FROM events`;
+  const count = Number(before[0].cnt);
+  if (count > 0) {
+    await sql`ERASE FROM events WHERE _id IS NOT NULL`;
+  }
+  return count;
+}
+
+/**
  * Close the connection.
  */
 export async function closeDb(): Promise<void> {

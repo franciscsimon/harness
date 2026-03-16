@@ -75,6 +75,7 @@ export function renderDashboard(
         <span class="header-sep">·</span>
         📊 Dashboard
       </h1>
+      <button class="btn btn-danger" id="btn-wipe">🗑 Wipe DB</button>
     </div>
   </header>
 
@@ -91,6 +92,16 @@ export function renderDashboard(
       <div class="tool-bars">${toolBars || '<p class="empty-msg">No tool data.</p>'}</div>
     </div>
   </main>
+  <script>
+    var btn = document.getElementById("btn-wipe");
+    if (btn) btn.addEventListener("click", function () {
+      if (!confirm("⚠️ This will permanently erase ALL events from the database.\\n\\nAre you sure?")) return;
+      btn.disabled = true; btn.textContent = "⏳ Wiping...";
+      fetch("/api/wipe", { method: "POST" }).then(function(r){return r.json()}).then(function(d){
+        alert("✅ " + d.message); window.location.reload();
+      }).catch(function(e){ alert("❌ " + e); btn.disabled = false; btn.textContent = "🗑 Wipe DB"; });
+    });
+  </script>
 </body>
 </html>`;
 }
