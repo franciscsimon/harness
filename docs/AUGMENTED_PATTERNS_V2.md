@@ -1,6 +1,6 @@
 # Augmented Coding Patterns V2 — Missing Patterns Implementation
 
-> Status: **PLANNING**
+> Status: **IN PROGRESS** — Phase 1+3 done, Phase 2 remaining
 > Scope: 23 implementable patterns not yet covered
 > Prerequisite: V1 features (context markers, templates, canary, habits, dashboard, knowledge)
 
@@ -13,11 +13,11 @@ These are small extensions or additions that deliver immediate value.
 
 | # | Pattern | Type | What to Build |
 |---|---------|------|---------------|
-| P1 | **Reminders** | Extension | Auto-inject user rules on every prompt |
-| P2 | **Contextual Prompts** | Extension | Event-driven prompt injection |
-| P3 | **Knowledge Checkpoint** | Extension | Periodic context snapshots |
-| P4 | **Refinement Loop** | Extension + Template | Iterate output with user checking each round |
-| P5 | **Sunk Cost Detection** | Extension | Detect when agent should abandon approach |
+| P1 | **Reminders** | Extension | ✅ Auto-inject user rules on every prompt |
+| P2 | **Contextual Prompts** | Extension | ✅ Event-driven prompt injection |
+| P3 | **Knowledge Checkpoint** | Extension | ✅ Periodic context snapshots |
+| P4 | **Refinement Loop** | Extension + Template | ✅ Iterate output with user checking each round |
+| P5 | **Sunk Cost Detection** | Extension | ✅ Detect when agent should abandon approach |
 
 ### Tier 2 — High Value, Medium Effort
 These require more code but are core to the pattern catalog.
@@ -28,18 +28,18 @@ These require more code but are core to the pattern catalog.
 | P7 | **Yak Shave Delegation** | Extension | Auto-detect yak shaves, offer to spawn side agent |
 | P8 | **Chunking** | Extension + Template | Auto-split large tasks into smaller chunks |
 | P9 | **Silent Misalignment Detection** | Extension | Detect when agent stops following instructions |
-| P10 | **Unvalidated Leaps Detection** | Extension | Detect large changes without verification |
+| P10 | **Unvalidated Leaps Detection** | Extension | ✅ Detect large changes without verification |
 
 ### Tier 3 — Medium Value, Low Effort
 These are mostly templates or small UI additions.
 
 | # | Pattern | Type | What to Build |
 |---|---------|------|---------------|
-| P11 | **Approved Fixtures** | Template | Visual/fixture-based test workflow |
+| P11 | **Approved Fixtures** | Template | ✅ Visual/fixture-based test workflow |
 | P12 | **Noise Cancellation** | Extension | Filter verbose AI output |
 | P13 | **Knowledge Composition** | Extension + UI | Compose multiple knowledge docs |
-| P14 | **Happy to Delete** | Extension | Track AI code deletability |
-| P15 | **Show the Agent, Let it Repeat** | Template | Document processes for automation |
+| P14 | **Happy to Delete** | Extension | ✅ Track AI code deletability |
+| P15 | **Show the Agent, Let it Repeat** | Template | ✅ Document processes for automation |
 
 ### Tier 4 — Lower Priority / Conceptual
 These are harder to automate or more conceptual.
