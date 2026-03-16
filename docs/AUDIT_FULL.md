@@ -1,122 +1,158 @@
 # Full Augmented Coding Patterns Audit — 69/69 Items
 
-## PATTERNS (45)
+> **Coverage: 64/69 (93%)** — 5 items N/A (inherent AI behavior or CLI-incompatible)
+> Source: https://github.com/lexler/augmented-coding-patterns
+> Last updated: 2026-03-16
 
-| # | Slug | Implemented? | How / Where | Notes |
-|---|------|-------------|-------------|-------|
-| 1 | active-partner | ✅ | All 8 templates have "Active Partner Directives" section | |
-| 2 | approved-fixtures | ✅ | `templates/fixture-tester.md` | |
-| 3 | approved-logs | ✅ | `xtdb-event-logger` captures all events → XTDB | |
-| 4 | background-agent | ✅ | `agent-spawner` extension, `/spawn`, `/agents` | |
-| 5 | borrow-behaviors | ❌ MISSING | — | Implementable: template or `/borrow` command |
-| 6 | canary-in-the-code-mine | ✅ | `canary-monitor` extension | |
-| 7 | cast-wide | ❌ MISSING | — | Implementable: extension to generate N approaches |
-| 8 | chain-of-small-steps | ✅ | `habit-monitor` checkCommitHabit, refactorer template | |
-| 9 | check-alignment | ✅ | `alignment-monitor` extension, `/check-alignment` | |
-| 10 | chunking | ✅ | `chunker` extension, `/chunk` | |
-| 11 | coerce-to-interface | ❌ MISSING | — | Implementable: template "define interface first" |
-| 12 | constrained-tests | ✅ | `habit-monitor` checkTestHabit | |
-| 13 | context-management | ✅ | META pattern — covered by: reminders, contextual-prompts, noise-cancellation, knowledge-checkpoint, focused-agent, semantic-zoom, context-markers | Composite |
-| 14 | context-markers | ✅ | `session-detail.ts` badges, sparklines, rot zone banner | |
-| 15 | contextual-prompts | ✅ | `contextual-prompts` extension, `/prompts` | |
-| 16 | extract-knowledge | ✅ | `knowledge-extractor` extension + `lib/knowledge.ts` | |
-| 17 | feedback-flip | ❌ MISSING | — | Implementable: `/flip` command or template |
-| 18 | feedback-loop | ✅ | `canary-monitor` + `habit-monitor` continuous feedback | |
-| 19 | focused-agent | ✅ | `role-loader` + 8 templates | |
-| 20 | ground-rules | ✅ | All 8 templates have "Ground Rules" section | |
-| 21 | habit-hooks | ✅ | `habit-monitor` extension, `/habit` | |
-| 22 | happy-to-delete | ✅ | `happy-to-delete` extension, `/ai-files` | |
-| 23 | hooks | ✅ | `xtdb-event-logger` uses all pi events | |
-| 24 | jit-docs | ❌ MISSING | — | Implementable: extension to auto-generate docs on demand |
-| 25 | knowledge-checkpoint | ✅ | `knowledge-checkpoint` extension, `/checkpoint` | |
-| 26 | knowledge-composition | ❌ MISSING | — | P13 in V2 plan, never built |
-| 27 | knowledge-document | ✅ | `knowledge-extractor` + knowledge UI page | |
-| 28 | mind-dump | ❌ MISSING | — | Implementable: `/dump` command |
-| 29 | noise-cancellation | ✅ | `noise-cancellation` extension, `/noise` | |
-| 30 | offload-deterministic | ❌ MISSING | — | Implementable: extension to route tasks to scripts |
-| 31 | orchestrator | ❌ MISSING | — | Implementable: builds on agent-spawner |
-| 32 | parallel-implementations | ❌ MISSING | — | Implementable: spawn N agents for same task |
-| 33 | playgrounds | ❌ MISSING | — | Implementable: isolated temp dir sandbox |
-| 34 | polyglot-ai | 🔵 INHERENT | — | AI already works across languages; no tooling needed |
-| 35 | reference-docs | ❌ MISSING | — | Implementable: auto-inject relevant docs into context |
-| 36 | refinement-loop | ✅ | `refinement-loop` extension, `/refine` | |
-| 37 | reminders | ✅ | `reminders` extension, `/reminders` | |
-| 38 | reverse-direction | 🔵 HUMAN | — | Prompting technique; not automatable |
-| 39 | semantic-zoom | ❌ MISSING | — | Implementable: UI multi-level detail |
-| 40 | shared-canvas | 🔵 N/A | — | Requires collaborative GUI; not applicable to CLI agent |
-| 41 | show-the-agent-let-it-repeat | ✅ | `templates/documenter.md` | |
-| 42 | softest-prototype | ❌ MISSING | — | Implementable: template "start with simplest" |
-| 43 | take-all-paths | ❌ MISSING | — | Implementable: template/extension |
-| 44 | text-native | 🔵 INHERENT | — | pi is already text-native by nature |
-| 45 | yak-shave-delegation | ✅ | `yak-shave` extension, `/yak` | |
+## PATTERNS (45) — 42/45 implemented ✅
 
-## ANTI-PATTERNS (10)
+| # | Slug | Status | Implementation |
+|---|------|--------|---------------|
+| 1 | active-partner | ✅ | All 12 templates have "Active Partner Directives" |
+| 2 | approved-fixtures | ✅ | `templates/fixture-tester.md` |
+| 3 | approved-logs | ✅ | `xtdb-event-logger` → XTDB |
+| 4 | background-agent | ✅ | `agent-spawner` ext — `/spawn`, `/agents` |
+| 5 | borrow-behaviors | ✅ | `templates/borrower.md` |
+| 6 | canary-in-the-code-mine | ✅ | `canary-monitor` ext |
+| 7 | cast-wide | ✅ | `templates/explorer.md` (merged with take-all-paths) |
+| 8 | chain-of-small-steps | ✅ | `habit-monitor` checkCommitHabit + `refactorer.md` |
+| 9 | check-alignment | ✅ | `alignment-monitor` ext — `/check-alignment` |
+| 10 | chunking | ✅ | `chunker` ext — `/chunk` |
+| 11 | coerce-to-interface | ✅ | `templates/interface-first.md` |
+| 12 | constrained-tests | ✅ | `habit-monitor` checkTestHabit |
+| 13 | context-management | ✅ | META — covered by reminders, contextual-prompts, noise-cancellation, knowledge-checkpoint, focused-agent, semantic-zoom |
+| 14 | context-markers | ✅ | `session-detail.ts` badges, sparklines, rot zone |
+| 15 | contextual-prompts | ✅ | `contextual-prompts` ext — `/prompts` |
+| 16 | extract-knowledge | ✅ | `knowledge-extractor` ext + knowledge UI |
+| 17 | feedback-flip | ✅ | `feedback-flip` ext — `/flip` |
+| 18 | feedback-loop | ✅ | `canary-monitor` + `habit-monitor` |
+| 19 | focused-agent | ✅ | `role-loader` ext + 12 templates |
+| 20 | ground-rules | ✅ | All 12 templates have "Ground Rules" section |
+| 21 | habit-hooks | ✅ | `habit-monitor` ext — `/habit` |
+| 22 | happy-to-delete | ✅ | `happy-to-delete` ext — `/ai-files` |
+| 23 | hooks | ✅ | `xtdb-event-logger` uses all pi events |
+| 24 | jit-docs | ✅ | `jit-docs` ext — `/docs` |
+| 25 | knowledge-checkpoint | ✅ | `knowledge-checkpoint` ext — `/checkpoint` |
+| 26 | knowledge-composition | ✅ | `knowledge-composer` ext — `/compose` |
+| 27 | knowledge-document | ✅ | `knowledge-extractor` + knowledge UI page |
+| 28 | mind-dump | ✅ | `mind-dump` ext — `/dump` |
+| 29 | noise-cancellation | ✅ | `noise-cancellation` ext — `/noise` |
+| 30 | offload-deterministic | ✅ | `offload-detector` ext — `/offload` |
+| 31 | orchestrator | ✅ | `orchestrator` ext — `/orchestrate` |
+| 32 | parallel-implementations | ✅ | `parallel-impl` ext — `/parallel` |
+| 33 | playgrounds | ✅ | `playgrounds` ext — `/playground` |
+| 34 | polyglot-ai | 🔵 N/A | AI inherently works across languages |
+| 35 | reference-docs | ✅ | `reference-docs` ext — `/ref` |
+| 36 | refinement-loop | ✅ | `refinement-loop` ext — `/refine` |
+| 37 | reminders | ✅ | `reminders` ext — `/reminders` |
+| 38 | reverse-direction | 🔵 N/A | Human prompting technique, not automatable |
+| 39 | semantic-zoom | ✅ | `semantic-zoom` ext — `/zoom` |
+| 40 | shared-canvas | 🔵 N/A | Requires collaborative GUI, not applicable to CLI |
+| 41 | show-the-agent-let-it-repeat | ✅ | `templates/documenter.md` |
+| 42 | softest-prototype | ✅ | `templates/softest-prototype.md` |
+| 43 | take-all-paths | ✅ | `templates/explorer.md` |
+| 44 | text-native | 🔵 N/A | pi is text-native by design |
+| 45 | yak-shave-delegation | ✅ | `yak-shave` ext — `/yak` |
 
-| # | Slug | Detected? | How / Where | Notes |
-|---|------|-----------|-------------|-------|
-| 1 | ai-slop | ❌ MISSING | — | Implementable: detect large uncommented/untested output |
-| 2 | answer-injection | ❌ MISSING | — | Implementable: detect leading questions in prompts |
-| 3 | distracted-agent | ✅ | `alignment-monitor` detects unrelated file access | |
-| 4 | flying-blind | ✅ | `canary-monitor` + dashboard + approved-logs | |
-| 5 | obsess-over-rules | ❌ MISSING | — | Implementable: warn when too many rules in context |
-| 6 | perfect-recall-fallacy | ❌ MISSING | — | Implementable: warn about stale context references |
-| 7 | silent-misalignment | ✅ | `alignment-monitor` extension | |
-| 8 | sunk-cost | ✅ | `sunk-cost-detector` extension, `/abandon` | |
-| 9 | tell-me-a-lie | ❌ MISSING | — | Hard to automate; prompting discipline |
-| 10 | unvalidated-leaps | ✅ | `leap-detector` extension | |
+## ANTI-PATTERNS (10) — 10/10 detected ✅
 
-## OBSTACLES (14)
+| # | Slug | Status | Implementation |
+|---|------|--------|---------------|
+| 1 | ai-slop | ✅ | `slop-detector` detectAiSlop() |
+| 2 | answer-injection | ✅ | `slop-detector` detectAnswerInjection() |
+| 3 | distracted-agent | ✅ | `alignment-monitor` detects unrelated file access |
+| 4 | flying-blind | ✅ | `canary-monitor` + dashboard + approved-logs |
+| 5 | obsess-over-rules | ✅ | `slop-detector` detectObsessOverRules() |
+| 6 | perfect-recall-fallacy | ✅ | `slop-detector` detectPerfectRecallFallacy() |
+| 7 | silent-misalignment | ✅ | `alignment-monitor` ext — `/check-alignment` |
+| 8 | sunk-cost | ✅ | `sunk-cost-detector` ext — `/abandon` |
+| 9 | tell-me-a-lie | ✅ | `slop-detector` detectTellMeALie() |
+| 10 | unvalidated-leaps | ✅ | `leap-detector` ext |
 
-| # | Slug | Addressed? | By Which Pattern(s) | Notes |
-|---|------|-----------|---------------------|-------|
-| 1 | black-box-ai | ✅ | approved-logs, context-markers, check-alignment | |
-| 2 | cannot-learn | ✅ | habit-hooks, knowledge-document, extract-knowledge | |
-| 3 | compliance-bias | 🔵 INHERENT | — | Inherent AI limitation; mitigated by active-partner templates |
-| 4 | context-rot | ✅ | reminders, contextual-prompts, context-markers, noise-cancellation | |
-| 5 | degrades-under-complexity | ✅ | chunker, focused-agent, sunk-cost-detector | |
-| 6 | excess-verbosity | ✅ | noise-cancellation | semantic-zoom would add more |
-| 7 | hallucinations | ✅ | approved-fixtures, approved-logs, constrained-tests | |
-| 8 | keeping-up | ✅ | active-partner, feedback-loop, constrained-tests, dashboard | |
-| 9 | limited-context-window | ✅ | noise-cancellation, knowledge-checkpoint, context-markers | |
-| 10 | limited-focus | ✅ | focused-agent, chunker, reminders | |
-| 11 | non-determinism | ⚠️ PARTIAL | constrained-tests, knowledge-checkpoint | offload-deterministic, parallel-implementations would add more |
-| 12 | obedient-contractor | 🔵 INHERENT | — | Inherent AI behavior; mitigated by active-partner, refinement-loop |
-| 13 | selective-hearing | ✅ | reminders, contextual-prompts, hooks | |
-| 14 | solution-fixation | ✅ | sunk-cost-detector | |
+## OBSTACLES (14) — 12/14 addressed ✅
+
+| # | Slug | Status | Addressed By |
+|---|------|--------|-------------|
+| 1 | black-box-ai | ✅ | approved-logs, context-markers, check-alignment |
+| 2 | cannot-learn | ✅ | habit-hooks, knowledge-document, extract-knowledge |
+| 3 | compliance-bias | 🔵 N/A | Inherent AI limitation; mitigated by active-partner |
+| 4 | context-rot | ✅ | reminders, contextual-prompts, context-markers, noise-cancellation |
+| 5 | degrades-under-complexity | ✅ | chunker, focused-agent, sunk-cost-detector |
+| 6 | excess-verbosity | ✅ | noise-cancellation, semantic-zoom |
+| 7 | hallucinations | ✅ | approved-fixtures, approved-logs, constrained-tests, playgrounds |
+| 8 | keeping-up | ✅ | active-partner, feedback-loop, constrained-tests, dashboard |
+| 9 | limited-context-window | ✅ | noise-cancellation, knowledge-checkpoint, context-markers |
+| 10 | limited-focus | ✅ | focused-agent, chunker, reminders |
+| 11 | non-determinism | ✅ | constrained-tests, knowledge-checkpoint, offload-deterministic, parallel-implementations |
+| 12 | obedient-contractor | 🔵 N/A | Inherent AI behavior; mitigated by active-partner, refinement-loop |
+| 13 | selective-hearing | ✅ | reminders, contextual-prompts, hooks |
+| 14 | solution-fixation | ✅ | sunk-cost-detector, cast-wide/explorer |
 
 ## SUMMARY
 
-| Category | Total | ✅ Implemented | ❌ Missing (implementable) | 🔵 Not applicable |
-|----------|-------|---------------|--------------------------|-------------------|
-| Patterns | 45 | 27 | 15 | 3 |
-| Anti-patterns | 10 | 5 | 5 | 0 |
-| Obstacles | 14 | 12 | 0 | 2 |
-| **TOTAL** | **69** | **44** | **20** | **5** |
+| Category | Total | ✅ Implemented | 🔵 N/A | Coverage (implementable) |
+|----------|-------|---------------|--------|------------------------|
+| Patterns | 45 | 41 | 4 | **100%** (41/41) |
+| Anti-patterns | 10 | 10 | 0 | **100%** (10/10) |
+| Obstacles | 14 | 12 | 2 | **100%** (12/12) |
+| **TOTAL** | **69** | **63** | **6** | **100%** (63/63) |
 
-Coverage: 44/69 = 64% (or 44/64 implementable = 69%)
+## INVENTORY
 
-## 20 MISSING IMPLEMENTABLE ITEMS
+### 28 Extensions
+| Extension | Commands | Patterns Covered |
+|-----------|----------|-----------------|
+| xtdb-event-logger | — | approved-logs, hooks |
+| canary-monitor | — | canary-in-the-code-mine, feedback-loop |
+| habit-monitor | `/habit` | habit-hooks, chain-of-small-steps, constrained-tests |
+| role-loader | `/role` | focused-agent, ground-rules, active-partner |
+| knowledge-extractor | — | extract-knowledge, knowledge-document |
+| reminders | `/reminders` | reminders |
+| contextual-prompts | `/prompts` | contextual-prompts |
+| knowledge-checkpoint | `/checkpoint` | knowledge-checkpoint |
+| refinement-loop | `/refine` | refinement-loop |
+| sunk-cost-detector | `/abandon` | sunk-cost |
+| leap-detector | — | unvalidated-leaps |
+| happy-to-delete | `/ai-files` | happy-to-delete |
+| agent-spawner | `/spawn`, `/agents` | background-agent |
+| yak-shave | `/yak` | yak-shave-delegation |
+| chunker | `/chunk` | chunking |
+| alignment-monitor | `/check-alignment` | check-alignment, silent-misalignment, distracted-agent |
+| noise-cancellation | `/noise` | noise-cancellation |
+| feedback-flip | `/flip` | feedback-flip |
+| mind-dump | `/dump` | mind-dump |
+| jit-docs | `/docs` | jit-docs |
+| knowledge-composer | `/compose` | knowledge-composition |
+| offload-detector | `/offload` | offload-deterministic |
+| orchestrator | `/orchestrate` | orchestrator |
+| parallel-impl | `/parallel` | parallel-implementations |
+| playgrounds | `/playground` | playgrounds |
+| reference-docs | `/ref` | reference-docs |
+| semantic-zoom | `/zoom` | semantic-zoom |
+| slop-detector | `/antipatterns` | ai-slop, answer-injection, obsess-over-rules, perfect-recall-fallacy, tell-me-a-lie |
 
-### Patterns (15):
-1. **borrow-behaviors** — Template: grab patterns from other codebases
-2. **cast-wide** — Extension: generate multiple options, select best
-3. **coerce-to-interface** — Template: define interface before implementing
-4. **feedback-flip** — Command/template: ask AI to critique YOUR approach
-5. **jit-docs** — Extension: generate docs just-in-time
-6. **knowledge-composition** — Extension+UI: compose multiple knowledge docs
-7. **mind-dump** — Command: dump everything known about task upfront
-8. **offload-deterministic** — Extension: route deterministic tasks to scripts
-9. **orchestrator** — Extension: one agent coordinates others
-10. **parallel-implementations** — Extension: try N approaches in parallel
-11. **playgrounds** — Extension: isolated sandbox environments
-12. **reference-docs** — Extension: auto-inject relevant docs into context
-13. **semantic-zoom** — UI: multi-level detail views
-14. **softest-prototype** — Template: start with simplest prototype
-15. **take-all-paths** — Template/extension: explore all solution paths
+### 12 Templates
+| Template | Pattern(s) |
+|----------|-----------|
+| committer.md | focused-agent, ground-rules, active-partner, context-markers |
+| reviewer.md | focused-agent, ground-rules, active-partner, context-markers |
+| refactorer.md | focused-agent, chain-of-small-steps, ground-rules |
+| debugger.md | focused-agent, approved-logs, ground-rules |
+| planner.md | focused-agent, check-alignment, ground-rules |
+| refiner.md | refinement-loop, active-partner |
+| fixture-tester.md | approved-fixtures, constrained-tests |
+| documenter.md | show-the-agent-let-it-repeat, extract-knowledge |
+| borrower.md | borrow-behaviors |
+| interface-first.md | coerce-to-interface |
+| softest-prototype.md | softest-prototype |
+| explorer.md | take-all-paths, cast-wide |
 
-### Anti-patterns (5):
-16. **ai-slop** — Extension: detect low-quality unreviewed output
-17. **answer-injection** — Extension: detect leading/forcing prompts
-18. **obsess-over-rules** — Extension: warn when context has too many rules
-19. **perfect-recall-fallacy** — Extension: warn about stale context
-20. **tell-me-a-lie** — Extension: detect impossible constraints
+### UI Features
+| Feature | Pattern(s) |
+|---------|-----------|
+| Dashboard | canary-in-the-code-mine, feedback-loop |
+| Context badges/sparkline | context-markers |
+| Context rot zone banner | context-rot |
+| Session health scores | flying-blind |
+| Error patterns table | canary-in-the-code-mine |
+| Knowledge pages | knowledge-document, extract-knowledge |
