@@ -17,8 +17,22 @@ export default function (pi: ExtensionAPI) {
   let violationCount = 0;
   let totalChecked = 0;
 
+  // ── Flag: --quality to disable quality hooks ──
+  pi.registerFlag("quality", {
+    description: "Enable quality hooks (default: true)",
+    type: "boolean",
+    default: true,
+  });
+
+  // ── Shortcut: Ctrl+Alt+Q to toggle quality hooks ──
+  pi.registerShortcut("C-M-q", async (ctx) => {
+    enabled = !enabled;
+    ctx.ui.setStatus("quality", enabled ? "🪝 Quality hooks active" : "");
+    ctx.ui.notify(`Quality hooks ${enabled ? "enabled" : "disabled"}.`, "info");
+  });
+
   pi.on("session_start", async (_event, ctx) => {
-    enabled = true;
+    enabled = pi.getFlag("quality") !== false;
     snoozedChecks.clear();
     violationCount = 0;
     totalChecked = 0;

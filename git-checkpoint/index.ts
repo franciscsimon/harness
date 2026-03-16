@@ -9,6 +9,18 @@ export default function (pi: ExtensionAPI) {
   let turnCount = 0;
   let enabled = true;
 
+  pi.registerFlag("checkpoints", {
+    description: "Enable git checkpoints (default: true)",
+    type: "boolean",
+    default: true,
+  });
+
+  pi.registerShortcut("C-M-g", async (ctx) => {
+    if (!(await isGitRepo())) { ctx.ui.notify("Not a git repo.", "error"); return; }
+    const ref = await stash(`manual-shortcut-turn${turnCount}`);
+    ctx.ui.notify(ref ? `📌 Quick checkpoint: ${ref}` : "Nothing to stash.", ref ? "success" : "info");
+  });
+
   async function isGitRepo(): Promise<boolean> {
     try {
       const r = await pi.exec("git", ["rev-parse", "--is-inside-work-tree"], {});
@@ -34,7 +46,8 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     stashes.clear();
     turnCount = 0;
-    if (await isGitRepo()) {
+    enabled = pi.getFlag("checkpoints") !== false;
+    if (enabled && await isGitRepo()) {
       ctx.ui.setStatus("git-cp", "📌 Git checkpoints on");
     }
   });
