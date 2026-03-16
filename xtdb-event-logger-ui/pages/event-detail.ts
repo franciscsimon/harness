@@ -37,7 +37,10 @@ export function renderEventDetail(row: EventRow): string {
 <body>
   <header>
     <div class="header-top">
-      <h1><a href="/" class="back-link">← Stream</a></h1>
+      <h1>
+        <a href="/" class="back-link">← Stream</a>
+        ${row.session_id ? `<span class="header-sep">·</span> <a href="/sessions/${encodeURIComponent(row.session_id)}" class="back-link">📂 Session</a>` : ""}
+      </h1>
     </div>
   </header>
 

@@ -9,12 +9,16 @@ import {
   getEventsSince,
   getEvent,
   getSessions,
+  getSessionList,
+  getSessionEvents,
   getStats,
   getMaxSeq,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
 import { renderIndex } from "./pages/index.ts";
 import { renderEventDetail } from "./pages/event-detail.ts";
+import { renderSessions } from "./pages/sessions.ts";
+import { renderSessionDetail } from "./pages/session-detail.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -35,6 +39,7 @@ app.get("/static/:file", (c) => {
   const allowed: Record<string, string> = {
     "style.css": "text/css",
     "stream.js": "application/javascript",
+    "session.js": "application/javascript",
   };
   const contentType = allowed[file];
   if (!contentType) return c.text("Not found", 404);
@@ -53,6 +58,18 @@ app.get("/", async (c) => {
   const [sessions, stats] = await Promise.all([getSessions(), getStats()]);
   const html = renderIndex(sessions, stats);
   return c.html(html);
+});
+
+app.get("/sessions", async (c) => {
+  const sessions = await getSessionList();
+  return c.html(renderSessions(sessions));
+});
+
+app.get("/sessions/:id{.+}", async (c) => {
+  const id = decodeURIComponent(c.req.param("id"));
+  const events = await getSessionEvents(id);
+  if (events.length === 0) return c.html("<h1>Session not found</h1>", 404);
+  return c.html(renderSessionDetail(id, events));
 });
 
 app.get("/event/:id", async (c) => {
@@ -122,6 +139,17 @@ app.get("/api/events", async (c) => {
 
   const rows = await getEvents({ category, eventName, sessionId, afterSeq, limit });
   return c.json(rows.map(compactEvent));
+});
+
+app.get("/api/sessions/list", async (c) => {
+  const sessions = await getSessionList();
+  return c.json(sessions);
+});
+
+app.get("/api/sessions/:id{.+}/events", async (c) => {
+  const id = decodeURIComponent(c.req.param("id"));
+  const events = await getSessionEvents(id);
+  return c.json(events.map(compactEvent));
 });
 
 app.get("/api/events/:id", async (c) => {

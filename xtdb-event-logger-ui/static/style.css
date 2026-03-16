@@ -352,6 +352,255 @@ main#stream {
   font-weight: 400;
 }
 
+/* ─── Nav ─────────────────────────────────────────────────────── */
+
+.header-sep {
+  color: var(--text-dim);
+  font-weight: 300;
+  margin: 0 4px;
+}
+
+.nav-link {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-dim);
+  text-decoration: none;
+}
+.nav-link:hover { color: var(--text-bright); text-decoration: underline; }
+
+/* ─── Session List ────────────────────────────────────────────── */
+
+.ses-list {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ses-card {
+  display: block;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  text-decoration: none;
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s;
+}
+.ses-card:hover {
+  background: #1f2233;
+  border-color: #3b82f6;
+}
+
+.ses-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.ses-card-name {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-bright);
+}
+
+.ses-card-count {
+  font-size: 13px;
+  color: var(--text-dim);
+  background: var(--bg-input);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.ses-card-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.ses-card-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.ses-cat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--cat-color) 12%, var(--bg-input));
+  border: 1px solid color-mix(in srgb, var(--cat-color) 30%, var(--border));
+  padding: 1px 8px;
+  border-radius: 10px;
+}
+
+.ses-card-last {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.ses-card-last code {
+  font-family: var(--mono);
+  color: var(--text);
+}
+.ses-card-ago {
+  float: right;
+}
+
+.empty-msg {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 40px;
+  font-size: 14px;
+}
+
+/* ─── Session Detail Meta ─────────────────────────────────────── */
+
+.ses-detail-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.ses-detail-meta code {
+  font-family: var(--mono);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.ses-detail-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ─── Timeline ────────────────────────────────────────────────── */
+
+.timeline {
+  padding: 12px 20px;
+}
+
+.tl-event {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  border-left: 2px solid var(--cat-color, var(--border));
+  margin-left: 8px;
+  transition: background 0.12s;
+}
+.tl-event:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.tl-seq {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  min-width: 32px;
+}
+
+.tl-name {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-bright);
+  min-width: 180px;
+}
+
+.tl-fields {
+  font-size: 12px;
+  color: var(--text-dim);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-time {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.tl-detail-link {
+  font-size: 11px;
+  color: #3b82f6;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.tl-detail-link:hover { text-decoration: underline; }
+
+/* ─── Timeline Groups ─────────────────────────────────────────── */
+
+.tl-group {
+  margin: 4px 0;
+}
+
+.tl-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  margin-left: 8px;
+  border-left: 3px solid #666;
+  background: var(--bg-card);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+}
+.tl-group-header:hover {
+  background: #1f2233;
+}
+
+.tl-group-toggle {
+  font-size: 11px;
+  color: var(--text-dim);
+  width: 14px;
+  text-align: center;
+}
+
+.tl-group-label {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.tl-group-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.tl-group-body {
+  overflow: hidden;
+  transition: max-height 0.25s ease;
+}
+
+.tl-group-body.collapsed {
+  display: none;
+}
+
+/* Nesting connector — groups inside groups get left border */
+.tl-group .tl-group {
+  border-left: 1px solid var(--border);
+  margin-left: 12px;
+}
+
+/* Agent run header */
+.tl-group-agent > .tl-group-header { border-left-color: #22c55e; }
+/* Turn header */
+.tl-group-turn > .tl-group-header { border-left-color: #3b82f6; }
+/* Tool header */
+.tl-group-tool > .tl-group-header { border-left-color: #f97316; }
+
 /* ─── Responsive ──────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
