@@ -1,6 +1,6 @@
 # Augmented Coding Patterns — Integration Progress
 
-> Status: **PLANNING**
+> Status: **IMPLEMENTED** (91/103 tests passing)
 > Source: https://lexler.github.io/augmented-coding-patterns
 > Goal: Turn the harness from passive observer into active quality feedback system
 > Pattern: `agent events → XTDB → analysis → feedback back into agent`
@@ -396,19 +396,19 @@ Templates:  harness/templates/*.md  →  /role command  →  CLAUDE.md
 
 ## Implementation Phases
 
-### Phase 1 — Quick Wins (Low Effort, Immediate Value)
-- [ ] Feature 1: Context Markers in UI (tasks 1.1–1.5)
-- [ ] Feature 2: Focused Agent Templates (tasks 2.1–2.8)
+### Phase 1 — Quick Wins (Low Effort, Immediate Value) ✅
+- [x] Feature 1: Context Markers in UI (tasks 1.1–1.5)
+- [x] Feature 2: Focused Agent Templates (tasks 2.1–2.8)
 
-### Phase 2 — Core Value (Medium Effort, High Impact)
-- [ ] Feature 3: Canary Metrics extension (tasks 3.1–3.9)
-- [ ] Feature 5: Session Health Dashboard (tasks 5.1–5.7)
+### Phase 2 — Core Value (Medium Effort, High Impact) ✅
+- [x] Feature 3: Canary Metrics extension (tasks 3.1–3.9)
+- [x] Feature 5: Session Health Dashboard (tasks 5.1–5.7)
 
-### Phase 3 — Full Loop (Medium Effort, Transformative)
-- [ ] Feature 4: Habit Hooks extension (tasks 4.1–4.10)
+### Phase 3 — Full Loop (Medium Effort, Transformative) ✅
+- [x] Feature 4: Habit Hooks extension (tasks 4.1–4.10)
 
-### Phase 4 — Extras
-- [ ] Feature 6: Knowledge Extraction (tasks 6.1–6.6)
+### Phase 4 — Extras ✅
+- [x] Feature 6: Knowledge Extraction (tasks 6.1–6.6)
 
 ---
 
