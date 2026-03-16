@@ -1,0 +1,11 @@
+{
+  "name": "canary-monitor",
+  "version": "1.0.0",
+  "description": "Compute quality signals from session events and surface warnings",
+  "dependencies": {
+    "postgres": "^3.4.8"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}

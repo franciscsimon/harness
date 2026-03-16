@@ -32,7 +32,7 @@ export function renderIndex(sessions: string[], stats: StatsResult): string {
 <body>
   <header>
     <div class="header-top">
-      <h1>📊 pi.dev Event Stream <span class="header-sep">·</span> <a href="/sessions" class="nav-link">📂 Sessions</a></h1>
+      <h1>📊 pi.dev Event Stream <span class="header-sep">·</span> <a href="/sessions" class="nav-link">📂 Sessions</a> <span class="header-sep">·</span> <a href="/dashboard" class="nav-link">📊 Dashboard</a></h1>
       <div class="header-actions">
         <span class="total-badge" id="stat-total">Total: ${stats.total}</span>
         <span class="conn-status" id="conn-status">●</span>

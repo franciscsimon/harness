@@ -1,6 +1,89 @@
 import type { EventRow } from "../lib/db.ts";
 import { CATEGORY_COLORS, relativeTime, getDisplayFields } from "../lib/format.ts";
 
+// ─── Context Health Thresholds ─────────────────────────────────────
+
+const CTX_GREEN_MAX = 50_000;   // < 50KB = green
+const CTX_YELLOW_MAX = 100_000; // 50–100KB = yellow, > 100KB = red
+const CTX_ROT_THRESHOLD = 100_000;
+
+function ctxHealthColor(bytes: number): string {
+  if (bytes < CTX_GREEN_MAX) return "green";
+  if (bytes < CTX_YELLOW_MAX) return "yellow";
+  return "red";
+}
+
+// ─── Context Sparkline (server-rendered SVG) ───────────────────────
+
+function renderSparkline(events: EventRow[]): string {
+  const points: { seq: number; bytes: number }[] = [];
+  const compactSeqs: number[] = [];
+
+  for (const ev of events) {
+    if (ev.provider_payload_bytes != null && ev.provider_payload_bytes !== "") {
+      points.push({ seq: Number(ev.seq), bytes: Number(ev.provider_payload_bytes) });
+    }
+    if (ev.event_name === "session_compact") {
+      compactSeqs.push(Number(ev.seq));
+    }
+  }
+
+  if (points.length < 2) return "";
+
+  const W = 600, H = 60, PAD = 4;
+  const maxBytes = Math.max(...points.map((p) => p.bytes), 1);
+  const minSeq = points[0].seq;
+  const maxSeq = points[points.length - 1].seq;
+  const seqRange = maxSeq - minSeq || 1;
+
+  const coords = points.map((p) => {
+    const x = PAD + ((p.seq - minSeq) / seqRange) * (W - 2 * PAD);
+    const y = H - PAD - ((p.bytes / maxBytes) * (H - 2 * PAD));
+    return { x, y, bytes: p.bytes };
+  });
+
+  const polyline = coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(" ");
+
+  // Gradient fill under line
+  const fillPath =
+    `M${coords[0].x.toFixed(1)},${H} ` +
+    coords.map((c) => `L${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(" ") +
+    ` L${coords[coords.length - 1].x.toFixed(1)},${H} Z`;
+
+  // Threshold lines
+  const greenY = H - PAD - ((CTX_GREEN_MAX / maxBytes) * (H - 2 * PAD));
+  const redY = H - PAD - ((CTX_ROT_THRESHOLD / maxBytes) * (H - 2 * PAD));
+
+  // Compaction reset lines
+  const compactLines = compactSeqs
+    .map((s) => {
+      const x = PAD + ((s - minSeq) / seqRange) * (W - 2 * PAD);
+      return `<line class="ctx-compact-reset" x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${H}" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="4,3" opacity="0.7"/>`;
+    })
+    .join("\n    ");
+
+  return `<div class="ctx-sparkline-wrap">
+  <svg class="ctx-sparkline" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <defs>
+      <linearGradient id="ctx-grad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f97316" stop-opacity="0.3"/>
+        <stop offset="100%" stop-color="#f97316" stop-opacity="0.05"/>
+      </linearGradient>
+    </defs>
+    ${maxBytes > CTX_GREEN_MAX ? `<line x1="${PAD}" y1="${greenY.toFixed(1)}" x2="${W - PAD}" y2="${greenY.toFixed(1)}" stroke="#22c55e" stroke-width="1" stroke-dasharray="3,3" opacity="0.4"/>` : ""}
+    ${maxBytes > CTX_ROT_THRESHOLD ? `<line x1="${PAD}" y1="${redY.toFixed(1)}" x2="${W - PAD}" y2="${redY.toFixed(1)}" stroke="#ef4444" stroke-width="1" stroke-dasharray="3,3" opacity="0.4"/>` : ""}
+    ${compactLines}
+    <path d="${fillPath}" fill="url(#ctx-grad)"/>
+    <polyline class="ctx-spark-line" points="${polyline}" fill="none" stroke="#f97316" stroke-width="2"/>
+    ${coords.map((c) => `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="2.5" fill="${ctxHealthColor(c.bytes) === "green" ? "#22c55e" : ctxHealthColor(c.bytes) === "yellow" ? "#eab308" : "#ef4444"}"/>`).join("\n    ")}
+  </svg>
+  <div class="ctx-sparkline-labels">
+    <span>0 KB</span>
+    <span class="ctx-sparkline-max">${Math.round(maxBytes / 1024)} KB</span>
+  </div>
+</div>`;
+}
+
 // ─── Session Detail Page ───────────────────────────────────────────
 // Renders a flat list of event rows with data-attributes.
 // Client-side session.js handles the nested grouping + collapse/expand.
@@ -12,6 +95,9 @@ export function renderSessionDetail(sessionId: string, events: EventRow[]): stri
   const durationMs = Number(lastTs) - Number(firstTs);
   const cwd = events.find((e) => e.cwd)?.cwd ?? "—";
 
+  // Track if we've entered context rot zone
+  let inRotZone = false;
+
   // Render each event as a timeline row
   const rows = events.map((ev) => {
     const color = CATEGORY_COLORS[ev.category] ?? "#999";
@@ -20,7 +106,28 @@ export function renderSessionDetail(sessionId: string, events: EventRow[]): stri
       .map(([k, v]) => `<span class="field-pair"><span class="field-k">${esc(k)}:</span> ${esc(v)}</span>`)
       .join(" ");
 
-    return `<div class="tl-event"
+    // Context health data attributes
+    const ctxMsgs = ev.context_msg_count != null && ev.context_msg_count !== "" ? Number(ev.context_msg_count) : null;
+    const ctxBytes = ev.provider_payload_bytes != null && ev.provider_payload_bytes !== "" ? Number(ev.provider_payload_bytes) : null;
+
+    let ctxAttrs = "";
+    let ctxClasses = "";
+
+    if (ctxMsgs != null) ctxAttrs += ` data-ctx-msgs="${ctxMsgs}"`;
+    if (ctxBytes != null) {
+      ctxAttrs += ` data-ctx-bytes="${ctxBytes}"`;
+      const health = ctxHealthColor(ctxBytes);
+      ctxClasses += ` ctx-health-${health}`;
+      if (ctxBytes >= CTX_ROT_THRESHOLD) inRotZone = true;
+    }
+
+    // Mark events in rot zone
+    if (inRotZone) ctxClasses += " ctx-rot-zone";
+
+    // Compaction resets the rot zone
+    if (ev.event_name === "session_compact") inRotZone = false;
+
+    return `<div class="tl-event${ctxClasses}"
       data-event-name="${esc(ev.event_name)}"
       data-category="${esc(ev.category)}"
       data-seq="${ev.seq}"
@@ -28,7 +135,7 @@ export function renderSessionDetail(sessionId: string, events: EventRow[]): stri
       data-tool-name="${esc(ev.tool_name ?? "")}"
       data-tool-call-id="${esc(ev.tool_call_id ?? "")}"
       data-turn-index="${ev.turn_index ?? ""}"
-      data-ts="${ev.ts}"
+      data-ts="${ev.ts}"${ctxAttrs}
       style="--cat-color:${color}">
       <span class="tl-seq">#${ev.seq}</span>
       <span class="cat-dot" style="background:${color}"></span>
@@ -39,6 +146,8 @@ export function renderSessionDetail(sessionId: string, events: EventRow[]): stri
       <a class="tl-detail-link" href="/event/${encodeURIComponent(ev._id)}">detail →</a>
     </div>`;
   }).join("\n    ");
+
+  const sparkline = renderSparkline(events);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -69,6 +178,7 @@ export function renderSessionDetail(sessionId: string, events: EventRow[]): stri
       <button class="btn" id="btn-expand-all">Expand All</button>
       <button class="btn" id="btn-collapse-all">Collapse All</button>
     </div>
+    ${sparkline}
   </header>
 
   <main class="timeline" id="timeline">

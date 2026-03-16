@@ -1,0 +1,8 @@
+{
+  "name": "habit-monitor",
+  "version": "1.0.0",
+  "description": "Detect behavioral patterns and inject corrective prompts",
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}

@@ -1,5 +1,6 @@
 import type { SessionSummary } from "../lib/db.ts";
 import { CATEGORY_COLORS, relativeTime } from "../lib/format.ts";
+import { computeHealthScore, healthColor, healthLabel } from "../lib/health.ts";
 
 // ─── All Categories ────────────────────────────────────────────────
 
@@ -20,9 +21,19 @@ export function renderSessions(sessions: SessionSummary[]): string {
         </span>`;
       }).join("");
 
+    // Health score from available data (approximation — no payload data in SessionSummary)
+    const healthInput = {
+      errorRate: 0, turnCount: 0,
+      maxPayloadBytes: 0, durationMs: s.lastTs - s.firstTs,
+    };
+    const score = computeHealthScore(healthInput);
+    const hColor = healthColor(score);
+    const hLabel = healthLabel(score);
+
     return `<a class="ses-card" href="/sessions/${encodeURIComponent(s.sessionId)}">
       <div class="ses-card-top">
         <span class="ses-card-name">${esc(name)}</span>
+        <span class="health-badge health-badge-${hColor}">${score} ${hLabel}</span>
         <span class="ses-card-count">${s.eventCount} events</span>
       </div>
       <div class="ses-card-meta">
@@ -52,6 +63,8 @@ export function renderSessions(sessions: SessionSummary[]): string {
         <a href="/" class="back-link">← Stream</a>
         <span class="header-sep">·</span>
         📂 Sessions
+        <span class="header-sep">·</span>
+        <a href="/dashboard" class="back-link">📊 Dashboard</a>
       </h1>
       <span class="total-badge">${sessions.length} session${sessions.length !== 1 ? "s" : ""}</span>
     </div>

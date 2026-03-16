@@ -254,6 +254,173 @@ export async function getMaxSeq(): Promise<number> {
   return Number(rows[0]?.mx ?? -1);
 }
 
+// ─── Dashboard Queries ─────────────────────────────────────────
+
+export interface DashboardSession {
+  sessionId: string;
+  eventCount: number;
+  errorRate: number;
+  turnCount: number;
+  maxPayloadBytes: number;
+  durationMs: number;
+  firstTs: number;
+  lastTs: number;
+}
+
+export interface ToolUsageStat {
+  tool: string;
+  count: number;
+  errors: number;
+  errorRate: number;
+}
+
+/**
+ * Get per-session metrics for the dashboard.
+ */
+export async function getDashboardSessions(): Promise<DashboardSession[]> {
+  // Event counts + timestamps
+  const agg = await sql`
+    SELECT session_id, COUNT(*) AS cnt, MIN(ts) AS first_ts, MAX(ts) AS last_ts
+    FROM events WHERE session_id IS NOT NULL
+    GROUP BY session_id
+  `;
+
+  // Turn counts per session
+  const turns = await sql`
+    SELECT session_id, COUNT(*) AS cnt
+    FROM events WHERE session_id IS NOT NULL AND event_name = 'turn_start'
+    GROUP BY session_id
+  `;
+  const turnMap: Record<string, number> = {};
+  for (const r of turns) turnMap[r.session_id] = Number(r.cnt);
+
+  // Tool errors per session
+  const toolTotals = await sql`
+    SELECT session_id, COUNT(*) AS cnt
+    FROM events WHERE session_id IS NOT NULL AND event_name = 'tool_execution_end'
+    GROUP BY session_id
+  `;
+  const toolErrors = await sql`
+    SELECT session_id, COUNT(*) AS cnt
+    FROM events WHERE session_id IS NOT NULL AND event_name = 'tool_execution_end' AND is_error = true
+    GROUP BY session_id
+  `;
+  const totalMap: Record<string, number> = {};
+  const errorMap: Record<string, number> = {};
+  for (const r of toolTotals) totalMap[r.session_id] = Number(r.cnt);
+  for (const r of toolErrors) errorMap[r.session_id] = Number(r.cnt);
+
+  // Max payload per session
+  const payloads = await sql`
+    SELECT session_id, MAX(provider_payload_bytes) AS max_bytes
+    FROM events WHERE session_id IS NOT NULL AND provider_payload_bytes IS NOT NULL
+    GROUP BY session_id
+  `;
+  const payloadMap: Record<string, number> = {};
+  for (const r of payloads) payloadMap[r.session_id] = Number(r.max_bytes);
+
+  return agg.map((r: any) => {
+    const sid = r.session_id;
+    const total = totalMap[sid] ?? 0;
+    const errors = errorMap[sid] ?? 0;
+    return {
+      sessionId: sid,
+      eventCount: Number(r.cnt),
+      errorRate: total > 0 ? errors / total : 0,
+      turnCount: turnMap[sid] ?? 0,
+      maxPayloadBytes: payloadMap[sid] ?? 0,
+      durationMs: Number(r.last_ts) - Number(r.first_ts),
+      firstTs: Number(r.first_ts),
+      lastTs: Number(r.last_ts),
+    };
+  });
+}
+
+/**
+ * Get tool usage statistics across all sessions.
+ */
+export async function getToolUsageStats(): Promise<ToolUsageStat[]> {
+  const totals = await sql`
+    SELECT tool_name, COUNT(*) AS cnt
+    FROM events WHERE event_name = 'tool_execution_end' AND tool_name IS NOT NULL
+    GROUP BY tool_name ORDER BY cnt DESC
+  `;
+  const errors = await sql`
+    SELECT tool_name, COUNT(*) AS cnt
+    FROM events WHERE event_name = 'tool_execution_end' AND tool_name IS NOT NULL AND is_error = true
+    GROUP BY tool_name
+  `;
+  const errMap: Record<string, number> = {};
+  for (const r of errors) errMap[r.tool_name] = Number(r.cnt);
+
+  return totals.map((r: any) => {
+    const total = Number(r.cnt);
+    const errs = errMap[r.tool_name] ?? 0;
+    return {
+      tool: r.tool_name,
+      count: total,
+      errors: errs,
+      errorRate: total > 0 ? errs / total : 0,
+    };
+  });
+}
+
+/**
+ * Get session knowledge data for knowledge extraction.
+ */
+export interface SessionKnowledge {
+  filesModified: string[];
+  toolUsage: Record<string, number>;
+  errorCount: number;
+  turnCount: number;
+  bashCommands: string[];
+  durationMs: number;
+  eventCount: number;
+}
+
+export async function getSessionKnowledge(sessionId: string): Promise<SessionKnowledge | null> {
+  const events = await getSessionEvents(sessionId);
+  if (events.length === 0) return null;
+
+  const toolUsage: Record<string, number> = {};
+  const files = new Set<string>();
+  const bashCmds: string[] = [];
+  let errorCount = 0;
+  let turnCount = 0;
+
+  for (const ev of events) {
+    if (ev.event_name === "tool_execution_end" && ev.tool_name) {
+      toolUsage[ev.tool_name] = (toolUsage[ev.tool_name] ?? 0) + 1;
+      if (ev.is_error) errorCount++;
+    }
+    if (ev.event_name === "turn_start") turnCount++;
+    if (ev.bash_command) bashCmds.push(ev.bash_command);
+    // Track file modifications from tool_call payload (Write/Edit paths)
+    if (ev.event_name === "tool_execution_start" && (ev.tool_name === "write" || ev.tool_name === "edit")) {
+      // payload may contain path info
+      try {
+        if (ev.payload) {
+          const p = typeof ev.payload === "string" ? JSON.parse(ev.payload) : ev.payload;
+          if (p?.path) files.add(p.path);
+        }
+      } catch {}
+    }
+  }
+
+  const firstTs = Number(events[0].ts);
+  const lastTs = Number(events[events.length - 1].ts);
+
+  return {
+    filesModified: [...files],
+    toolUsage,
+    errorCount,
+    turnCount,
+    bashCommands: bashCmds,
+    durationMs: lastTs - firstTs,
+    eventCount: events.length,
+  };
+}
+
 /**
  * Close the connection.
  */

@@ -1,0 +1,8 @@
+{
+  "name": "role-loader",
+  "version": "1.0.0",
+  "description": "Load focused agent role templates via /role command",
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}

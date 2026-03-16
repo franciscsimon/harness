@@ -13,12 +13,19 @@ import {
   getSessionEvents,
   getStats,
   getMaxSeq,
+  getDashboardSessions,
+  getToolUsageStats,
+  getSessionKnowledge,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
+import { computeHealthScore, healthColor } from "./lib/health.ts";
+import { generateKnowledgeMarkdown } from "./lib/knowledge.ts";
 import { renderIndex } from "./pages/index.ts";
 import { renderEventDetail } from "./pages/event-detail.ts";
 import { renderSessions } from "./pages/sessions.ts";
 import { renderSessionDetail } from "./pages/session-detail.ts";
+import { renderDashboard } from "./pages/dashboard.ts";
+import { renderKnowledge } from "./pages/knowledge.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -40,6 +47,7 @@ app.get("/static/:file", (c) => {
     "style.css": "text/css",
     "stream.js": "application/javascript",
     "session.js": "application/javascript",
+    "dashboard.js": "application/javascript",
   };
   const contentType = allowed[file];
   if (!contentType) return c.text("Not found", 404);
@@ -63,6 +71,18 @@ app.get("/", async (c) => {
 app.get("/sessions", async (c) => {
   const sessions = await getSessionList();
   return c.html(renderSessions(sessions));
+});
+
+app.get("/dashboard", async (c) => {
+  const [sessions, tools] = await Promise.all([getDashboardSessions(), getToolUsageStats()]);
+  return c.html(renderDashboard(sessions, tools));
+});
+
+app.get("/sessions/:id{.+}/knowledge", async (c) => {
+  const id = decodeURIComponent(c.req.param("id"));
+  const knowledge = await getSessionKnowledge(id);
+  if (!knowledge) return c.html("<h1>Session not found</h1>", 404);
+  return c.html(renderKnowledge(id, knowledge));
 });
 
 app.get("/sessions/:id{.+}", async (c) => {
@@ -167,6 +187,31 @@ app.get("/api/sessions", async (c) => {
 app.get("/api/stats", async (c) => {
   const stats = await getStats();
   return c.json(stats);
+});
+
+app.get("/api/dashboard", async (c) => {
+  const [sessions, tools] = await Promise.all([getDashboardSessions(), getToolUsageStats()]);
+  const ranked = sessions.map((s) => ({
+    ...s,
+    healthScore: computeHealthScore(s),
+    healthColor: healthColor(computeHealthScore(s)),
+  }));
+  return c.json({
+    totalSessions: sessions.length,
+    totalEvents: sessions.reduce((s, r) => s + r.eventCount, 0),
+    avgEventsPerSession: sessions.length > 0 ? Math.round(sessions.reduce((s, r) => s + r.eventCount, 0) / sessions.length) : 0,
+    overallErrorRate: sessions.length > 0 ? sessions.reduce((s, r) => s + r.errorRate, 0) / sessions.length : 0,
+    sessions: ranked,
+    toolUsage: tools,
+  });
+});
+
+app.get("/api/sessions/:id{.+}/knowledge", async (c) => {
+  const id = decodeURIComponent(c.req.param("id"));
+  const knowledge = await getSessionKnowledge(id);
+  if (!knowledge) return c.json({ error: "Session not found" }, 404);
+  const md = generateKnowledgeMarkdown(id, knowledge);
+  return c.text(md, 200, { "Content-Type": "text/markdown; charset=utf-8" });
 });
 
 // ─── Start ─────────────────────────────────────────────────────────
