@@ -107,18 +107,27 @@ export default function (pi: ExtensionAPI) {
     handler: async (args, ctx) => {
       const arg = args?.trim() ?? "";
 
-      if (arg === "list" || arg === "") {
+      if (arg === "list") {
         const roles = discoverRoles();
-        if (roles.length === 0) {
-          ctx.ui.notify(`No templates found in ${TEMPLATES_DIR}`, "warn");
-          return;
-        }
+        if (roles.length === 0) { ctx.ui.notify(`No templates found in ${TEMPLATES_DIR}`, "warn"); return; }
         const lines = roles.map((r) => `  ${r.emoji} ${r.name.padEnd(18)} — ${r.description}`);
-        ctx.ui.notify(
-          `Available roles:\n${lines.join("\n")}\n\nActive: ${activeRole ? `${ROLE_META[activeRole]?.emoji ?? ""} ${activeRole}` : "none"}\n\nTip: Use /agent <name> to launch a focused agent in a new session.`,
-          "info",
-        );
+        ctx.ui.notify(`Available roles:\n${lines.join("\n")}\n\nActive: ${activeRole ? `${ROLE_META[activeRole]?.emoji ?? ""} ${activeRole}` : "none"}`, "info");
         return;
+      }
+
+      // No args → interactive picker
+      if (arg === "") {
+        const roles = discoverRoles();
+        if (roles.length === 0) { ctx.ui.notify(`No templates found in ${TEMPLATES_DIR}`, "warn"); return; }
+        const choice = await ctx.ui.select(
+          "Select a role:",
+          roles.map((r) => `${r.emoji} ${r.name} — ${r.description}`),
+        );
+        if (choice === undefined) return; // cancelled
+        const roleName = roles[choice]?.name;
+        if (!roleName) return;
+        // Fall through to activate
+        args = roleName;
       }
 
       if (arg === "clear") {
