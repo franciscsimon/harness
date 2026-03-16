@@ -1,0 +1,148 @@
+import postgres from "postgres";
+import type { Endpoint, NormalizedEvent, ResolvedConfig } from "../types.ts";
+
+/**
+ * XtdbEndpoint — persists events into XTDB v2 via Postgres wire protocol.
+ *
+ * - Uses typed params (OID 25=text, 16=bool, 20=int8) as required by XTDB
+ * - Async write queue with configurable flush interval + batch size
+ * - Stores flat columns AND full JSON-LD string
+ * - Never throws from emit() — errors are logged and events dropped
+ */
+export class XtdbEndpoint implements Endpoint {
+  readonly name = "xtdb";
+
+  private sql: ReturnType<typeof postgres> | null = null;
+  private queue: Array<{ event: NormalizedEvent; jsonld: string }> = [];
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private flushIntervalMs = 500;
+  private batchSize = 20;
+  private closing = false;
+
+  async init(config: ResolvedConfig): Promise<void> {
+    if (!config.endpoints.xtdb.enabled) {
+      throw new Error("XTDB endpoint disabled");
+    }
+
+    this.flushIntervalMs = config.flush.intervalMs;
+    this.batchSize = config.flush.batchSize;
+
+    const { host, port } = config.endpoints.xtdb;
+    this.sql = postgres({
+      host,
+      port,
+      database: "xtdb",
+      user: "xtdb",
+      password: "xtdb",
+    });
+
+    // Verify connectivity
+    const rows = await this.sql`SELECT 1 AS ok`;
+    if (!rows?.[0]?.ok) {
+      throw new Error(`XTDB health check failed on ${host}:${port}`);
+    }
+  }
+
+  emit(event: NormalizedEvent, jsonld: string): void {
+    if (this.closing || !this.sql) return;
+    this.queue.push({ event, jsonld });
+    if (this.queue.length >= this.batchSize) {
+      this.flushNow();
+    } else if (!this.flushTimer) {
+      this.flushTimer = setTimeout(() => this.flushNow(), this.flushIntervalMs);
+    }
+  }
+
+  async flush(): Promise<void> {
+    await this.flushNow();
+  }
+
+  async close(): Promise<void> {
+    this.closing = true;
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    await this.flushNow();
+    if (this.sql) {
+      await this.sql.end();
+      this.sql = null;
+    }
+  }
+
+  // ── Internal ───────────────────────────────────────────────────
+
+  private async flushNow(): Promise<void> {
+    if (this.flushTimer) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    if (this.queue.length === 0 || !this.sql) return;
+
+    const batch = this.queue.splice(0, this.batchSize);
+    for (const { event, jsonld } of batch) {
+      try {
+        await this.insertRow(event, jsonld);
+      } catch (err) {
+        // Drop + log — never crash the extension
+        console.error(
+          `[xtdb-logger][xtdb] INSERT failed for ${event.eventName}#${event.seq}: ${err}`,
+        );
+      }
+    }
+
+    // If more items queued during flush, schedule another
+    if (this.queue.length > 0 && !this.closing) {
+      this.flushTimer = setTimeout(() => this.flushNow(), this.flushIntervalMs);
+    }
+  }
+
+  private async insertRow(event: NormalizedEvent, jsonld: string): Promise<void> {
+    const sql = this.sql!;
+    const t = (v: string | null) => sql.typed(v as any, 25); // text
+    const b = (v: boolean | null) => sql.typed(v as any, 16); // bool
+    const n = (v: number | null) => sql.typed(v as any, 20); // int8/bigint
+
+    const f = event.fields;
+
+    await sql`INSERT INTO events (
+      _id, environment, event_name, category, can_intercept,
+      schema_version, ts, seq, session_id, cwd,
+      switch_reason, switch_target, switch_previous,
+      fork_entry_id, fork_previous,
+      tree_new_leaf, tree_old_leaf, tree_from_ext,
+      event_cwd,
+      compact_tokens, compact_from_ext,
+      prompt_text, agent_end_msg_count,
+      turn_index, turn_timestamp, turn_end_tool_count,
+      message_role, stream_delta_type, stream_delta_len,
+      tool_name, tool_call_id, is_error,
+      context_msg_count, provider_payload_bytes,
+      input_text, input_source, input_has_images,
+      bash_command, bash_exclude,
+      model_provider, model_id, model_source,
+      prev_model_provider, prev_model_id,
+      payload, handler_error,
+      jsonld
+    ) VALUES (
+      ${t(event.id)}, ${t("pi.dev")}, ${t(event.eventName)}, ${t(event.category)}, ${b(event.canIntercept)},
+      ${n(event.schemaVersion)}, ${n(event.ts)}, ${n(event.seq)}, ${t(event.sessionId)}, ${t(event.cwd)},
+      ${t(f.switchReason ?? null)}, ${t(f.switchTarget ?? null)}, ${t(f.switchPrevious ?? null)},
+      ${t(f.forkEntryId ?? null)}, ${t(f.forkPrevious ?? null)},
+      ${t(f.treeNewLeaf ?? null)}, ${t(f.treeOldLeaf ?? null)}, ${b(f.treeFromExt ?? null)},
+      ${t(f.eventCwd ?? null)},
+      ${n(f.compactTokens ?? null)}, ${b(f.compactFromExt ?? null)},
+      ${t(f.promptText ?? null)}, ${n(f.agentEndMsgCount ?? null)},
+      ${n(f.turnIndex ?? null)}, ${n(f.turnTimestamp ?? null)}, ${n(f.turnEndToolCount ?? null)},
+      ${t(f.messageRole ?? null)}, ${t(f.streamDeltaType ?? null)}, ${n(f.streamDeltaLen ?? null)},
+      ${t(f.toolName ?? null)}, ${t(f.toolCallId ?? null)}, ${b(f.isError ?? null)},
+      ${n(f.contextMsgCount ?? null)}, ${n(f.providerPayloadBytes ?? null)},
+      ${t(f.inputText ?? null)}, ${t(f.inputSource ?? null)}, ${b(f.inputHasImages ?? null)},
+      ${t(f.bashCommand ?? null)}, ${b(f.bashExclude ?? null)},
+      ${t(f.modelProvider ?? null)}, ${t(f.modelId ?? null)}, ${t(f.modelSource ?? null)},
+      ${t(f.prevModelProvider ?? null)}, ${t(f.prevModelId ?? null)},
+      ${t(f.payload ?? null)}, ${t(f.handlerError ?? null)},
+      ${t(jsonld)}
+    )`;
+  }
+}

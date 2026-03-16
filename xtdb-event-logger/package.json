@@ -1,0 +1,14 @@
+{
+  "name": "xtdb-event-logger",
+  "version": "1.0.0",
+  "description": "Pi.dev extension — captures all 30 events into XTDB v2 with JSON-LD via RDF triples",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "@rdfjs/types": "^2.0.1",
+    "jsonld-streaming-serializer": "^4.0.0",
+    "n3": "^2.0.3",
+    "postgres": "^3.4.8"
+  }
+}
