@@ -17,17 +17,28 @@ interface RoleInfo {
 }
 
 const ROLE_META: Record<string, { emoji: string; description: string }> = {
+  // ── Core agents ──
   worker:             { emoji: "🛠️", description: "Implement features, fix bugs, write working code" },
-  committer:          { emoji: "✅", description: "Review staged changes and write commit messages" },
+  tester:             { emoji: "🧪", description: "Write tests for existing code, cover edge cases" },
   reviewer:           { emoji: "🔍", description: "Review code, flag issues, never modify files" },
-  refactorer:         { emoji: "🌀", description: "Refactor existing code, never add features" },
+  committer:          { emoji: "✅", description: "Review staged changes and write commit messages" },
   debugger:           { emoji: "🔬", description: "Debug with log-first approach" },
+  refactorer:         { emoji: "🌀", description: "Refactor existing code, never add features" },
+  // ── Planning & design ──
   planner:            { emoji: "📋", description: "Plan only, never implement" },
+  architect:          { emoji: "🏗️", description: "Design system architecture, components, boundaries" },
+  researcher:         { emoji: "🔎", description: "Investigate solutions, compare options, report findings" },
+  "interface-first":  { emoji: "🔌", description: "Define contracts before implementing" },
+  // ── Quality & maintenance ──
+  "security-auditor": { emoji: "🔒", description: "Audit code for vulnerabilities, OWASP Top 10" },
+  optimizer:          { emoji: "⚡", description: "Find and fix performance bottlenecks with measurements" },
+  janitor:            { emoji: "🧹", description: "Remove dead code, reduce tech debt, tidy up" },
+  migrator:           { emoji: "🔀", description: "Upgrade dependencies, migrate APIs, modernize code" },
+  // ── Workflow specialists ──
   refiner:            { emoji: "🔄", description: "Iterate output step by step with user review" },
   "fixture-tester":   { emoji: "🧪", description: "Verify output against known-good fixtures" },
   documenter:         { emoji: "📝", description: "Document processes for future agents" },
   borrower:           { emoji: "🔄", description: "Grab and adapt patterns from other sources" },
-  "interface-first":  { emoji: "🔌", description: "Define contracts before implementing" },
   "softest-prototype":{ emoji: "🧊", description: "Discover needs by building simplest version" },
   explorer:           { emoji: "🔮", description: "Generate multiple alternatives, pick the best" },
 };
