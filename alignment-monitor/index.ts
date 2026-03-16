@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 import { dirname } from "node:path";
 
 // ─── Alignment Monitor Extension ──────────────────────────────────
@@ -148,4 +149,23 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(report.join("\n"), "info");
     },
   });
+
+  // ── Tool: check_alignment — LLM-callable ──
+  pi.registerTool({
+    name: "check_alignment",
+    label: "Check Alignment",
+    description: "Compare what the agent has done vs the original user request. Reports files touched, drift from scope.",
+    promptSnippet: "Check if current work aligns with the user's original request",
+    promptGuidelines: ["Use check_alignment periodically during complex tasks to verify you haven't drifted from the goal."],
+    parameters: Type.Object({}),
+    async execute(_tid: any, _p: any, _s: any, _u: any, ctx: any) {
+      const mentioned = [...mentionedPaths].filter((p: string) => !p.includes(".")).slice(0, 10);
+      const touched = [...touchedPaths].slice(0, 15);
+      const unrelated = touched.filter((tp: string) => ![...mentionedPaths].some((mp: string) => tp.includes(mp) || mp.includes(dirname(tp))));
+      const status = unrelated.length > 0 ? "⚠️ Possible drift" : "✅ On track";
+      const report = `${status}\nOriginal: "${originalPrompt.slice(0, 150)}"\nFiles touched: ${touched.length}\nUnrelated: ${unrelated.length}${unrelated.length > 0 ? "\n  " + unrelated.slice(0, 5).join("\n  ") : ""}`;
+      return { content: [{ type: "text", text: report }], details: { unrelated: unrelated.length } };
+    },
+  });
+
 }

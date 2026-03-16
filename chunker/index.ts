@@ -1,4 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
+import { StringEnum } from "@mariozechner/pi-ai";
 
 // ─── Chunker Extension ────────────────────────────────────────────
 // Break complex tasks into manageable steps with tracked progress.
@@ -191,6 +193,53 @@ export default function (pi: ExtensionAPI) {
       }
 
       ctx.ui.notify("Usage: /chunk add <step> | list | done <n> | next | start | stop | reset", "error");
+    },
+  });
+
+  // ── Tool: plan_chunks — LLM can break tasks into steps ──
+  pi.registerTool({
+    name: "plan_chunks",
+    label: "Plan Chunks",
+    description: "Break a complex task into ordered implementation steps and activate chunking mode",
+    promptSnippet: "Break a task into ordered steps for focused implementation",
+    promptGuidelines: [
+      "Use plan_chunks when the user gives a complex task with multiple parts.",
+      "Each step should be independently completable and testable.",
+    ],
+    parameters: Type.Object({
+      action: StringEnum(["set", "done", "next", "list"] as const),
+      steps: Type.Optional(Type.Array(Type.String(), { description: "Steps to set (for 'set' action)" })),
+      step_number: Type.Optional(Type.Number({ description: "Step number to mark done (for 'done' action)" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (params.action === "set" && params.steps) {
+        steps = params.steps.map((text) => ({ text, done: false }));
+        currentStep = 0;
+        active = true;
+        saveState();
+        ctx.ui.setStatus("chunker", `📦 ${progressBar()}`);
+        const list = steps.map((s, i) => `  ${i + 1}. ${s.text}`).join("\n");
+        return { content: [{ type: "text", text: `📦 Created ${steps.length} steps:\n${list}\n\nFocus on step 1: ${steps[0].text}` }], details: { steps } };
+      }
+      if (params.action === "done") {
+        const n = params.step_number ?? (findNextUndone() + 1);
+        if (n < 1 || n > steps.length) throw new Error(`Invalid step: ${n}`);
+        steps[n - 1].done = true;
+        saveState();
+        ctx.ui.setStatus("chunker", `📦 ${progressBar()}`);
+        const next = findNextUndone();
+        const msg = next === -1 ? `✅ All ${steps.length} steps complete!` : `✅ Step ${n} done. Next: step ${next + 1} — ${steps[next].text}`;
+        return { content: [{ type: "text", text: msg }], details: { progress: progressBar() } };
+      }
+      if (params.action === "next") {
+        const idx = findNextUndone();
+        if (idx === -1) return { content: [{ type: "text", text: "All steps complete!" }], details: {} };
+        return { content: [{ type: "text", text: `👉 Step ${idx + 1}: ${steps[idx].text}` }], details: { step: idx + 1 } };
+      }
+      // list
+      if (steps.length === 0) return { content: [{ type: "text", text: "No steps defined." }], details: {} };
+      const list = steps.map((s, i) => `  ${s.done ? "✅" : "⬜"} ${i + 1}. ${s.text}`).join("\n");
+      return { content: [{ type: "text", text: `📦 ${progressBar()}\n${list}` }], details: { steps } };
     },
   });
 }

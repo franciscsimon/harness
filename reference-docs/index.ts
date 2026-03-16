@@ -1,4 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
+import { StringEnum } from "@mariozechner/pi-ai";
 import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
 import { join, basename, extname } from "node:path";
 
@@ -166,4 +168,27 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(`📄 Available reference docs:\n${lines.join("\n")}`, "info");
     },
   });
+
+  // ── Tool: load_reference — LLM-callable ──
+  pi.registerTool({
+    name: "load_reference",
+    label: "Load Reference",
+    description: "Load a reference document into context by name. Search project docs/, .docs/, references/ directories.",
+    promptSnippet: "Load a reference doc into context by filename",
+    promptGuidelines: ["Use load_reference when you need API docs, standards, or guidelines for the current task."],
+    parameters: Type.Object({ name: Type.String({ description: "Doc filename (e.g. 'api.md')" }) }),
+    async execute(_tid: any, params: any, _s: any, _u: any, ctx: any) {
+      const allDocs = findAllDocs();
+      const doc = allDocs.find((d: any) => d.name === params.name || d.name === params.name + ".md");
+      if (!doc) {
+        const available = allDocs.map((d: any) => d.name).join(", ");
+        throw new Error("Not found: " + params.name + ". Available: " + available);
+      }
+      const content = readFileSync(doc.path, "utf-8");
+      loaded.set(doc.name, content);
+      ctx.ui.setStatus("ref-docs", "📄 " + loaded.size + " refs");
+      return { content: [{ type: "text", text: "📄 Loaded: " + doc.name + " (" + Math.round(doc.size / 1024) + "KB)" }], details: { name: doc.name } };
+    },
+  });
+
 }

@@ -1,4 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
+import { StringEnum } from "@mariozechner/pi-ai";
 import { writeFileSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 
@@ -178,4 +180,20 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify("Usage: /checkpoint save [label] | list | info", "error");
     },
   });
+
+  // ── Tool: save_checkpoint — LLM-callable ──
+  pi.registerTool({
+    name: "save_checkpoint",
+    label: "Save Checkpoint",
+    description: "Save a knowledge checkpoint with current session state — files modified, tool usage, decisions made.",
+    promptSnippet: "Save a checkpoint of current session progress and decisions",
+    promptGuidelines: ["Use save_checkpoint before major refactoring or risky changes."],
+    parameters: Type.Object({ label: Type.Optional(Type.String({ description: "Checkpoint label" })) }),
+    async execute(_tid: any, params: any, _s: any, _u: any, ctx: any) {
+      const label = params.label || "agent-checkpoint-turn" + turnIndex;
+      const path = saveCheckpoint(label, ctx);
+      return { content: [{ type: "text", text: "📍 Checkpoint saved: " + path }], details: { path } };
+    },
+  });
+
 }

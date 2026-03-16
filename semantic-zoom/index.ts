@@ -1,4 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
+import { StringEnum } from "@mariozechner/pi-ai";
 
 // ─── Semantic Zoom Extension ──────────────────────────────────────
 // Control the level of detail in AI responses — zoom in or out.
@@ -66,4 +68,21 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(`🔎 Zoom: ${level}${level !== "normal" ? ` — ${ZOOM_PROMPTS[level].slice(0, 60)}...` : ""}`, "success");
     },
   });
+
+  // ── Tool: set_zoom — LLM-callable ──
+  pi.registerTool({
+    name: "set_zoom",
+    label: "Set Zoom Level",
+    description: "Set the semantic zoom level for responses: overview (concise), normal, or detailed (thorough).",
+    promptSnippet: "Set response detail level: overview, normal, or detailed",
+    promptGuidelines: ["Use set_zoom overview for architecture questions, detailed for implementation."],
+    parameters: Type.Object({ level: StringEnum(["overview", "normal", "detailed"] as const) }),
+    async execute(_tid: any, params: any, _s: any, _u: any, ctx: any) {
+      level = params.level;
+      pi.appendEntry("zoom-level", { level });
+      ctx.ui.setStatus("zoom", level !== "normal" ? "🔎 " + level : "");
+      return { content: [{ type: "text", text: "🔎 Zoom set to: " + level }], details: {} };
+    },
+  });
+
 }

@@ -1,4 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
+import { StringEnum } from "@mariozechner/pi-ai";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, basename } from "node:path";
 
@@ -138,4 +140,32 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(`📚 Available docs (${DOCS_DIR}):\n${lines.join("\n")}\n\nUse /docs load <file>`, "info");
     },
   });
+
+  // ── Tool: lookup_docs — LLM-callable ──
+  pi.registerTool({
+    name: "lookup_docs",
+    label: "Lookup Docs",
+    description: "Search available documentation files for a keyword and load matching docs into context.",
+    promptSnippet: "Search and load documentation files matching a keyword",
+    promptGuidelines: ["Use lookup_docs instead of guessing API details — find the actual docs first."],
+    parameters: Type.Object({ keyword: Type.String({ description: "Search term to find in docs" }) }),
+    async execute(_tid: any, params: any, _s: any, _u: any, _ctx: any) {
+      const term = params.keyword.toLowerCase();
+      if (!existsSync(DOCS_DIR)) throw new Error("No docs directory: " + DOCS_DIR);
+      const files = readdirSync(DOCS_DIR).filter((f: string) => f.endsWith(".md"));
+      const hits: string[] = [];
+      for (const f of files) {
+        const content = readFileSync(join(DOCS_DIR, f), "utf-8");
+        if (content.toLowerCase().includes(term)) {
+          hits.push(f);
+          if (!loadedDocs.has(f)) {
+            loadedDocs.set(f, content);
+          }
+        }
+      }
+      if (hits.length === 0) return { content: [{ type: "text", text: "No docs match: " + term }], details: {} };
+      return { content: [{ type: "text", text: "📚 Found and loaded " + hits.length + " doc(s): " + hits.join(", ") }], details: { loaded: hits } };
+    },
+  });
+
 }
