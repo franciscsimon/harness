@@ -17,6 +17,7 @@ interface RoleInfo {
 }
 
 const ROLE_META: Record<string, { emoji: string; description: string }> = {
+  worker:             { emoji: "🛠️", description: "Implement features, fix bugs, write working code" },
   committer:          { emoji: "✅", description: "Review staged changes and write commit messages" },
   reviewer:           { emoji: "🔍", description: "Review code, flag issues, never modify files" },
   refactorer:         { emoji: "🌀", description: "Refactor existing code, never add features" },
