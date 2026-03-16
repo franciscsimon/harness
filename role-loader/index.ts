@@ -72,12 +72,20 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
+  // ── Restrict tools for read-only agents ──
+  const READ_ONLY_ROLES = new Set(["reviewer", "planner", "architect", "researcher", "security-auditor", "documenter", "committer"]);
+  const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls"];
+
   // ── Inject active role into system prompt ──
   pi.on("before_agent_start", async (event) => {
     if (!activeRole) return;
     const roles = discoverRoles();
     const role = roles.find((r) => r.name === activeRole);
     if (!role) return;
+
+    if (READ_ONLY_ROLES.has(activeRole)) {
+      pi.setActiveTools(READ_ONLY_TOOLS);
+    }
 
     return {
       systemPrompt: event.systemPrompt + "\n\n---\n\n" + role.content,
