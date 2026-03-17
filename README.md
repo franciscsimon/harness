@@ -43,17 +43,17 @@ Events flow into XTDB automatically. Open http://localhost:3333 to see them.
 │  pi.dev agent session                               │
 │                                                     │
 │  ┌─────────────┐  ┌──────────┐  ┌───────────────┐  │
-│  │ 34 extensions│  │ 20 agents│  │ 10 skills     │  │
+│  │ 36 extensions│  │ 20 agents│  │ 10 skills     │  │
 │  │ (auto hooks) │  │ (focused │  │ (on-demand    │  │
 │  │              │  │  roles)  │  │  workflows)   │  │
 │  └──────┬───────┘  └────┬─────┘  └───────────────┘  │
 │         │               │                            │
 │  ┌──────▼───────────────▼────────────────────────┐  │
-│  │  10 custom tools                              │  │
+│  │  11 custom tools                              │  │
 │  │  quality_check, diff_check, plan_chunks,      │  │
 │  │  check_alignment, save_checkpoint, set_zoom,  │  │
 │  │  lookup_docs, load_reference, check_anti-     │  │
-│  │  patterns, delegate                           │  │
+│  │  patterns, delegate, log_decision             │  │
 │  └──────┬────────────────────────────────────────┘  │
 └─────────┼───────────────────────────────────────────┘
           │ 30 events (full content, no truncation)
@@ -69,13 +69,14 @@ Events flow into XTDB automatically. Open http://localhost:3333 to see them.
                         └──────────────────────┘
 ```
 
-## Extensions (34)
+## Extensions (36)
 
 Extensions live in `~/.pi/agent/extensions/` and activate automatically.
 
 | Category | Extensions |
 |----------|-----------|
 | **Event capture** | `xtdb-event-logger` — all 30 events → XTDB with JSON-LD, schema v2, full content |
+| **Project history** | `project-registry` (auto-registers projects from cwd, links sessions to projects), `decision-log` (`log_decision` tool — records decisions/failures/deferrals, injects history into agent context) |
 | **Safety** | `permission-gate` (blocks dangerous bash), `protected-paths` (prevents writes to critical files), `git-checkpoint` (stashes each turn, `/fork` restore) |
 | **Quality** | `quality-hooks` (`quality_check` + `diff_check` tools), `slop-detector` (`check_antipatterns` tool), `habit-monitor` (coding habit enforcement) |
 | **Context** | `canary-monitor` (context health alerts), `custom-compaction` (Gemini Flash structured summaries), `semantic-zoom` (`set_zoom` tool), `noise-cancellation` (filters low-signal events) |
@@ -116,7 +117,7 @@ Skills are on-demand workflow packages in `~/.pi/agent/skills/`. The agent loads
 | `security-audit` | Before deploying, reviewing sensitive code |
 | `test-writing` | Adding test coverage |
 
-## Custom Tools (10)
+## Custom Tools (11)
 
 Registered by extensions, callable by the LLM during sessions.
 
@@ -132,6 +133,7 @@ Registered by extensions, callable by the LLM during sessions.
 | `load_reference` | reference-docs | Load a reference doc by name |
 | `check_antipatterns` | slop-detector | Scan text for AI anti-patterns |
 | `delegate` | agent-spawner | Spawn a subagent with isolated context |
+| `log_decision` | decision-log | Record a decision, failure, or deferral for the project |
 
 ## Event Stream UI
 
@@ -145,6 +147,9 @@ Start with `cd xtdb-event-logger-ui && npm start` → http://localhost:3333
 | **Event Detail** | `/event/:id` | All fields + expandable JSON content blocks + JSON-LD |
 | **Dashboard** | `/dashboard` | Aggregated health metrics, error patterns, tool usage |
 | **Knowledge** | `/sessions/:id/knowledge` | Extracted decisions, gotchas, patterns from a session |
+| **Projects** | `/projects` | Registered projects with identity type, session count |
+| **Project Detail** | `/projects/:id` | Project info, linked sessions, decisions, JSON-LD |
+| **Decisions** | `/decisions` | All logged decisions across projects with outcomes |
 
 ### Keyboard Shortcuts (in pi)
 
@@ -198,6 +203,17 @@ ORDER BY seq;
 # Full tool output for a specific call
 SELECT tool_content, tool_details FROM events
 WHERE tool_call_id = 'your-call-id' AND event_name = 'tool_result';
+
+# Registered projects
+SELECT _id, name, identity_type, session_count FROM projects ORDER BY last_seen_ts DESC;
+
+# Project decisions (failures, successes, deferrals)
+SELECT task, what, outcome, why FROM decisions
+WHERE project_id = 'proj:...' ORDER BY ts DESC;
+
+# Sessions linked to a project
+SELECT session_id, cwd, is_first_session FROM session_projects
+WHERE project_id = 'proj:...' ORDER BY ts DESC;
 ```
 
 ## Testing
@@ -227,6 +243,8 @@ cd examples/hello-service && npm install && npx jiti test.ts
 │   ├── rdf/                        # JSON-LD serialization
 │   ├── types.ts                    # EventFields, schema v2
 │   └── index.ts                    # Extension entry point
+├── project-registry/                # Project identity + XTDB persistence
+├── decision-log/                   # Decision/failure/deferral logging
 ├── xtdb-event-logger-ui/           # Web UI (Hono)
 │   ├── pages/                      # Server-rendered HTML
 │   ├── lib/                        # DB queries, formatting, health

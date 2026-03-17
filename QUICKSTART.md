@@ -157,14 +157,16 @@ You gave a one-line prompt. The harness:
 5. **`delegate → tester`** wrote and ran tests (read design + source, wrote test.ts, 5/5 pass)
 6. **`check_alignment`** confirmed no drift from the goal
 
-Meanwhile, **35 extensions** ran in the background:
+Meanwhile, **36 extensions** ran in the background:
 - `xtdb-event-logger` captured every event into XTDB (full content, schema v2)
+- `project-registry` auto-registered the project from the git repo
+- `decision-log` injected prior decisions into context and recorded new ones
 - `permission-gate` checked bash commands for dangerous patterns
 - `canary-monitor` tracked context health
 - `slop-detector` scanned output for anti-patterns
 - `habit-monitor` enforced coding habits
 
-All of this is visible in the UI at http://localhost:3333 — every tool call, every LLM response, every file write.
+All of this is visible in the UI at http://localhost:3333 — every tool call, every LLM response, every file write, every project and decision.
 
 ## Tools used in this example
 
