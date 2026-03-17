@@ -109,6 +109,9 @@ export default function (pi: ExtensionAPI) {
         { description: "success = worked and adopted, failure = tried and rejected, deferred = postponed" },
       ),
       why: Type.String({ description: "Why this outcome — root cause for failures, reasoning for decisions" }),
+      files: Type.Optional(Type.Array(Type.String(), { description: "Related file paths" })),
+      alternatives: Type.Optional(Type.String({ description: "Alternatives considered before deciding" })),
+      tags: Type.Optional(Type.Array(Type.String(), { description: "Tags for categorization (e.g. 'architecture', 'dependency')" })),
     }),
     async execute(_toolCallId, params: LogDecisionInput, _signal, _onUpdate, _ctx) {
       const current = (globalThis as any).__piCurrentProject;
@@ -144,18 +147,25 @@ export default function (pi: ExtensionAPI) {
         what: params.what,
         outcome: params.outcome,
         why: params.why,
+        files: params.files ? JSON.stringify(params.files) : null,
+        alternatives: params.alternatives ?? null,
+        agent: null,
+        tags: params.tags ? JSON.stringify(params.tags) : null,
         jsonld: "",
       };
       record.jsonld = JSON.stringify(buildDecisionJsonLd(record));
 
       try {
         await sql!`INSERT INTO decisions (
-          _id, project_id, session_id, ts, task, what, outcome, why, jsonld
+          _id, project_id, session_id, ts, task, what, outcome, why,
+          files, alternatives, agent, tags, jsonld
         ) VALUES (
           ${t(record._id)}, ${t(record.project_id)},
           ${t(record.session_id)}, ${n(record.ts)},
           ${t(record.task)}, ${t(record.what)},
           ${t(record.outcome)}, ${t(record.why)},
+          ${t(record.files)}, ${t(record.alternatives)},
+          ${t(record.agent)}, ${t(record.tags)},
           ${t(record.jsonld)}
         )`;
       } catch (err) {

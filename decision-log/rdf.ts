@@ -14,14 +14,14 @@ const CONTEXT = {
  * linked to the project (prov:used) and session (prov:wasAssociatedWith).
  */
 export function buildDecisionJsonLd(r: DecisionRecord): object {
-  return {
+  const doc: Record<string, unknown> = {
     "@context": CONTEXT,
     "@id": `urn:pi:${r._id}`,
     "@type": "prov:Activity",
     "prov:used": { "@id": `urn:pi:${r.project_id}` },
     "prov:wasAssociatedWith": {
       "@type": "foaf:Agent",
-      "foaf:name": "pi-agent",
+      "foaf:name": r.agent ?? "pi-agent",
     },
     "ev:sessionId": r.session_id,
     "ev:task": r.task,
@@ -30,4 +30,8 @@ export function buildDecisionJsonLd(r: DecisionRecord): object {
     "ev:why": r.why,
     "ev:ts": { "@value": String(r.ts), "@type": "xsd:long" },
   };
+  if (r.files) doc["ev:files"] = JSON.parse(r.files);
+  if (r.alternatives) doc["ev:alternatives"] = r.alternatives;
+  if (r.tags) doc["ev:tags"] = JSON.parse(r.tags);
+  return doc;
 }

@@ -1,0 +1,12 @@
+{
+  "name": "artifact-tracker",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Pi.dev extension — tracks file artifact versions in XTDB",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "postgres": "^3.4.8"
+  }
+}

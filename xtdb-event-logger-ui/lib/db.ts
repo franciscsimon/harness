@@ -14,12 +14,13 @@ const n = (v: number | null) => sql.typed(v as any, 20);
 
 async function ensureTables(): Promise<void> {
   const seeds: Array<{ table: string; columns: string; values: string }> = [
-    { table: "decisions", columns: "_id, project_id, session_id, ts, task, what, outcome, why, jsonld", values: "'_seed', '', '', 0, '', '', '', '', ''" },
+    { table: "decisions", columns: "_id, project_id, session_id, ts, task, what, outcome, why, files, alternatives, agent, tags, jsonld", values: "'_seed', '', '', 0, '', '', '', '', '', '', '', '', ''" },
     { table: "projects", columns: "_id, canonical_id, name, identity_type, git_remote_url, git_root_path, first_seen_ts, last_seen_ts, session_count, jsonld", values: "'_seed', '', '', '', '', '', 0, 0, 0, ''" },
     { table: "session_projects", columns: "_id, session_id, project_id, canonical_id, cwd, git_root_path, ts, is_first_session, jsonld", values: "'_seed', '', '', '', '', '', 0, false, ''" },
     { table: "delegations", columns: "_id, parent_session_id, child_session_id, project_id, agent_name, task, status, exit_code, ts, jsonld", values: "'_seed', '', '', '', '', '', '', 0, 0, ''" },
     { table: "file_metrics", columns: "_id, project_id, session_id, file_path, edit_count, error_count, ts", values: "'_seed', '', '', '', 0, 0, 0" },
     { table: "session_postmortems", columns: "_id, project_id, session_id, goal, what_worked, what_failed, files_changed, error_count, turn_count, ts, jsonld", values: "'_seed', '', '', '', '', '', '', 0, 0, 0, ''" },
+    { table: "artifacts", columns: "_id, project_id, session_id, path, content_hash, kind, operation, tool_call_id, ts, jsonld", values: "'_seed', '', '', '', '', '', '', '', 0, ''" },
   ];
   for (const s of seeds) {
     try {
@@ -712,6 +713,65 @@ export async function getProjectPostmortems(projectId: string): Promise<Postmort
     ORDER BY ts DESC
   `;
   return rows as unknown as PostmortemRow[];
+}
+
+// ─── Artifacts ─────────────────────────────────────────────────
+
+export interface ArtifactRow {
+  _id: string;
+  project_id: string | null;
+  session_id: string;
+  path: string;
+  content_hash: string | null;
+  kind: string;
+  operation: string;
+  tool_call_id: string;
+  ts: string;
+  jsonld: string;
+}
+
+/**
+ * Get all artifacts, newest first.
+ */
+export async function getArtifacts(): Promise<ArtifactRow[]> {
+  await _tablesReady;
+  const rows = await sql`SELECT * FROM artifacts ORDER BY ts DESC`;
+  return rows as unknown as ArtifactRow[];
+}
+
+/**
+ * Get artifacts for a project, newest first.
+ */
+export async function getProjectArtifacts(projectId: string): Promise<ArtifactRow[]> {
+  await _tablesReady;
+  const rows = await sql`
+    SELECT * FROM artifacts WHERE project_id = ${t(projectId)} ORDER BY ts DESC
+  `;
+  return rows as unknown as ArtifactRow[];
+}
+
+/**
+ * Get version history for a specific file path within a project.
+ */
+export async function getArtifactHistory(projectId: string, path: string): Promise<ArtifactRow[]> {
+  await _tablesReady;
+  const rows = await sql`
+    SELECT * FROM artifacts
+    WHERE project_id = ${t(projectId)} AND path = ${t(path)}
+    ORDER BY ts DESC
+  `;
+  return rows as unknown as ArtifactRow[];
+}
+
+/**
+ * Get artifacts for a session.
+ */
+export async function getSessionArtifacts(sessionId: string): Promise<ArtifactRow[]> {
+  await _tablesReady;
+  const rows = await sql`
+    SELECT * FROM artifacts WHERE session_id = ${t(sessionId)} ORDER BY ts DESC
+  `;
+  return rows as unknown as ArtifactRow[];
 }
 
 /**

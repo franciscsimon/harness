@@ -60,33 +60,25 @@
 ## Phase 3 — Artifact History
 
 ### 3.1 Store artifact snapshots on write/edit
-- **Current state:** `tool_execution_end` stores `toolName`, `toolCallId`, `isError`, `toolContent`, `toolDetails`. `tool_call` stores `toolInput` (has the file path + content). No separate artifact table.
-- **Tasks:**
-  - [ ] New extension `artifact-tracker/` or hook into existing `xtdb-event-logger`
-  - [ ] On `tool_execution_end` for write/edit (non-error): extract path from corresponding `tool_call` event's `toolInput`
-  - [ ] Compute content hash (SHA-256 of written content)
-  - [ ] Insert `artifacts` row: `_id`, `project_id`, `session_id`, `path`, `content_hash`, `kind` (code/doc/config), `operation` (write/edit), `tool_call_id`, `ts`, `jsonld`
-  - [ ] Do NOT store full content — git has it. Store hash for dedup/change detection
-  - [ ] Seed `artifacts` table
-- **Status:** [ ]
+- **Status:** [x] ✅ Done
+- New `artifact-tracker/` extension
+- Hooks `tool_call` to capture path + content, `tool_execution_end` to persist on success
+- Stores: path, SHA-256 content hash (16 chars), kind (code/doc/config/asset), operation, tool_call_id
+- JSON-LD as `prov:Entity` with `prov:wasGeneratedBy` linking to tool call
+- No full content stored — git has it
 
 ### 3.2 Link artifacts to projections
-- **Current state:** `ProjectStateChanged` projection stores `mutations` as JSON array of `{tool, path, args}` summaries
-- **Tasks:**
-  - [ ] After artifact insert, add artifact IDs to the corresponding `ProjectStateChanged` projection
-  - [ ] Or: query artifacts by session + time range when rendering projections in UI
-  - [ ] Simpler approach: just query artifacts table when showing flow/projections — no schema change needed
-- **Status:** [ ]
+- **Status:** [x] ✅ Done — query-based approach
+- Added `getProjectArtifacts()`, `getArtifactHistory()`, `getSessionArtifacts()` queries
+- Artifacts linked to projections via session_id + time range at query time
+- No schema change to projections table needed
 
 ### 3.3 Enrich decision-log schema
-- **File:** `decision-log/types.ts`, `decision-log/index.ts`
-- **Tasks:**
-  - [ ] Add optional fields to `DecisionRecord`: `files` (string[]), `event_ids` (string[]), `alternatives` (string), `agent` (string), `tags` (string[])
-  - [ ] Add optional params to `log_decision` tool: `files`, `alternatives`, `tags`
-  - [ ] Update JSON-LD builder to include new fields
-  - [ ] Update XTDB seed row to include new columns
-  - [ ] Keep backward-compatible — all new fields nullable
-- **Status:** [ ]
+- **Status:** [x] ✅ Done
+- Added optional fields: `files` (JSON array), `alternatives` (text), `agent` (text), `tags` (JSON array)
+- Tool parameters updated with optional `files`, `alternatives`, `tags`
+- JSON-LD builder includes new fields when present
+- XTDB seed row updated — backward compatible, all new fields nullable
 
 ---
 

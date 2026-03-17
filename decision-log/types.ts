@@ -9,6 +9,10 @@ export interface DecisionRecord {
   what: string;                  // what was tried or decided
   outcome: "success" | "failure" | "deferred";
   why: string;                   // reasoning / root cause
+  files: string | null;          // JSON array of related file paths
+  alternatives: string | null;   // alternatives considered
+  agent: string | null;          // which agent made the decision
+  tags: string | null;           // JSON array of tags
   jsonld: string;
 }
 
@@ -19,4 +23,7 @@ export interface LogDecisionInput {
   what: string;
   outcome: "success" | "failure" | "deferred";
   why: string;
+  files?: string[];
+  alternatives?: string;
+  tags?: string[];
 }
