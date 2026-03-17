@@ -1,11 +1,14 @@
 import type { EventHandler } from "../types.ts";
 
 // Raw: { preparation: { tokensBefore: number }, branchEntries: unknown[], signal: AbortSignal }
-// Only extract tokensBefore. branchEntries is too large, signal is an AbortSignal.
 
 export const handler: EventHandler = (event) => {
-  const e = event as { preparation?: { tokensBefore?: number } } | null;
+  const e = event as {
+    preparation?: { tokensBefore?: number };
+    branchEntries?: unknown[];
+  } | null;
   return {
     compactTokens: e?.preparation?.tokensBefore ?? null,
+    compactBranchEntries: e?.branchEntries != null ? JSON.stringify(e.branchEntries) : null,
   };
 };
