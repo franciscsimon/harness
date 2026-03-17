@@ -1,1 +1,10 @@
-{"name":"feedback-flip","version":"1.0.0","private":true}
+{
+  "name": "feedback-flip",
+  "version": "1.0.0",
+  "private": true,
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

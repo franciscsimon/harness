@@ -1,5 +1,10 @@
 {
   "name": "permission-gate",
   "version": "1.0.0",
-  "private": true
+  "private": true,
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
 }

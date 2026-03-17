@@ -3,11 +3,13 @@ import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, basename } from "node:path";
 
 // ─── Role Loader + Agent Launcher Extension ───────────────────────
-// Loads focused agent templates via /role <name> command.
+// Loads focused agent roles via /role <name> command.
 // Launches pre-configured agent sessions via /agent <name> command.
 // Pattern: Focused Agent — "Single, narrow responsibility"
 
-const TEMPLATES_DIR = join(process.env.HOME ?? "~", "harness", "templates");
+const AGENTS_DIR = join(process.env.HOME ?? "~", ".pi", "agent", "agents");
+const LEGACY_TEMPLATES_DIR = join(process.env.HOME ?? "~", "harness", "templates");
+const DISCOVERY_HINT = `${AGENTS_DIR} or ${LEGACY_TEMPLATES_DIR}`;
 
 interface RoleInfo {
   name: string;
@@ -47,15 +49,20 @@ export default function (pi: ExtensionAPI) {
   let activeRole: string | null = null;
 
   // ── Discover available roles ──
+  // Prefers ~/.pi/agent/agents/ (deployed); falls back to ~/harness/templates/
   function discoverRoles(): RoleInfo[] {
-    if (!existsSync(TEMPLATES_DIR)) return [];
-    const files = readdirSync(TEMPLATES_DIR).filter((f) => f.endsWith(".md"));
-    return files.map((f) => {
-      const name = basename(f, ".md");
-      const content = readFileSync(join(TEMPLATES_DIR, f), "utf-8");
-      const meta = ROLE_META[name] ?? { emoji: "📄", description: name };
-      return { name, emoji: meta.emoji, description: meta.description, content };
-    });
+    for (const dir of [AGENTS_DIR, LEGACY_TEMPLATES_DIR]) {
+      if (!existsSync(dir)) continue;
+      const files = readdirSync(dir).filter((f) => f.endsWith(".md"));
+      if (files.length === 0) continue;
+      return files.map((f) => {
+        const name = basename(f, ".md");
+        const content = readFileSync(join(dir, f), "utf-8");
+        const meta = ROLE_META[name] ?? { emoji: "📄", description: name };
+        return { name, emoji: meta.emoji, description: meta.description, content };
+      });
+    }
+    return [];
   }
 
   // ── Restore active role from session state ──
@@ -109,7 +116,7 @@ export default function (pi: ExtensionAPI) {
 
       if (arg === "list") {
         const roles = discoverRoles();
-        if (roles.length === 0) { ctx.ui.notify(`No templates found in ${TEMPLATES_DIR}`, "warn"); return; }
+        if (roles.length === 0) { ctx.ui.notify(`No roles found in ${DISCOVERY_HINT}`, "warn"); return; }
         const lines = roles.map((r) => `  ${r.emoji} ${r.name.padEnd(18)} — ${r.description}`);
         ctx.ui.notify(`Available roles:\n${lines.join("\n")}\n\nActive: ${activeRole ? `${ROLE_META[activeRole]?.emoji ?? ""} ${activeRole}` : "none"}`, "info");
         return;
@@ -118,7 +125,7 @@ export default function (pi: ExtensionAPI) {
       // No args → interactive picker
       if (arg === "") {
         const roles = discoverRoles();
-        if (roles.length === 0) { ctx.ui.notify(`No templates found in ${TEMPLATES_DIR}`, "warn"); return; }
+        if (roles.length === 0) { ctx.ui.notify(`No roles found in ${DISCOVERY_HINT}`, "warn"); return; }
         const choice = await ctx.ui.select(
           "Select a role:",
           roles.map((r) => `${r.emoji} ${r.name} — ${r.description}`),
@@ -174,7 +181,7 @@ export default function (pi: ExtensionAPI) {
       if (agentName === "list") {
         const roles = discoverRoles();
         if (roles.length === 0) {
-          ctx.ui.notify(`No agent templates found in ${TEMPLATES_DIR}`, "warn");
+          ctx.ui.notify(`No agents found in ${DISCOVERY_HINT}`, "warn");
           return;
         }
         const lines = roles.map((r) => `  ${r.emoji} ${r.name.padEnd(18)} — ${r.description}`);

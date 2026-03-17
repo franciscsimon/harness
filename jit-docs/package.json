@@ -1,1 +1,10 @@
-{"name":"jit-docs","version":"1.0.0","private":true}
+{
+  "name": "jit-docs",
+  "version": "1.0.0",
+  "private": true,
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

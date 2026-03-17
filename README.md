@@ -43,7 +43,7 @@ Events flow into XTDB automatically. Open http://localhost:3333 to see them.
 │  pi.dev agent session                               │
 │                                                     │
 │  ┌─────────────┐  ┌──────────┐  ┌───────────────┐  │
-│  │ 36 extensions│  │ 20 agents│  │ 10 skills     │  │
+│  │ 40 extensions│  │ 20 agents│  │ 10 skills     │  │
 │  │ (auto hooks) │  │ (focused │  │ (on-demand    │  │
 │  │              │  │  roles)  │  │  workflows)   │  │
 │  └──────┬───────┘  └────┬─────┘  └───────────────┘  │
@@ -69,14 +69,14 @@ Events flow into XTDB automatically. Open http://localhost:3333 to see them.
                         └──────────────────────┘
 ```
 
-## Extensions (36)
+## Extensions (40)
 
-Extensions live in `~/.pi/agent/extensions/` and activate automatically.
+Extensions live in `~/.pi/agent/extensions/` and activate automatically. Use `task setup:all` to deploy everything, or `task ext:deploy:all` for extensions only.
 
 | Category | Extensions |
 |----------|-----------|
-| **Event capture** | `xtdb-event-logger` — all 30 events → XTDB with JSON-LD, schema v2, full content (streaming events sampled at 2s) |
-| **Project history** | `project-registry` (auto-registers projects from cwd, links sessions to projects), `decision-log` (`log_decision` tool — records decisions/failures/deferrals, injects history into agent context) |
+| **Event capture** | `xtdb-event-logger` (all 30 events → XTDB, JSON-LD, schema v2), `xtdb-projector` (task/reasoning/result/state projections) |
+| **Project history** | `project-registry` (auto-registers projects), `decision-log` (`log_decision` tool), `history-retrieval` (injects prior failures), `artifact-tracker` (file mutation tracking), `session-postmortem` (per-session summaries) |
 | **Safety** | `permission-gate` (blocks dangerous bash), `protected-paths` (prevents writes to critical files), `git-checkpoint` (stashes each turn, `/fork` restore) |
 | **Quality** | `quality-hooks` (`quality_check` + `diff_check` tools), `slop-detector` (`check_antipatterns` tool), `habit-monitor` (coding habit enforcement) |
 | **Context** | `canary-monitor` (context health alerts), `custom-compaction` (Gemini Flash structured summaries), `semantic-zoom` (`set_zoom` tool), `noise-cancellation` (filters low-signal events) |
@@ -89,7 +89,7 @@ Extensions live in `~/.pi/agent/extensions/` and activate automatically.
 
 ## Agents (20)
 
-Agents are focused roles in `~/.pi/agent/agents/*.md`. Invoke with the `delegate` tool or `/agent` command.
+Agents are focused roles in `~/.pi/agent/agents/*.md`. Invoke with the `delegate` tool or `/agent` command. Use `task agents:deploy` (or `task setup:all`) to deploy.
 
 | Category | Agents |
 |----------|--------|
@@ -102,7 +102,7 @@ Read-only agents (`reviewer`, `planner`, `architect`, `researcher`, `security-au
 
 ## Skills (10)
 
-Skills are on-demand workflow packages in `~/.pi/agent/skills/`. The agent loads them when a task matches.
+Skills are on-demand workflow packages in `~/.pi/agent/skills/`. The agent loads them when a task matches. Use `task skills:deploy` (or `task setup:all`) to deploy.
 
 | Skill | Trigger |
 |-------|---------|
@@ -256,7 +256,7 @@ cd examples/hello-service && npm install && npx jiti test.ts
 └── test/                           # Handler tests, seed data
 
 ~/.pi/agent/
-├── extensions/                     # Live extensions (34)
+├── extensions/                     # Live extensions (40)
 ├── agents/                         # Agent definitions (20)
 └── skills/                         # Skill definitions (10)
 ```

@@ -1,1 +1,10 @@
-{"name":"mind-dump","version":"1.0.0","private":true}
+{
+  "name": "mind-dump",
+  "version": "1.0.0",
+  "private": true,
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

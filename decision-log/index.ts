@@ -46,7 +46,8 @@ function formatDecisionsForContext(decisions: DecisionRecord[]): string {
   if (decisions.length === 0) return "";
 
   const lines = decisions.map((d) => {
-    const date = new Date(d.ts).toISOString().slice(0, 10);
+    const ts = typeof d.ts === "string" ? Number(d.ts) : d.ts;
+    const date = Number.isFinite(ts) ? new Date(ts).toISOString().slice(0, 10) : "unknown";
     const icon = OUTCOME_ICONS[d.outcome] ?? "•";
     return `- ${date} ${icon} **${d.what}** — ${d.why} (task: ${d.task})`;
   });
