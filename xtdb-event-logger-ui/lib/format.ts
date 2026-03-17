@@ -90,6 +90,8 @@ export function getDisplayFields(row: EventRow): Record<string, string> {
 const CORE_KEYS = new Set([
   "_id", "environment", "event_name", "category", "can_intercept",
   "schema_version", "ts", "seq", "session_id", "cwd", "jsonld",
+  // XTDB system columns (appear via SELECT *)
+  "_system_from", "_system_to", "_valid_from", "_valid_to",
 ]);
 
 export function getPopulatedFields(row: EventRow): Record<string, any> {

@@ -1,12 +1,39 @@
 import type { EventRow } from "../lib/db.ts";
 import { CATEGORY_COLORS, relativeTime, getPopulatedFields } from "../lib/format.ts";
 
+// ─── Content keys — large JSON blobs that get expandable <pre> blocks ──
+
+const CONTENT_KEYS = new Set([
+  "message_content", "stream_delta",
+  "tool_input", "tool_content", "tool_details",
+  "tool_partial_result", "tool_args",
+  "agent_messages", "system_prompt", "images",
+  "context_messages", "provider_payload",
+  "turn_message", "turn_tool_results",
+  "compact_branch_entries",
+  "jsonld", "payload",
+]);
+
+function isContentField(key: string): boolean {
+  return CONTENT_KEYS.has(key);
+}
+
+// ─── Pretty-print JSON or return raw ───────────────────────────────
+
+function prettyPrint(val: string): string {
+  try {
+    const parsed = JSON.parse(val);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return val;
+  }
+}
+
 // ─── Event Detail Page HTML ────────────────────────────────────────
 
 export function renderEventDetail(row: EventRow): string {
   const color = CATEGORY_COLORS[row.category] ?? "#999";
   const fields = getPopulatedFields(row);
-  const jsonld = row.jsonld ?? "";
 
   const coreRows = [
     ["id", row._id],
@@ -21,10 +48,40 @@ export function renderEventDetail(row: EventRow): string {
     ["cwd", row.cwd ?? "—"],
   ];
 
-  const fieldRows = Object.entries(fields).map(([k, v]) => {
-    const val = typeof v === "string" && v.length > 120 ? v.slice(0, 117) + "..." : String(v);
-    return `<tr><td class="field-key">${esc(k)}</td><td class="field-val">${esc(val)}</td></tr>`;
+  // Split fields into scalar (table rows) and content (expandable blocks)
+  const scalarEntries: [string, string][] = [];
+  const contentEntries: [string, string][] = [];
+
+  for (const [k, v] of Object.entries(fields)) {
+    const val = String(v);
+    if (isContentField(k) && val.length > 120) {
+      contentEntries.push([k, val]);
+    } else {
+      scalarEntries.push([k, val]);
+    }
+  }
+
+  const scalarRows = scalarEntries.map(([k, v]) =>
+    `<tr><td class="field-key">${esc(k)}</td><td class="field-val">${esc(v)}</td></tr>`
+  ).join("\n        ");
+
+  const contentBlocks = contentEntries.map(([k, v], i) => {
+    const pretty = prettyPrint(v);
+    const sizeKb = (v.length / 1024).toFixed(1);
+    return `
+    <div class="content-block" id="cb-${i}">
+      <div class="content-block-header" onclick="toggleBlock(${i})">
+        <span class="content-block-toggle" id="cbt-${i}">▶</span>
+        <span class="content-block-key">${esc(k)}</span>
+        <span class="content-block-size">${sizeKb} KB</span>
+        <button class="btn btn-sm" onclick="event.stopPropagation(); copyBlock(${i})">Copy</button>
+      </div>
+      <pre class="content-block-body collapsed" id="cbb-${i}">${esc(pretty)}</pre>
+    </div>`;
   }).join("\n");
+
+  // JSON-LD block (separate from fields, always at bottom)
+  const jsonld = row.jsonld ?? "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -60,12 +117,18 @@ export function renderEventDetail(row: EventRow): string {
       </table>
     </section>
 
-    ${fieldRows ? `
+    ${scalarRows ? `
     <section class="detail-section">
       <h2>Fields</h2>
       <table class="detail-table">
-        ${fieldRows}
+        ${scalarRows}
       </table>
+    </section>` : ""}
+
+    ${contentBlocks ? `
+    <section class="detail-section">
+      <h2>Content <button class="btn btn-sm" onclick="expandAll()">Expand All</button></h2>
+      ${contentBlocks}
     </section>` : ""}
 
     ${jsonld ? `
@@ -76,12 +139,33 @@ export function renderEventDetail(row: EventRow): string {
   </main>
 
   <script>
+    function toggleBlock(i) {
+      var body = document.getElementById("cbb-" + i);
+      var toggle = document.getElementById("cbt-" + i);
+      body.classList.toggle("collapsed");
+      toggle.textContent = body.classList.contains("collapsed") ? "▶" : "▼";
+    }
+    function expandAll() {
+      document.querySelectorAll(".content-block-body").forEach(function(el) {
+        el.classList.remove("collapsed");
+      });
+      document.querySelectorAll(".content-block-toggle").forEach(function(el) {
+        el.textContent = "▼";
+      });
+    }
+    function copyBlock(i) {
+      var text = document.getElementById("cbb-" + i).textContent;
+      navigator.clipboard.writeText(text).then(function() {
+        var btns = document.querySelectorAll("#cb-" + i + " .btn");
+        if (btns.length) { btns[0].textContent = "Copied!"; setTimeout(function() { btns[0].textContent = "Copy"; }, 1500); }
+      });
+    }
     function copyJsonLd() {
-      const text = document.getElementById("jsonld-content").textContent;
-      navigator.clipboard.writeText(text).then(() => {
-        const btn = event.target;
+      var text = document.getElementById("jsonld-content").textContent;
+      navigator.clipboard.writeText(text).then(function() {
+        var btn = event.target;
         btn.textContent = "Copied!";
-        setTimeout(() => btn.textContent = "Copy", 1500);
+        setTimeout(function() { btn.textContent = "Copy"; }, 1500);
       });
     }
   </script>

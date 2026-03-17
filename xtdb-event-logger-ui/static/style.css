@@ -382,6 +382,24 @@ main#stream {
   word-break: break-all;
 }
 
+/* ─── Content Blocks (event detail, expandable) ─── */
+
+.content-block { margin-bottom: 8px; border: 1px solid var(--border); border-radius: var(--radius); }
+.content-block-header {
+  display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+  cursor: pointer; background: #13151c; border-radius: var(--radius);
+}
+.content-block-header:hover { background: #1a1d28; }
+.content-block-toggle { font-size: 11px; color: #666; width: 14px; }
+.content-block-key { font-family: var(--mono); font-size: 13px; font-weight: 600; color: #e2e8f0; }
+.content-block-size { font-size: 11px; color: #666; margin-left: auto; }
+.content-block-body {
+  background: #0d0f14; padding: 12px; font-family: var(--mono); font-size: 12px;
+  line-height: 1.5; white-space: pre-wrap; word-break: break-all; color: #a5d6ff;
+  max-height: 400px; overflow-y: auto; border-top: 1px solid var(--border);
+}
+.content-block-body.collapsed { display: none; }
+
 .jsonld-block {
   background: #0d0f14;
   border: 1px solid var(--border);
