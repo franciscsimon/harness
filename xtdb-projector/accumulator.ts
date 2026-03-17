@@ -88,7 +88,10 @@ export function accumulate(
     case "message_update": {
       const ame = event.assistantMessageEvent as { type?: string } | undefined;
       if (ame?.type?.startsWith("thinking")) {
-        s.currentTurn = { ...s.currentTurn, thinkingEventIds: [...s.currentTurn.thinkingEventIds, eventId] };
+        const prev = s.currentTurn.thinkingEventIds;
+        if (prev.length === 0 || prev[prev.length - 1] !== eventId) {
+          s.currentTurn = { ...s.currentTurn, thinkingEventIds: [...prev, eventId] };
+        }
       }
       break;
     }
