@@ -2,7 +2,23 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import postgres from "postgres";
 import { discoverAgents, formatAgentList } from "./agents.ts";
+
+// ─── XTDB for delegation lineage ──────────────────────────────────
+
+const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
+const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
+
+type Sql = ReturnType<typeof postgres>;
+
+const JSONLD_CONTEXT = {
+  prov: "http://www.w3.org/ns/prov#",
+  foaf: "http://xmlns.com/foaf/0.1/",
+  ev: "https://pi.dev/events/",
+  xsd: "http://www.w3.org/2001/XMLSchema#",
+};
 
 // ─── Agent Spawner Extension ──────────────────────────────────────
 // Spawn separate pi sessions for parallel/background work.
@@ -20,6 +36,63 @@ interface SpawnedAgent {
 export default function (pi: ExtensionAPI) {
   let agents: SpawnedAgent[] = [];
   let nextId = 1;
+  let sql: Sql | null = null;
+
+  async function ensureDb(): Promise<Sql | null> {
+    if (sql) return sql;
+    try {
+      sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb" });
+      await sql`SELECT 1 AS ok`;
+      // Seed delegations table
+      await sql`INSERT INTO delegations (_id, parent_session_id, child_session_id, agent_name, task, status, exit_code, ts, jsonld)
+        VALUES ('_seed', '', '', '', '', '', 0, 0, '')`;
+      await sql`DELETE FROM delegations WHERE _id = '_seed'`;
+      return sql;
+    } catch {
+      sql = null;
+      return null;
+    }
+  }
+
+  async function persistDelegation(
+    parentSessionId: string,
+    childSessionId: string | null,
+    agentName: string,
+    task: string,
+    status: string,
+    exitCode: number,
+  ): Promise<void> {
+    const db = await ensureDb();
+    if (!db) return;
+    const t = (v: string | null) => db.typed(v as any, 25);
+    const n = (v: number | null) => db.typed(v as any, 20);
+    const id = `del:${randomUUID()}`;
+    const now = Date.now();
+    const projectId = (globalThis as any).__piCurrentProject?.projectId ?? null;
+    const jsonld = JSON.stringify({
+      "@context": JSONLD_CONTEXT,
+      "@id": `urn:pi:${id}`,
+      "@type": "prov:Activity",
+      "prov:wasInformedBy": parentSessionId ? { "@id": `urn:pi:session:${parentSessionId}` } : null,
+      "prov:generated": childSessionId ? { "@id": `urn:pi:session:${childSessionId}` } : null,
+      "ev:agentName": agentName,
+      "ev:task": task,
+      "ev:status": status,
+      "ev:exitCode": { "@value": String(exitCode), "@type": "xsd:integer" },
+      "ev:ts": { "@value": String(now), "@type": "xsd:long" },
+    });
+    try {
+      await db`INSERT INTO delegations (
+        _id, parent_session_id, child_session_id, project_id, agent_name, task, status, exit_code, ts, jsonld
+      ) VALUES (
+        ${t(id)}, ${t(parentSessionId)}, ${t(childSessionId)},
+        ${t(projectId)}, ${t(agentName)}, ${t(task.slice(0, 2000))},
+        ${t(status)}, ${n(exitCode)}, ${n(now)}, ${t(jsonld)}
+      )`;
+    } catch (err) {
+      console.error(`[agent-spawner] delegation persist failed: ${err}`);
+    }
+  }
 
   // ── Restore state ──
   pi.on("session_start", async (_event, ctx) => {
@@ -132,7 +205,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // ── Notify about agents on shutdown ──
+  // ── Notify about agents on shutdown + close DB ──
   pi.on("session_shutdown", async (_event, ctx) => {
     const running = agents.filter((a) => a.status === "running");
     if (running.length > 0) {
@@ -140,6 +213,10 @@ export default function (pi: ExtensionAPI) {
         `⚠️ ${running.length} background agent(s) may still be running.`,
         "warn",
       );
+    }
+    if (sql) {
+      try { await sql.end(); } catch {}
+      sql = null;
     }
   });
 
@@ -178,10 +255,15 @@ export default function (pi: ExtensionAPI) {
 
       const result = await runSubagent(params.task, agentPrompt);
 
+      // Persist delegation lineage to XTDB
+      const parentSession = _ctx.sessionManager?.getSessionFile?.() ?? "unknown";
+      const status = result.exitCode === 0 ? "success" : "failure";
+      persistDelegation(parentSession, result.childSessionId, agentName, params.task, status, result.exitCode);
+
       const icon = result.exitCode === 0 ? "✅" : "⚠️";
       return {
         content: [{ type: "text", text: `${icon} ${agentName} (exit ${result.exitCode}):\n\n${result.output}` }],
-        details: { agent: agentName, exitCode: result.exitCode },
+        details: { agent: agentName, exitCode: result.exitCode, childSessionId: result.childSessionId },
       };
     },
     renderCall(args: any, theme: any) {
@@ -199,7 +281,13 @@ function formatAge(ms: number): string {
   return `${Math.round(ms / 3_600_000)}h`;
 }
 
-function runSubagent(task: string, agentPrompt?: string, cwd?: string): Promise<{ output: string; exitCode: number }> {
+interface SubagentResult {
+  output: string;
+  exitCode: number;
+  childSessionId: string | null;
+}
+
+function runSubagent(task: string, agentPrompt?: string, cwd?: string): Promise<SubagentResult> {
   return new Promise((resolve) => {
     const args = ["--mode", "json", "-p", task];
     if (agentPrompt) args.push("--system-prompt", agentPrompt);
@@ -215,14 +303,24 @@ function runSubagent(task: string, agentPrompt?: string, cwd?: string): Promise<
     proc.stdout?.on("data", (d: Buffer) => { stdout += d.toString(); });
     proc.stderr?.on("data", (d: Buffer) => { stderr += d.toString(); });
 
-    const timeout = setTimeout(() => { proc.kill(); resolve({ output: "Timed out after 5 minutes", exitCode: 1 }); }, 300_000);
+    const timeout = setTimeout(() => { proc.kill(); resolve({ output: "Timed out after 5 minutes", exitCode: 1, childSessionId: null }); }, 300_000);
 
     proc.on("close", (code) => {
       clearTimeout(timeout);
-      // Extract final assistant text from JSON output
       let finalOutput = stdout;
+      let childSessionId: string | null = null;
       try {
         const lines = stdout.split("\n").filter((l) => l.trim());
+        // Extract child session ID from the session line
+        for (const line of lines) {
+          try {
+            const parsed = JSON.parse(line);
+            if (parsed.type === "session" && parsed.id) {
+              childSessionId = parsed.id;
+            }
+          } catch {}
+        }
+        // Extract final assistant text
         for (let i = lines.length - 1; i >= 0; i--) {
           const parsed = JSON.parse(lines[i]);
           if (parsed.type === "message" && parsed.message?.role === "assistant") {
@@ -231,12 +329,12 @@ function runSubagent(task: string, agentPrompt?: string, cwd?: string): Promise<
           }
         }
       } catch { /* use raw stdout */ }
-      resolve({ output: finalOutput.slice(0, 10000), exitCode: code ?? 1 });
+      resolve({ output: finalOutput.slice(0, 10000), exitCode: code ?? 1, childSessionId });
     });
 
     proc.on("error", () => {
       clearTimeout(timeout);
-      resolve({ output: `Failed to spawn pi: ${stderr}`, exitCode: 1 });
+      resolve({ output: `Failed to spawn pi: ${stderr}`, exitCode: 1, childSessionId: null });
     });
   });
 }

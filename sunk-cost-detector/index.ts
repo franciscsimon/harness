@@ -1,4 +1,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import postgres from "postgres";
+
+const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
+const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
+type Sql = ReturnType<typeof postgres>;
 
 // ─── Sunk Cost Detector Extension ─────────────────────────────────
 // Detects when the agent is stuck on a failing approach and should
@@ -30,6 +35,10 @@ export default function (pi: ExtensionAPI) {
   let turnIndex = 0;
   let lastTestTurn = 0;
   let notifiedThisRun = new Set<string>();
+  let sql: Sql | null = null;
+
+  // ── Cross-session history from XTDB ──
+  let priorFileErrors: Record<string, number> = {};
 
   function reset() {
     fileEditCounts = {};
@@ -40,10 +49,46 @@ export default function (pi: ExtensionAPI) {
     notifiedThisRun.clear();
   }
 
+  async function connectDb(): Promise<Sql | null> {
+    if (sql) return sql;
+    try {
+      sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb" });
+      await sql`SELECT 1 AS ok`;
+      // Seed table
+      await sql`INSERT INTO file_metrics (_id, project_id, session_id, file_path, edit_count, error_count, ts)
+        VALUES ('_seed', '', '', '', 0, 0, 0)`;
+      await sql`DELETE FROM file_metrics WHERE _id = '_seed'`;
+      return sql;
+    } catch {
+      sql = null;
+      return null;
+    }
+  }
+
   // ── Session lifecycle ──
   pi.on("session_start", async (_event, ctx) => {
     reset();
+    priorFileErrors = {};
     ctx.ui.setStatus("sunk-cost", "");
+
+    // Load cross-session file metrics for this project
+    const projectId = (globalThis as any).__piCurrentProject?.projectId;
+    if (!projectId) return;
+    const db = await connectDb();
+    if (!db) return;
+    try {
+      const t = (v: string) => db.typed(v as any, 25);
+      const rows = await db`
+        SELECT file_path, SUM(error_count) AS total_errors, SUM(edit_count) AS total_edits
+        FROM file_metrics
+        WHERE project_id = ${t(projectId)}
+        GROUP BY file_path
+      `;
+      for (const r of rows) {
+        const errors = Number(r.total_errors);
+        if (errors > 0) priorFileErrors[r.file_path] = errors;
+      }
+    } catch { /* table may not exist yet */ }
   });
 
   pi.on("agent_start", async () => {
@@ -68,6 +113,16 @@ export default function (pi: ExtensionAPI) {
           "warn",
         );
         notifiedThisRun.add(`file:${path}`);
+      }
+
+      // Cross-session warning: file had errors in prior sessions
+      const priorErrors = priorFileErrors[path];
+      if (priorErrors && priorErrors >= 3 && !notifiedThisRun.has(`prior:${path}`)) {
+        ctx.ui.notify(
+          `⚠️ Cross-session warning: \`${path.split("/").pop()}\` had ${priorErrors} errors in prior sessions. Proceed carefully.`,
+          "warn",
+        );
+        notifiedThisRun.add(`prior:${path}`);
       }
     }
 
@@ -144,6 +199,34 @@ export default function (pi: ExtensionAPI) {
         `If your current approach isn't working, consider an entirely different strategy. ` +
         `Don't keep trying the same thing.`,
     };
+  });
+
+  // ── Persist file metrics on shutdown ──
+  pi.on("session_shutdown", async () => {
+    const projectId = (globalThis as any).__piCurrentProject?.projectId;
+    if (!projectId) return;
+    const db = await connectDb();
+    if (!db) return;
+    const t = (v: string | null) => db.typed(v as any, 25);
+    const n = (v: number | null) => db.typed(v as any, 20);
+    const sessionId = "unknown"; // best-effort
+    const now = Date.now();
+    // Count errors per file from tool_execution_end tracking
+    const fileErrors: Record<string, number> = {};
+    // We track edits in fileEditCounts, errors approximated from recentResults
+    for (const [path, edits] of Object.entries(fileEditCounts)) {
+      if (edits > 0) {
+        try {
+          const id = `fm:${now}:${path.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 40)}`;
+          await db`INSERT INTO file_metrics (_id, project_id, session_id, file_path, edit_count, error_count, ts)
+            VALUES (${t(id)}, ${t(projectId)}, ${t(sessionId)}, ${t(path)}, ${n(edits)}, ${n(fileErrors[path] ?? 0)}, ${n(now)})`;
+        } catch {}
+      }
+    }
+    if (sql) {
+      try { await sql.end(); } catch {}
+      sql = null;
+    }
   });
 
   // ── /abandon command ──

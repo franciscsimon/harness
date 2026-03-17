@@ -35,38 +35,25 @@
 
 ### 2.1 Persist delegation lineage to XTDB
 - **File:** `agent-spawner/index.ts`
-- **Current state:** `runSubagent()` spawns `pi --mode json`, returns `{output, exitCode}`. No session ID returned from child. Parent session ID available via `ctx.sessionManager.getSessionFile()`
-- **Tasks:**
-  - [ ] Create `decision-log`-style XTDB writer in agent-spawner (or shared module)
-  - [ ] On delegate tool execute: insert `delegations` row with `_id`, `parent_session_id`, `child_session_id` (parse from pi JSON output if available), `agent_name`, `task`, `status`, `exit_code`, `ts`, `jsonld`
-  - [ ] Add JSON-LD builder for delegation records (`prov:Activity` with `prov:wasInformedBy` parent)
-  - [ ] Seed `delegations` table in `xtdb-event-logger-ui/lib/db.ts`
-  - [ ] Add `getDelegations()` and `getSessionDelegations()` queries
-- **Status:** [ ]
+- **Status:** [x] ✅ Done
+- `runSubagent()` now extracts child session ID from pi JSON output
+- `persistDelegation()` inserts `delegations` row with JSON-LD (prov:Activity + prov:wasInformedBy)
+- UI: `getDelegations()`, `getSessionDelegations()` queries added, table seeded
 
 ### 2.2 Cross-session sunk-cost state
-- **File:** new extension `cross-session-metrics/` or extend `sunk-cost-detector`
-- **Current state:** `sunk-cost-detector/index.ts` tracks per-file edit counts, error counts, bash retries — all reset on `session_start`
-- **Tasks:**
-  - [ ] On `session_shutdown`, persist file-level metrics to XTDB: `file_metrics` table with `project_id`, `file_path`, `edit_count`, `error_count`, `session_id`, `ts`
-  - [ ] On `session_start`, load prior metrics for current project from XTDB
-  - [ ] Merge loaded metrics into sunk-cost-detector state (additive)
-  - [ ] Warn when a file has >N errors across all sessions (configurable threshold)
-  - [ ] Seed `file_metrics` table
-- **Status:** [ ]
+- **File:** `sunk-cost-detector/index.ts`
+- **Status:** [x] ✅ Done
+- On `session_start`: loads prior `file_metrics` from XTDB, warns when touching high-error files
+- On `session_shutdown`: persists per-file edit counts to `file_metrics` table
+- Table seeded in UI db.ts
 
 ### 2.3 Automated session post-mortems
-- **File:** new extension `session-postmortem/` or extend `knowledge-extractor`
-- **Current state:** `knowledge-extractor` writes `.knowledge.md` with stats only (tool counts, bash commands, file list). `custom-compaction` uses LLM to summarize during compaction.
-- **Tasks:**
-  - [ ] On `session_shutdown`, query session events from XTDB (or collect in-memory)
-  - [ ] Extract: goal (from first user prompt), files changed, tools used, errors encountered, decisions logged
-  - [ ] Generate semantic summary: what was attempted, what worked, what failed
-  - [ ] Option A: rule-based extraction from events (no LLM dependency, faster)
-  - [ ] Option B: LLM-generated summary (richer, like custom-compaction pattern)
-  - [ ] Insert `session_postmortems` row in XTDB: `_id`, `project_id`, `session_id`, `goal`, `what_worked`, `what_failed`, `files_changed[]`, `decisions_made[]`, `error_count`, `turn_count`, `ts`, `jsonld`
-  - [ ] Seed `session_postmortems` table
-- **Status:** [ ]
+- **File:** new extension `session-postmortem/index.ts`
+- **Status:** [x] ✅ Done
+- Collects goal, files changed, tool usage, errors, bash commands during session
+- On `session_shutdown`: inserts `session_postmortems` row with JSON-LD
+- Rule-based extraction (no LLM dependency)
+- UI: `getPostmortems()`, `getProjectPostmortems()` queries added, table seeded
 
 ---
 

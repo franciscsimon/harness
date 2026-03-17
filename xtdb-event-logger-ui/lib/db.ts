@@ -17,6 +17,9 @@ async function ensureTables(): Promise<void> {
     { table: "decisions", columns: "_id, project_id, session_id, ts, task, what, outcome, why, jsonld", values: "'_seed', '', '', 0, '', '', '', '', ''" },
     { table: "projects", columns: "_id, canonical_id, name, identity_type, git_remote_url, git_root_path, first_seen_ts, last_seen_ts, session_count, jsonld", values: "'_seed', '', '', '', '', '', 0, 0, 0, ''" },
     { table: "session_projects", columns: "_id, session_id, project_id, canonical_id, cwd, git_root_path, ts, is_first_session, jsonld", values: "'_seed', '', '', '', '', '', 0, false, ''" },
+    { table: "delegations", columns: "_id, parent_session_id, child_session_id, project_id, agent_name, task, status, exit_code, ts, jsonld", values: "'_seed', '', '', '', '', '', '', 0, 0, ''" },
+    { table: "file_metrics", columns: "_id, project_id, session_id, file_path, edit_count, error_count, ts", values: "'_seed', '', '', '', 0, 0, 0" },
+    { table: "session_postmortems", columns: "_id, project_id, session_id, goal, what_worked, what_failed, files_changed, error_count, turn_count, ts, jsonld", values: "'_seed', '', '', '', '', '', '', 0, 0, 0, ''" },
   ];
   for (const s of seeds) {
     try {
@@ -634,6 +637,81 @@ export async function getProjectDecisions(projectId: string): Promise<DecisionRo
     ORDER BY ts DESC
   `;
   return rows as unknown as DecisionRow[];
+}
+
+// ─── Delegations ───────────────────────────────────────────────
+
+export interface DelegationRow {
+  _id: string;
+  parent_session_id: string;
+  child_session_id: string | null;
+  project_id: string | null;
+  agent_name: string;
+  task: string;
+  status: string;
+  exit_code: string;
+  ts: string;
+  jsonld: string;
+}
+
+/**
+ * Get all delegations, newest first.
+ */
+export async function getDelegations(): Promise<DelegationRow[]> {
+  await _tablesReady;
+  const rows = await sql`SELECT * FROM delegations ORDER BY ts DESC`;
+  return rows as unknown as DelegationRow[];
+}
+
+/**
+ * Get delegations for a specific session (as parent).
+ */
+export async function getSessionDelegations(sessionId: string): Promise<DelegationRow[]> {
+  await _tablesReady;
+  const rows = await sql`
+    SELECT * FROM delegations
+    WHERE parent_session_id = ${t(sessionId)}
+    ORDER BY ts DESC
+  `;
+  return rows as unknown as DelegationRow[];
+}
+
+// ─── Session Post-mortems ──────────────────────────────────────
+
+export interface PostmortemRow {
+  _id: string;
+  project_id: string | null;
+  session_id: string;
+  goal: string | null;
+  what_worked: string;
+  what_failed: string;
+  files_changed: string;
+  error_count: string;
+  turn_count: string;
+  ts: string;
+  jsonld: string;
+}
+
+/**
+ * Get all post-mortems, newest first.
+ */
+export async function getPostmortems(): Promise<PostmortemRow[]> {
+  await _tablesReady;
+  const rows = await sql`SELECT * FROM session_postmortems ORDER BY ts DESC`;
+  return rows as unknown as PostmortemRow[];
+}
+
+/**
+ * Get post-mortems for a specific project.
+ */
+export async function getProjectPostmortems(projectId: string): Promise<PostmortemRow[]> {
+  await _tablesReady;
+  const rows = await sql`
+    SELECT * FROM session_postmortems
+    WHERE project_id = ${t(projectId)}
+    ORDER BY ts DESC
+  `;
+  return rows as unknown as PostmortemRow[];
 }
 
 /**
