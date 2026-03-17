@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "n3": "^2.0.3",
     "postgres": "^3.4.8"
   }
 }

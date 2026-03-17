@@ -12,26 +12,9 @@ const n = (v: number | null) => sql.typed(v as any, 20);
 
 // ─── Core columns every row has ────────────────────────────────────
 
-const CORE_COLS = `_id, environment, event_name, category, can_intercept,
-  schema_version, ts, seq, session_id, cwd`;
-
-const ALL_COLS = `${CORE_COLS},
-  switch_reason, switch_target, switch_previous,
-  fork_entry_id, fork_previous,
-  tree_new_leaf, tree_old_leaf, tree_from_ext,
-  event_cwd,
-  compact_tokens, compact_from_ext,
-  prompt_text, agent_end_msg_count,
-  turn_index, turn_timestamp, turn_end_tool_count,
-  message_role, stream_delta_type, stream_delta_len,
-  tool_name, tool_call_id, is_error,
-  context_msg_count, provider_payload_bytes,
-  input_text, input_source, input_has_images,
-  bash_command, bash_exclude,
-  model_provider, model_id, model_source,
-  prev_model_provider, prev_model_id,
-  payload, handler_error,
-  jsonld`;
+// No hardcoded column list — XTDB is schema-on-write.
+// SELECT * picks up any new columns automatically.
+// The EventRow interface uses [key: string]: any for dynamic fields.
 
 // ─── Queries ───────────────────────────────────────────────────────
 
@@ -86,7 +69,7 @@ export async function getEvents(opts: {
   // so we use simple parameterized queries
   if (opts.afterSeq != null) {
     const rows = await sql`
-      SELECT ${sql.unsafe(ALL_COLS)} FROM events
+      SELECT * FROM events
       WHERE seq > ${n(opts.afterSeq)}
       ORDER BY seq ASC
     `;
@@ -95,7 +78,7 @@ export async function getEvents(opts: {
 
   if (opts.sessionId) {
     const rows = await sql`
-      SELECT ${sql.unsafe(ALL_COLS)} FROM events
+      SELECT * FROM events
       WHERE session_id = ${t(opts.sessionId)}
       ORDER BY seq DESC
       LIMIT ${n(limit)}
@@ -105,7 +88,7 @@ export async function getEvents(opts: {
 
   if (opts.eventName) {
     const rows = await sql`
-      SELECT ${sql.unsafe(ALL_COLS)} FROM events
+      SELECT * FROM events
       WHERE event_name = ${t(opts.eventName)}
       ORDER BY seq DESC
       LIMIT ${n(limit)}
@@ -115,7 +98,7 @@ export async function getEvents(opts: {
 
   if (opts.category) {
     const rows = await sql`
-      SELECT ${sql.unsafe(ALL_COLS)} FROM events
+      SELECT * FROM events
       WHERE category = ${t(opts.category)}
       ORDER BY seq DESC
       LIMIT ${n(limit)}
@@ -124,7 +107,7 @@ export async function getEvents(opts: {
   }
 
   const rows = await sql`
-    SELECT ${sql.unsafe(ALL_COLS)} FROM events
+    SELECT * FROM events
     ORDER BY seq DESC
     LIMIT ${n(limit)}
   `;
@@ -136,7 +119,7 @@ export async function getEvents(opts: {
  */
 export async function getEventsSince(afterSeq: number): Promise<EventRow[]> {
   const rows = await sql`
-    SELECT ${sql.unsafe(ALL_COLS)} FROM events
+    SELECT * FROM events
     WHERE seq > ${n(afterSeq)}
     ORDER BY seq ASC
   `;
@@ -148,7 +131,7 @@ export async function getEventsSince(afterSeq: number): Promise<EventRow[]> {
  */
 export async function getEvent(id: string): Promise<EventRow | null> {
   const rows = await sql`
-    SELECT ${sql.unsafe(ALL_COLS)} FROM events
+    SELECT * FROM events
     WHERE _id = ${t(id)}
   `;
   return (rows[0] as unknown as EventRow) ?? null;
@@ -286,7 +269,7 @@ export async function getSessionList(): Promise<SessionSummary[]> {
  */
 export async function getSessionEvents(sessionId: string): Promise<EventRow[]> {
   const rows = await sql`
-    SELECT ${sql.unsafe(ALL_COLS)} FROM events
+    SELECT * FROM events
     WHERE session_id = ${t(sessionId)}
     ORDER BY seq ASC
   `;
