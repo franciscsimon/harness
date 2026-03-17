@@ -94,9 +94,16 @@ export default function (pi: ExtensionAPI) {
     return (event ?? {}) as Record<string, unknown>;
   }
 
-  /** Read the real XTDB _id published by xtdb-event-logger for the current event */
-  function realId(): string {
-    return (globalThis as any).__piLastEvent?._id ?? crypto.randomUUID();
+  /** Read the real XTDB _id published by xtdb-event-logger for the current event.
+   *  Requires xtdb-event-logger to load first (alphabetical: xtdb-event-logger < xtdb-projector). */
+  let lastEventName = "";
+  function realId(expectedEvent: string): string {
+    const last = (globalThis as any).__piLastEvent;
+    if (last && last.eventName === expectedEvent) {
+      lastEventName = expectedEvent;
+      return last._id;
+    }
+    return crypto.randomUUID();
   }
 
   // ── 9 Event Hooks ──
@@ -104,38 +111,38 @@ export default function (pi: ExtensionAPI) {
   pi.on("input", (event: any, ctx: any) => {
     const sessionId = ctx?.sessionManager?.getSessionFile?.() ?? "unknown";
     const taskId = crypto.randomUUID();
-    state = createRunState(sessionId, taskId, realId(), asRecord(event));
+    state = createRunState(sessionId, taskId, realId("input"), asRecord(event));
   });
 
   pi.on("before_agent_start" as any, (event: unknown) => {
-    state = accumulate(state, "before_agent_start", realId(), asRecord(event));
+    state = accumulate(state, "before_agent_start", realId("before_agent_start"), asRecord(event));
   });
 
   pi.on("agent_start" as any, () => {
-    state = accumulate(state, "agent_start", realId(), asRecord({}));
+    state = accumulate(state, "agent_start", realId("agent_start"), asRecord({}));
     if (state) {
       emit(projectTask(crypto.randomUUID(), state));
     }
   });
 
   pi.on("turn_start" as any, (event: unknown) => {
-    state = accumulate(state, "turn_start", realId(), asRecord(event));
+    state = accumulate(state, "turn_start", realId("turn_start"), asRecord(event));
   });
 
   pi.on("message_update", (event: any) => {
-    state = accumulate(state, "message_update", realId(), asRecord(event));
+    state = accumulate(state, "message_update", realId("message_update"), asRecord(event));
   });
 
   pi.on("tool_call" as any, (event: unknown) => {
-    state = accumulate(state, "tool_call", realId(), asRecord(event));
+    state = accumulate(state, "tool_call", realId("tool_call"), asRecord(event));
   });
 
   pi.on("tool_result" as any, (event: unknown) => {
-    state = accumulate(state, "tool_result", realId(), asRecord(event));
+    state = accumulate(state, "tool_result", realId("tool_result"), asRecord(event));
   });
 
   pi.on("turn_end" as any, (event: unknown) => {
-    const id = realId();
+    const id = realId("turn_end");
     state = accumulate(state, "turn_end", id, asRecord(event));
     if (state) {
       const traceId = crypto.randomUUID();
@@ -146,7 +153,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("agent_end" as any, (event: unknown) => {
-    state = accumulate(state, "agent_end", realId(), asRecord(event));
+    state = accumulate(state, "agent_end", realId("agent_end"), asRecord(event));
     if (state) {
       emit(projectChanges(crypto.randomUUID(), state));
       emit(projectResult(crypto.randomUUID(), state));
