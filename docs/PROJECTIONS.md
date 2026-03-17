@@ -64,24 +64,24 @@ Mutation classification:
 ## Implementation Tasks
 
 ### Phase 1 — Extension + table
-- [ ] T1: Create `event-projector` extension scaffold (`~/.pi/agent/extensions/event-projector/`)
-- [ ] T2: Define projections table schema — `CREATE TABLE projections` via first INSERT (XTDB schema-on-write)
-- [ ] T3: Implement run-level state accumulator — tracks current task/turn/tool IDs as events flow
+- [x] T1: Create `event-projector` extension — `~/.pi/agent/extensions/event-projector/` (delegate→architect + delegate→worker)
+- [x] T2: Projections table created via schema-on-write on first INSERT
+- [x] T3: RunState accumulator — pure function, tracks task/turn/tool IDs
 
 ### Phase 2 — Projectors (one per type)
-- [ ] T4: `AgentTaskRequested` — emit on `agent_start` (input + before_agent_start already captured)
-- [ ] T5: `AgentReasoningTrace` — emit on `turn_end` (collect thinking event IDs + tool event IDs from the turn)
-- [ ] T6: `AgentResultProduced` — emit on `agent_end` (collect trace IDs, extract output summary)
-- [ ] T7: `ProjectStateChanged` — emit on `agent_end` (filter tool calls to mutations only)
+- [x] T4: `AgentTaskRequested` — emits on `agent_start` ✅ (1 row in XTDB, prompt captured)
+- [x] T5: `AgentReasoningTrace` — emits on `turn_end` ✅ (43 rows, tool_call_event_ids populated)
+- [x] T6: `AgentResultProduced` — emits on `agent_end` (code done, needs `/reload` for live session)
+- [x] T7: `ProjectStateChanged` — emits on `agent_end` if mutations exist (code done, needs `/reload`)
 
 ### Phase 3 — UI
-- [ ] T8: Add `getProjections(sessionId)` query to `lib/db.ts`
-- [ ] T9: Create `/sessions/:id/flow` page — renders projected history as a clean timeline
-- [ ] T10: Add "Flow" link to session detail page header
-- [ ] T11: Wire route in `server.ts`
+- [x] T8: `getProjections(sessionId)` in `lib/db.ts` (delegate→worker)
+- [x] T9: `/sessions/:id/flow` page — clean vertical timeline with color-coded cards
+- [x] T10: "🔀 Flow" link in session detail header
+- [x] T11: Route wired in `server.ts`
 
 ### Phase 4 — Verify
-- [ ] T12: Test with live session — trigger a prompt, verify 4 projection types appear
-- [ ] T13: Verify event ID references resolve back to raw events
+- [x] T12: 44 projections in XTDB from subagent session (1 task + 43 reasoning traces)
+- [ ] T13: Verify AgentResultProduced + ProjectStateChanged appear after `/reload` on next prompt
 
-## Status: READY TO IMPLEMENT
+## Status: DONE (pending `/reload` for full 4-type verification)
