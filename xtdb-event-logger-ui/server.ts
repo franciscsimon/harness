@@ -23,6 +23,8 @@ import {
   getProjectSessions,
   getDecisions,
   getProjectDecisions,
+  getArtifacts,
+  getArtifactHistory,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -37,6 +39,7 @@ import { renderKnowledge } from "./pages/knowledge.ts";
 import { renderFlow } from "./pages/flow.ts";
 import { renderProjects, renderProjectDetail } from "./pages/projects.ts";
 import { renderDecisions, renderProjectDecisionsSection } from "./pages/decisions.ts";
+import { renderArtifacts, renderArtifactHistory } from "./pages/artifacts.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -106,6 +109,19 @@ app.get("/projects/:id{.+}", async (c) => {
 app.get("/decisions", async (c) => {
   const [decisions, projects] = await Promise.all([getDecisions(), getProjects()]);
   return c.html(renderDecisions(decisions, projects));
+});
+
+app.get("/artifacts", async (c) => {
+  const [artifacts, projects] = await Promise.all([getArtifacts(), getProjects()]);
+  return c.html(renderArtifacts(artifacts, projects));
+});
+
+app.get("/artifacts/history", async (c) => {
+  const projectId = c.req.query("project") ?? "";
+  const path = c.req.query("path") ?? "";
+  if (!projectId || !path) return c.html("<h1>Missing project or path</h1>", 400);
+  const history = await getArtifactHistory(projectId, path);
+  return c.html(renderArtifactHistory(path, history));
 });
 
 app.get("/sessions/:id{.+}/flow", async (c) => {

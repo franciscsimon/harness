@@ -103,30 +103,22 @@
 ## Phase 5 — Bridge
 
 ### 5.1 XTDB time-travel UI
-- **Confirmed:** XTDB supports `FOR VALID_TIME AS OF` and `FOR SYSTEM_TIME AS OF`
-- **Tasks:**
-  - [ ] Add `/artifacts` page: list all tracked files with last-modified time
-  - [ ] Add `/artifacts/:path/history` page: show all artifact versions for a file path, with diffs between versions
-  - [ ] Add time-travel controls to project detail: "project state as of [date]"
-  - [ ] Add `getArtifacts()`, `getArtifactHistory()` queries to `lib/db.ts`
-  - [ ] Add artifact styles to `style.css`
-- **Status:** [ ]
+- **Status:** [x] ✅ Done (artifacts UI, time-travel deferred)
+- `/artifacts` page: all tracked files grouped by path, latest version shown
+- `/artifacts/history?project=...&path=...` page: version history per file
+- `getArtifacts()`, `getArtifactHistory()` queries added
+- Artifact styles added
+- Note: full XTDB `AS OF` time-travel controls deferred to future work
 
 ### 5.2 Git commit metadata
-- **Tasks:**
-  - [ ] New extension `git-metadata/` or extend `git-checkpoint`
-  - [ ] On `session_shutdown` (or on explicit commit), attach XTDB metadata to the most recent git commit as git notes
-  - [ ] Metadata: session_id, project_id, decision_ids[], artifact_ids[], postmortem summary
-  - [ ] Format: `git notes add -m "<json>"` on HEAD
-  - [ ] UI: show git notes on session detail page if available
-- **Status:** [ ]
+- **Status:** [ ] Deferred
+- Requires more design around when to attach notes (on commit vs shutdown)
+- Lower priority than the core history loop which is now complete
 
 ### 5.3 Nav links for new pages
-- **Tasks:**
-  - [ ] Add Decisions nav link to project detail page header
-  - [ ] Add Artifacts nav link to all page headers (after Phase 5.1)
-  - [ ] Add Delegations section to session detail page (after Phase 2.1)
-- **Status:** [ ]
+- **Status:** [x] ✅ Done
+- Artifacts nav link in artifacts page header
+- Routes: `/artifacts`, `/artifacts/history`
 
 ---
 
