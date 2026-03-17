@@ -52,12 +52,12 @@ export default function (pi: ExtensionAPI) {
             _id, type, task_id, session_id, ts,
             turn_index, thinking_event_ids, tool_call_event_ids,
             tool_result_event_ids, provider_payload_bytes, tool_count,
-            turn_start_event_id, turn_end_event_id
+            tools_summary, turn_start_event_id, turn_end_event_id
           ) VALUES (
             ${t(row._id)}, ${t(row.type)}, ${t(row.task_id)}, ${t(row.session_id)}, ${n(row.ts)},
             ${n(row.turn_index)}, ${t(row.thinking_event_ids)}, ${t(row.tool_call_event_ids)},
             ${t(row.tool_result_event_ids)}, ${n(row.provider_payload_bytes)}, ${n(row.tool_count)},
-            ${t(row.turn_start_event_id)}, ${t(row.turn_end_event_id)}
+            ${t(row.tools_summary)}, ${t(row.turn_start_event_id)}, ${t(row.turn_end_event_id)}
           )`;
           break;
 
