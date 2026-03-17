@@ -10,6 +10,24 @@ const sql = postgres({ host, port, database: "xtdb", user: "xtdb", password: "xt
 const t = (v: string | null) => sql.typed(v as any, 25);
 const n = (v: number | null) => sql.typed(v as any, 20);
 
+// ─── Ensure tables exist (XTDB is schema-on-write) ────────────────
+
+async function ensureTables(): Promise<void> {
+  const seeds: Array<{ table: string; columns: string; values: string }> = [
+    { table: "decisions", columns: "_id, project_id, session_id, ts, task, what, outcome, why, jsonld", values: "'_seed', '', '', 0, '', '', '', '', ''" },
+    { table: "projects", columns: "_id, canonical_id, name, identity_type, git_remote_url, git_root_path, first_seen_ts, last_seen_ts, session_count, jsonld", values: "'_seed', '', '', '', '', '', 0, 0, 0, ''" },
+    { table: "session_projects", columns: "_id, session_id, project_id, canonical_id, cwd, git_root_path, ts, is_first_session, jsonld", values: "'_seed', '', '', '', '', '', 0, false, ''" },
+  ];
+  for (const s of seeds) {
+    try {
+      await sql.unsafe(`INSERT INTO ${s.table} (${s.columns}) VALUES (${s.values})`);
+      await sql.unsafe(`DELETE FROM ${s.table} WHERE _id = '_seed'`);
+    } catch { /* table may already exist */ }
+  }
+}
+
+const _tablesReady = ensureTables();
+
 // ─── Core columns every row has ────────────────────────────────────
 
 // No hardcoded column list — XTDB is schema-on-write.
@@ -550,6 +568,7 @@ export interface SessionProjectRow {
  * Get all registered projects, most recently seen first.
  */
 export async function getProjects(): Promise<ProjectRow[]> {
+  await _tablesReady;
   const rows = await sql`
     SELECT * FROM projects ORDER BY last_seen_ts DESC
   `;
@@ -560,6 +579,7 @@ export async function getProjects(): Promise<ProjectRow[]> {
  * Get a single project by ID.
  */
 export async function getProject(id: string): Promise<ProjectRow | null> {
+  await _tablesReady;
   const rows = await sql`
     SELECT * FROM projects WHERE _id = ${t(id)}
   `;
@@ -570,6 +590,7 @@ export async function getProject(id: string): Promise<ProjectRow | null> {
  * Get all session links for a project, most recent first.
  */
 export async function getProjectSessions(projectId: string): Promise<SessionProjectRow[]> {
+  await _tablesReady;
   const rows = await sql`
     SELECT * FROM session_projects
     WHERE project_id = ${t(projectId)}
@@ -596,6 +617,7 @@ export interface DecisionRow {
  * Get all decisions, newest first.
  */
 export async function getDecisions(): Promise<DecisionRow[]> {
+  await _tablesReady;
   const rows = await sql`
     SELECT * FROM decisions ORDER BY ts DESC
   `;
@@ -606,6 +628,7 @@ export async function getDecisions(): Promise<DecisionRow[]> {
  * Get decisions for a specific project, newest first.
  */
 export async function getProjectDecisions(projectId: string): Promise<DecisionRow[]> {
+  await _tablesReady;
   const rows = await sql`
     SELECT * FROM decisions
     WHERE project_id = ${t(projectId)}

@@ -19,6 +19,10 @@ const OUTCOME_ICONS: Record<string, string> = {
 async function connectXtdb(): Promise<Sql> {
   const sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb" });
   await sql`SELECT 1 AS ok`;
+  // Ensure decisions table exists (XTDB is schema-on-write)
+  await sql`INSERT INTO decisions (_id, project_id, session_id, ts, task, what, outcome, why, jsonld)
+    VALUES ('dec:seed', '', '', 0, '', '', '', '', '')`;
+  await sql`DELETE FROM decisions WHERE _id = 'dec:seed'`;
   return sql;
 }
 
