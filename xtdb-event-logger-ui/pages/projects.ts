@@ -68,7 +68,7 @@ export function renderProjects(projects: ProjectRow[]): string {
 
 // ─── Project Detail Page ───────────────────────────────────────────
 
-export function renderProjectDetail(project: ProjectRow, sessions: SessionProjectRow[]): string {
+export function renderProjectDetail(project: ProjectRow, sessions: SessionProjectRow[], decisionsHtml?: string): string {
   const color = TYPE_COLORS[project.identity_type] ?? "#6b7280";
 
   const sessionRows = sessions
@@ -134,6 +134,8 @@ export function renderProjectDetail(project: ProjectRow, sessions: SessionProjec
         ${sessions.length === 0 ? '<p class="empty-msg">No sessions recorded.</p>' : sessionRows}
       </div>
     </section>
+
+    ${decisionsHtml ?? ""}
 
     <section class="proj-jsonld-section">
       <h2>JSON-LD</h2>

@@ -578,6 +578,42 @@ export async function getProjectSessions(projectId: string): Promise<SessionProj
   return rows as unknown as SessionProjectRow[];
 }
 
+// ─── Decisions ─────────────────────────────────────────────────
+
+export interface DecisionRow {
+  _id: string;
+  project_id: string;
+  session_id: string;
+  ts: string;
+  task: string;
+  what: string;
+  outcome: string;
+  why: string;
+  jsonld: string;
+}
+
+/**
+ * Get all decisions, newest first.
+ */
+export async function getDecisions(): Promise<DecisionRow[]> {
+  const rows = await sql`
+    SELECT * FROM decisions ORDER BY ts DESC
+  `;
+  return rows as unknown as DecisionRow[];
+}
+
+/**
+ * Get decisions for a specific project, newest first.
+ */
+export async function getProjectDecisions(projectId: string): Promise<DecisionRow[]> {
+  const rows = await sql`
+    SELECT * FROM decisions
+    WHERE project_id = ${t(projectId)}
+    ORDER BY ts DESC
+  `;
+  return rows as unknown as DecisionRow[];
+}
+
 /**
  * Close the connection.
  */

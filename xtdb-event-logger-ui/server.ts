@@ -21,6 +21,8 @@ import {
   getProjects,
   getProject,
   getProjectSessions,
+  getDecisions,
+  getProjectDecisions,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -34,6 +36,7 @@ import { renderDashboard } from "./pages/dashboard.ts";
 import { renderKnowledge } from "./pages/knowledge.ts";
 import { renderFlow } from "./pages/flow.ts";
 import { renderProjects, renderProjectDetail } from "./pages/projects.ts";
+import { renderDecisions, renderProjectDecisionsSection } from "./pages/decisions.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -95,8 +98,14 @@ app.get("/projects/:id{.+}", async (c) => {
   const id = decodeURIComponent(c.req.param("id"));
   const project = await getProject(id);
   if (!project) return c.html("<h1>Project not found</h1>", 404);
-  const sessions = await getProjectSessions(id);
-  return c.html(renderProjectDetail(project, sessions));
+  const [sessions, decisions] = await Promise.all([getProjectSessions(id), getProjectDecisions(id)]);
+  const decisionsHtml = renderProjectDecisionsSection(decisions);
+  return c.html(renderProjectDetail(project, sessions, decisionsHtml));
+});
+
+app.get("/decisions", async (c) => {
+  const [decisions, projects] = await Promise.all([getDecisions(), getProjects()]);
+  return c.html(renderDecisions(decisions, projects));
 });
 
 app.get("/sessions/:id{.+}/flow", async (c) => {
