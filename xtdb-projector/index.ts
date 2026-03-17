@@ -141,6 +141,11 @@ export default function (pi: ExtensionAPI) {
     state = accumulate(state, "tool_result", realId("tool_result"), asRecord(event));
   });
 
+  // Stable IDs for result/changes projections — reused across turn_end (provisional)
+  // and agent_end (final) so XTDB upserts instead of duplicating.
+  let resultProjectionId = "";
+  let changesProjectionId = "";
+
   pi.on("turn_end" as any, (event: unknown) => {
     const id = realId("turn_end");
     state = accumulate(state, "turn_end", id, asRecord(event));
@@ -149,15 +154,26 @@ export default function (pi: ExtensionAPI) {
       const row = projectReasoning(traceId, state, id);
       emit(row);
       state = { ...state, reasoningTraceIds: [...state.reasoningTraceIds, traceId] };
+
+      // Provisional result + changes — in case agent_end never fires (subagent exit)
+      if (!resultProjectionId) resultProjectionId = crypto.randomUUID();
+      if (!changesProjectionId) changesProjectionId = crypto.randomUUID();
+      emit(projectResult(resultProjectionId, state));
+      emit(projectChanges(changesProjectionId, state));
     }
   });
 
   pi.on("agent_end" as any, (event: unknown) => {
     state = accumulate(state, "agent_end", realId("agent_end"), asRecord(event));
     if (state) {
-      emit(projectChanges(crypto.randomUUID(), state));
-      emit(projectResult(crypto.randomUUID(), state));
+      // Final versions — same IDs overwrite provisional rows in XTDB
+      if (!changesProjectionId) changesProjectionId = crypto.randomUUID();
+      if (!resultProjectionId) resultProjectionId = crypto.randomUUID();
+      emit(projectChanges(changesProjectionId, state));
+      emit(projectResult(resultProjectionId, state));
       state = null;
+      resultProjectionId = "";
+      changesProjectionId = "";
     }
   });
 }
