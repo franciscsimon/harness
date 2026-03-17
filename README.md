@@ -56,7 +56,7 @@ Events flow into XTDB automatically. Open http://localhost:3333 to see them.
 │  │  patterns, delegate, log_decision             │  │
 │  └──────┬────────────────────────────────────────┘  │
 └─────────┼───────────────────────────────────────────┘
-          │ 30 events (full content, no truncation)
+          │ 30 events (full content; message_update/tool_execution_update sampled at 2s)
           ▼
 ┌─────────────────┐     ┌──────────────────────┐
 │  XTDB v2        │────▶│  Event Stream UI     │
@@ -75,12 +75,12 @@ Extensions live in `~/.pi/agent/extensions/` and activate automatically.
 
 | Category | Extensions |
 |----------|-----------|
-| **Event capture** | `xtdb-event-logger` — all 30 events → XTDB with JSON-LD, schema v2, full content |
+| **Event capture** | `xtdb-event-logger` — all 30 events → XTDB with JSON-LD, schema v2, full content (streaming events sampled at 2s) |
 | **Project history** | `project-registry` (auto-registers projects from cwd, links sessions to projects), `decision-log` (`log_decision` tool — records decisions/failures/deferrals, injects history into agent context) |
 | **Safety** | `permission-gate` (blocks dangerous bash), `protected-paths` (prevents writes to critical files), `git-checkpoint` (stashes each turn, `/fork` restore) |
 | **Quality** | `quality-hooks` (`quality_check` + `diff_check` tools), `slop-detector` (`check_antipatterns` tool), `habit-monitor` (coding habit enforcement) |
 | **Context** | `canary-monitor` (context health alerts), `custom-compaction` (Gemini Flash structured summaries), `semantic-zoom` (`set_zoom` tool), `noise-cancellation` (filters low-signal events) |
-| **Knowledge** | `knowledge-extractor` (session knowledge → XTDB), `knowledge-checkpoint` (`save_checkpoint` tool), `knowledge-composer` (assembles reference docs), `jit-docs` (`lookup_docs` tool), `reference-docs` (`load_reference` tool) |
+| **Knowledge** | `knowledge-extractor` (session knowledge → markdown sidecar), `knowledge-checkpoint` (`save_checkpoint` tool), `knowledge-composer` (assembles reference docs), `jit-docs` (`lookup_docs` tool), `reference-docs` (`load_reference` tool) |
 | **Workflow** | `chunker` (`plan_chunks` tool), `alignment-monitor` (`check_alignment` tool), `refinement-loop` (iterative improvement), `parallel-impl` (parallel task execution) |
 | **Agents** | `agent-spawner` (`delegate` tool, spawns subagents), `role-loader` (`/agent`, `/role` commands) |
 | **Session** | `handoff` (`/handoff` generates transfer prompt), `contextual-prompts` (context-aware suggestions), `reminders` (persistent reminders) |
@@ -167,7 +167,7 @@ pi --checkpoints  # Enable git checkpoints
 
 ## Event Schema
 
-All 30 pi events are captured with full content (schema v2, no truncation).
+All 30 pi events are captured with full content (schema v2). Streaming events (`message_update`, `tool_execution_update`) are sampled at 2s intervals to avoid flooding XTDB.
 
 | Category | Events |
 |----------|--------|

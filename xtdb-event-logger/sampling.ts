@@ -11,6 +11,7 @@ interface SamplerState {
   lastFlush: number; // timestamp of last capture
   accumulated: number; // accumulated delta bytes since last capture
   pending: boolean; // has uncaptured data
+  lastEvent: unknown; // last raw event object for accurate flush
 }
 
 const samplers = new Map<string, SamplerState>();
@@ -33,15 +34,17 @@ export function setSamplingInterval(ms: number): void {
 export function shouldCapture(
   key: string,
   deltaLen: number,
+  rawEvent?: unknown,
 ): { capture: boolean; accumulatedLen: number } {
   let s = samplers.get(key);
   if (!s) {
-    s = { lastFlush: 0, accumulated: 0, pending: false };
+    s = { lastFlush: 0, accumulated: 0, pending: false, lastEvent: null };
     samplers.set(key, s);
   }
 
   s.accumulated += deltaLen;
   s.pending = true;
+  if (rawEvent !== undefined) s.lastEvent = rawEvent;
 
   const now = Date.now();
   if (now - s.lastFlush >= intervalMs) {
@@ -64,16 +67,18 @@ export function shouldCapture(
  */
 export function flushSampler(
   key: string,
-): { capture: boolean; accumulatedLen: number } {
+): { capture: boolean; accumulatedLen: number; lastEvent: unknown } {
   const s = samplers.get(key);
   if (s && s.pending && s.accumulated > 0) {
     const total = s.accumulated;
+    const event = s.lastEvent;
     s.accumulated = 0;
     s.lastFlush = Date.now();
     s.pending = false;
+    s.lastEvent = null;
     samplers.delete(key);
-    return { capture: true, accumulatedLen: total };
+    return { capture: true, accumulatedLen: total, lastEvent: event };
   }
   samplers.delete(key);
-  return { capture: false, accumulatedLen: 0 };
+  return { capture: false, accumulatedLen: 0, lastEvent: null };
 }

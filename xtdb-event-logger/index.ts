@@ -190,7 +190,7 @@ export default function (pi: ExtensionAPI) {
             ? "msg_update"
             : `tool_update_${e?.toolCallId ?? "?"}`;
 
-        const { capture: shouldWrite } = shouldCapture(key, deltaLen);
+        const { capture: shouldWrite } = shouldCapture(key, deltaLen, event);
         if (shouldWrite) {
           capture(eventName, event, metaFromCtx(ctx));
         }
@@ -204,9 +204,9 @@ export default function (pi: ExtensionAPI) {
       pi.on("message_end", (event: unknown, ctx: any) => {
         // Flush any remaining sampled message_update data
         const flushed = flushSampler("msg_update");
-        if (flushed.capture) {
-          // Write one final message_update sample with accumulated data
-          capture("message_update", event, metaFromCtx(ctx));
+        if (flushed.capture && flushed.lastEvent) {
+          // Write one final message_update sample using the actual last update event
+          capture("message_update", flushed.lastEvent, metaFromCtx(ctx));
         }
         // Capture message_end itself
         capture("message_end", event, metaFromCtx(ctx));
@@ -221,9 +221,9 @@ export default function (pi: ExtensionAPI) {
         const e = event as any;
         const key = `tool_update_${e?.toolCallId ?? "?"}`;
         const flushed = flushSampler(key);
-        if (flushed.capture) {
-          // Write one final tool_execution_update sample
-          capture("tool_execution_update", event, metaFromCtx(ctx));
+        if (flushed.capture && flushed.lastEvent) {
+          // Write one final tool_execution_update sample using the actual last update event
+          capture("tool_execution_update", flushed.lastEvent, metaFromCtx(ctx));
         }
         // Capture tool_execution_end itself
         capture("tool_execution_end", event, metaFromCtx(ctx));

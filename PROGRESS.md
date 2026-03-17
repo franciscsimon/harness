@@ -11,23 +11,23 @@
 - **File:** `xtdb-event-logger-ui/lib/db.ts` → `getSessionKnowledge()`
 - **Bug:** reads `ev.payload` but handler stores field as `tool_args` (from `xtdb-event-logger/handlers/tool-execution-start.ts`)
 - **Fix:** change `ev.payload` to `ev.tool_args`, parse JSON to extract `path`
-- **Status:** [ ]
+- **Status:** [x] ✅ Done
 
 ### 1.2 Fix sampling flush logic
 - **File:** `xtdb-event-logger/index.ts` lines 202-230
 - **Bug:** on `message_end`, flushes sampled `message_update` but passes the `message_end` event object to `capture("message_update", event, ...)` — the stored "update" row has end-event fields, not update fields
 - **Same bug** on `tool_execution_end` flush of `tool_execution_update`
 - **Fix:** store the last sampled event object in `sampling.ts`, flush that instead of the end event
-- **Status:** [ ]
+- **Status:** [x] ✅ Done — `sampling.ts` now stores `lastEvent`, `flushSampler()` returns it, `index.ts` uses it
 
 ### 1.3 Align README with reality
 - **File:** `README.md`
 - **Changes:**
-  - [ ] Line 59: change "full content, no truncation" → note that `message_update` and `tool_execution_update` are sampled (2s default)
-  - [ ] Line 78: same — add "(sampled for streaming events)" qualifier
-  - [ ] Line 170: same
-  - [ ] Line 83: change `knowledge-extractor (session knowledge → XTDB)` → `knowledge-extractor (session knowledge → markdown sidecar)`
-- **Status:** [ ]
+  - [x] Architecture diagram: note streaming events sampled at 2s
+  - [x] Event capture description: add "(streaming events sampled at 2s)"
+  - [x] Event schema section: disclose sampling, remove "no truncation"
+  - [x] knowledge-extractor: changed "→ XTDB" to "→ markdown sidecar"
+- **Status:** [x] ✅ Done
 
 ---
 

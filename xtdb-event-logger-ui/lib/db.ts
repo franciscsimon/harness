@@ -443,12 +443,11 @@ export async function getSessionKnowledge(sessionId: string): Promise<SessionKno
     }
     if (ev.event_name === "turn_start") turnCount++;
     if (ev.bash_command) bashCmds.push(ev.bash_command);
-    // Track file modifications from tool_call payload (Write/Edit paths)
+    // Track file modifications from tool args (Write/Edit paths)
     if (ev.event_name === "tool_execution_start" && (ev.tool_name === "write" || ev.tool_name === "edit")) {
-      // payload may contain path info
       try {
-        if (ev.payload) {
-          const p = typeof ev.payload === "string" ? JSON.parse(ev.payload) : ev.payload;
+        if (ev.tool_args) {
+          const p = typeof ev.tool_args === "string" ? JSON.parse(ev.tool_args) : ev.tool_args;
           if (p?.path) files.add(p.path);
         }
       } catch {}
