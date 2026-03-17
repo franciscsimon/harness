@@ -1,0 +1,17 @@
+{
+  "name": "event-projector",
+  "version": "1.0.0",
+  "description": "Pi extension — projects raw events into semantic projections (AgentTaskRequested, AgentReasoningTrace, AgentResultProduced, ProjectStateChanged)",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "postgres": "^3.4.8"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^5.9.3"
+  }
+}
