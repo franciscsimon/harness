@@ -79,13 +79,23 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    if (decisions.length === 0) return;
+    const parts: string[] = [];
 
-    const md = formatDecisionsForContext(decisions);
+    if (decisions.length > 0) {
+      parts.push(formatDecisionsForContext(decisions));
+    }
+
+    // Active reminder — models like Claude Opus won't call log_decision without a nudge
+    parts.push(
+      "**Reminder:** After completing any coding task, call `log_decision` to record what you decided and why. " +
+      "This applies to file edits, bug fixes, architecture choices, dependency picks, and rejected approaches. " +
+      "Do this BEFORE your final response to the user."
+    );
+
     return {
       message: {
         customType: "decision-log",
-        content: md,
+        content: parts.join("\n\n"),
         display: false,
       },
     };
@@ -99,7 +109,8 @@ export default function (pi: ExtensionAPI) {
     description: "Record a design decision, failed approach, or deferred choice for the current project. This persists across sessions so future agents know what was tried and why.",
     promptSnippet: "log_decision — record a decision/failure/deferral for the project history",
     promptGuidelines: [
-      "When you make a design decision, encounter a failed approach, or defer a choice, use log_decision to record it.",
+      "ALWAYS call log_decision after completing work that involved: choosing an approach, fixing a bug, writing or refactoring code, changing architecture, or deferring a choice. One decision per distinct choice.",
+      "If you edited files, chose a library, picked an algorithm, debugged a root cause, or rejected an alternative — that is a decision. Log it before responding to the user.",
       "Include the task you were working on, what you tried or decided, the outcome (success/failure/deferred), and the reasoning.",
     ],
     parameters: Type.Object({
