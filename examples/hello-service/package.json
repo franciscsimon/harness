@@ -1,0 +1,13 @@
+{
+  "name": "hello-service",
+  "version": "1.0.0",
+  "description": "Minimal REST service — hello world example for the pi.dev harness",
+  "scripts": {
+    "start": "npx jiti server.ts",
+    "test": "npx jiti test.ts"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "@hono/node-server": "^1.0.0"
+  }
+}
