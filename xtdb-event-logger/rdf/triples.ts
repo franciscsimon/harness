@@ -112,6 +112,23 @@ export function eventToTriples(event: NormalizedEvent) {
   str("prevModelProvider", f.prevModelProvider);
   str("prevModelId", f.prevModelId);
 
+  // Full content (schema v2)
+  str("messageContent", f.messageContent);
+  str("streamDelta", f.streamDelta);
+  str("toolInput", f.toolInput);
+  str("toolContent", f.toolContent);
+  str("toolDetails", f.toolDetails);
+  str("toolPartialResult", f.toolPartialResult);
+  str("toolArgs", f.toolArgs);
+  str("agentMessages", f.agentMessages);
+  str("systemPrompt", f.systemPrompt);
+  str("images", f.images);
+  str("contextMessages", f.contextMessages);
+  str("providerPayload", f.providerPayload);
+  str("turnMessage", f.turnMessage);
+  str("turnToolResults", f.turnToolResults);
+  str("compactBranchEntries", f.compactBranchEntries);
+
   // Generic
   str("payload", f.payload);
   str("handlerError", f.handlerError);
