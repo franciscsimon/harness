@@ -85,24 +85,18 @@
 ## Phase 4 — Active History Use
 
 ### 4.1 Pre-task history retrieval
-- **Hook:** `before_agent_start` (same pattern as decision-log)
-- **Tasks:**
-  - [ ] New extension `history-retrieval/` or add to `decision-log`
-  - [ ] On `before_agent_start`, extract file paths from the user's prompt (regex: paths with extensions, @-references)
-  - [ ] Query XTDB: prior sessions that touched those files (via `artifacts` table or `tool_call` events with matching paths)
-  - [ ] Query XTDB: prior `session_postmortems` for the project
-  - [ ] Query XTDB: prior `decisions` with matching file paths
-  - [ ] Format as compact "Prior Work" section and inject via message
-  - [ ] Limit to last N relevant entries to control context size
-- **Status:** [ ]
+- **Status:** [x] ✅ Done
+- New `history-retrieval/` extension
+- Extracts file paths from prompt (@references, bare paths with extensions)
+- Queries XTDB for: failed decisions, artifact history for mentioned files, file-specific failures, recent post-mortems with errors
+- Injects "Prior Work" section into agent context via `before_agent_start`
 
 ### 4.2 Retry/failure prevention warnings
-- **Tasks:**
-  - [ ] On `before_agent_start`, compare extracted goal/files against failed decisions and failed post-mortems
-  - [ ] Match by: exact file paths, tool patterns, decision outcome=failure
-  - [ ] Inject warning: "⚠️ Previously failed: [what] — [why]"
-  - [ ] Configurable: can be disabled per project
-- **Status:** [ ]
+- **Status:** [x] ✅ Done — integrated into history-retrieval
+- Failed decisions injected with "Do NOT retry" header
+- File-specific warnings when prompt mentions files with prior failures
+- Recent failed post-mortems surfaced
+- All scoped to current project
 
 ---
 

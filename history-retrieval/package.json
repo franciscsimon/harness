@@ -1,0 +1,12 @@
+{
+  "name": "history-retrieval",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Pi.dev extension — retrieves prior work history before each task, warns about failed approaches",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "postgres": "^3.4.8"
+  }
+}
