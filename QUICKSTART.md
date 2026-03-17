@@ -24,13 +24,14 @@ Build a REST service called hello-service with GET / and GET /hello/:name
 The agent uses the `plan_chunks` tool automatically:
 
 ```
-📦 Created 6 steps:
-  1. Delegate to architect: design the API contract
-  2. Delegate to worker: implement the service
-  3. Run quality_check on the implementation
-  4. Delegate to tester: write tests
-  5. Run tests and check_alignment
-  6. diff_check and commit
+📦 Created 7 steps:
+  1. Wipe hello-service (keep node_modules for speed)
+  2. Delegate to architect: design the API contract
+  3. Delegate to worker: implement the service
+  4. Run quality_check on the implementation
+  5. Delegate to tester: write tests
+  6. Run tests and check_alignment
+  7. Update docs based on actual results
 ```
 
 Each step is independently completable and testable.
@@ -51,18 +52,18 @@ The architect reads nothing, writes one file — `DESIGN.md`:
 ```markdown
 ## Endpoints
 
-### GET /
-Response: { "name": "hello-service", "version": "1.0.0" }
-
-### GET /hello/:name
-Response: { "greeting": "Hello, Alice!" }
+| Method | Path           | Response                                      | Status |
+|--------|----------------|-----------------------------------------------|--------|
+| GET    | `/`            | `{ "name": "hello-service", "version": "1.0.0" }` | 200    |
+| GET    | `/hello/:name` | `{ "greeting": "Hello, {name}!" }`            | 200    |
 
 ## File Structure
-├── index.ts    ← entry point
-└── routes.ts   ← route definitions
+├── app.ts      ← Hono app + routes (importable for tests)
+├── index.ts    ← entry point (starts server)
+└── test.ts     ← smoke tests
 ```
 
-The architect is a **read-only agent** — `setActiveTools` restricts it to `read`, `bash`, `grep`, `find`, `ls`, `write`. It designs but doesn't run anything.
+The architect chose to separate `app.ts` from `index.ts` so tests can import the app without starting a server — standard Hono pattern.
 
 ## Step 3: Worker implements it
 
@@ -70,24 +71,37 @@ The `delegate` tool spawns a **worker agent**:
 
 ```
 delegate(agent: "worker", task: "Implement hello-service per DESIGN.md.
-Create package.json, routes.ts, index.ts. Run npm install.")
+Create app.ts and index.ts. Do NOT create test.ts.")
 ```
 
-The worker reads the design doc, creates 3 files, runs `npm install`. Two source files:
+The worker reads the design doc, creates 2 files:
 
-**`routes.ts`** — route definitions, composable independently:
+**`app.ts`** — Hono app with routes, exported for test import:
 ```typescript
-export function registerRoutes(app: Hono) {
-  app.get("/", (c) => c.json({ name: "hello-service", version: "1.0.0" }));
-  app.get("/hello/:name", (c) => c.json({ greeting: `Hello, ${c.req.param("name")}!` }));
-}
+import { Hono } from "hono";
+
+const app = new Hono();
+
+app.get("/", (c) => {
+  return c.json({ name: "hello-service", version: "1.0.0" });
+});
+
+app.get("/hello/:name", (c) => {
+  const name = c.req.param("name");
+  return c.json({ greeting: `Hello, ${name}!` });
+});
+
+export default app;
 ```
 
 **`index.ts`** — entry point:
 ```typescript
-const app = new Hono();
-registerRoutes(app);
-serve({ fetch: app.fetch, port: Number(process.env.PORT) || 3111 });
+import { serve } from "@hono/node-server";
+import app from "./app";
+
+serve({ fetch: app.fetch, port: 3111 }, () => {
+  console.log("hello-service listening on http://localhost:3111");
+});
 ```
 
 ## Step 4: Quality check
@@ -95,8 +109,8 @@ serve({ fetch: app.fetch, port: Number(process.env.PORT) || 3111 });
 The `quality_check` tool runs deterministic checks on each file:
 
 ```
-quality_check(path: "examples/hello-service/index.ts")   → ✅ No issues
-quality_check(path: "examples/hello-service/routes.ts")   → ✅ No issues
+quality_check(path: "examples/hello-service/app.ts")      → ✅ No issues
+quality_check(path: "examples/hello-service/index.ts")     → ✅ No issues
 ```
 
 Checks: comment ratio, file size, function size, duplication, dead code.
@@ -107,52 +121,43 @@ The `delegate` tool spawns a **tester agent**:
 
 ```
 delegate(agent: "tester", task: "Write tests for hello-service.
-Read DESIGN.md and routes.ts. Test all endpoints including 404.")
+Read DESIGN.md and app.ts. Test all endpoints including 404.")
 ```
 
-The tester reads the design and source, writes `test.ts` with 4 assertions:
+The tester reads the design and source, writes `test.ts` with 5 tests:
 
 ```
-hello-service tests
+✅ GET / returns 200
+✅ GET / returns correct body
+✅ GET /hello/World returns 200 with greeting
+✅ GET /hello/Pi returns 200 with greeting
+✅ GET /nonexistent returns 404
 
-  ✓ GET / returns 200 with { name, version }
-  ✓ GET /hello/World returns greeting
-  ✓ GET /hello/Pi returns greeting
-  ✓ GET /nonexistent returns 404
-
-4 passed, 0 failed
+5 tests: 5 passed, 0 failed
 ```
+
+The tester imported `app` directly and used `@hono/node-server`'s `serve()` — no external test framework needed.
 
 ## Step 6: Verify alignment
 
 The `check_alignment` tool compares what was done vs the original request:
 
 ```
-check_alignment() → Files touched: DESIGN.md, index.ts, routes.ts,
-                     package.json, test.ts — all on target
-```
-
-## Step 7: Commit
-
-The `diff_check` tool verifies the change is appropriately sized for a single commit:
-
-```
-diff_check() → 7 files, 196 insertions — ok to commit
+check_alignment() → Files touched: DESIGN.md, app.ts, index.ts, test.ts — all on target
 ```
 
 ## What just happened
 
 You gave a one-line prompt. The harness:
 
-1. **`plan_chunks`** broke it into 6 ordered steps
-2. **`delegate → architect`** designed the API (isolated process, read-only tools)
-3. **`delegate → worker`** implemented it from the design (read the DESIGN.md, wrote code)
+1. **`plan_chunks`** broke it into 7 ordered steps
+2. **`delegate → architect`** designed the API (isolated process, wrote DESIGN.md)
+3. **`delegate → worker`** implemented it from the design (read DESIGN.md, wrote app.ts + index.ts)
 4. **`quality_check`** verified code quality on each file
-5. **`delegate → tester`** wrote and ran tests (read the design + source, wrote test.ts)
+5. **`delegate → tester`** wrote and ran tests (read design + source, wrote test.ts, 5/5 pass)
 6. **`check_alignment`** confirmed no drift from the goal
-7. **`diff_check`** validated commit size
 
-Meanwhile, **34 extensions** ran in the background:
+Meanwhile, **35 extensions** ran in the background:
 - `xtdb-event-logger` captured every event into XTDB (full content, schema v2)
 - `permission-gate` checked bash commands for dangerous patterns
 - `canary-monitor` tracked context health
@@ -169,15 +174,14 @@ All of this is visible in the UI at http://localhost:3333 — every tool call, e
 | `delegate` | Spawn architect, worker, tester agents |
 | `quality_check` | Verify code quality |
 | `check_alignment` | Confirm work matches request |
-| `diff_check` | Validate commit size |
 
 ## Agents used in this example
 
-| Agent | Role | Constraints |
-|-------|------|-------------|
-| `architect` | Design API contract | Read-only tools |
-| `worker` | Implement from design | Full tool access |
-| `tester` | Write and run tests | Full tool access |
+| Agent | Role |
+|-------|------|
+| `architect` | Design API contract, write DESIGN.md |
+| `worker` | Implement from design doc |
+| `tester` | Write and run tests |
 
 ## Run it yourself
 
@@ -185,7 +189,7 @@ All of this is visible in the UI at http://localhost:3333 — every tool call, e
 cd ~/harness/examples/hello-service
 npm install
 npm start           # → http://localhost:3111
-npx jiti test.ts    # 4 tests pass
+npx jiti test.ts    # 5 tests pass
 
 curl http://localhost:3111/
 # → {"name":"hello-service","version":"1.0.0"}

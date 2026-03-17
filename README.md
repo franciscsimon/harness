@@ -204,10 +204,16 @@ WHERE tool_call_id = 'your-call-id' AND event_name = 'tool_result';
 
 ```bash
 # Handler unit tests (24 tests across 14 handlers)
-npx jiti test/test-handler.ts all
+cd test && npx jiti handler-tests.ts
 
-# Seed test data
-npx jiti test/seed-augmented-patterns.ts
+# Seed test data (12 sessions for augmented pattern tests)
+cd test && npx jiti seed-augmented-patterns.ts
+
+# Full test suite (91 automated tests across 6 categories)
+cd test && npx jiti run-tests.ts
+
+# Hello-service example tests
+cd examples/hello-service && npm install && npx jiti test.ts
 ```
 
 ## File Layout
