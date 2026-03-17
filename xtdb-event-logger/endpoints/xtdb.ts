@@ -123,6 +123,13 @@ export class XtdbEndpoint implements Endpoint {
       model_provider, model_id, model_source,
       prev_model_provider, prev_model_id,
       payload, handler_error,
+      message_content, stream_delta,
+      tool_input, tool_content, tool_details,
+      tool_partial_result, tool_args,
+      agent_messages, system_prompt, images,
+      context_messages, provider_payload,
+      turn_message, turn_tool_results,
+      compact_branch_entries,
       jsonld
     ) VALUES (
       ${t(event.id)}, ${t("pi.dev")}, ${t(event.eventName)}, ${t(event.category)}, ${b(event.canIntercept)},
@@ -142,6 +149,13 @@ export class XtdbEndpoint implements Endpoint {
       ${t(f.modelProvider ?? null)}, ${t(f.modelId ?? null)}, ${t(f.modelSource ?? null)},
       ${t(f.prevModelProvider ?? null)}, ${t(f.prevModelId ?? null)},
       ${t(f.payload ?? null)}, ${t(f.handlerError ?? null)},
+      ${t(f.messageContent ?? null)}, ${t(f.streamDelta ?? null)},
+      ${t(f.toolInput ?? null)}, ${t(f.toolContent ?? null)}, ${t(f.toolDetails ?? null)},
+      ${t(f.toolPartialResult ?? null)}, ${t(f.toolArgs ?? null)},
+      ${t(f.agentMessages ?? null)}, ${t(f.systemPrompt ?? null)}, ${t(f.images ?? null)},
+      ${t(f.contextMessages ?? null)}, ${t(f.providerPayload ?? null)},
+      ${t(f.turnMessage ?? null)}, ${t(f.turnToolResults ?? null)},
+      ${t(f.compactBranchEntries ?? null)},
       ${t(jsonld)}
     )`;
   }
