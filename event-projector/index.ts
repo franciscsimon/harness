@@ -88,10 +88,15 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  // ── Helper to extract event as record ──
+  // ── Helpers ──
 
   function asRecord(event: unknown): Record<string, unknown> {
     return (event ?? {}) as Record<string, unknown>;
+  }
+
+  /** Read the real XTDB _id published by xtdb-event-logger for the current event */
+  function realId(): string {
+    return (globalThis as any).__piLastEvent?._id ?? crypto.randomUUID();
   }
 
   // ── 9 Event Hooks ──
@@ -99,62 +104,53 @@ export default function (pi: ExtensionAPI) {
   pi.on("input", (event: any, ctx: any) => {
     const sessionId = ctx?.sessionManager?.getSessionFile?.() ?? "unknown";
     const taskId = crypto.randomUUID();
-    const eventId = crypto.randomUUID();
-    state = createRunState(sessionId, taskId, eventId, asRecord(event));
+    state = createRunState(sessionId, taskId, realId(), asRecord(event));
   });
 
   pi.on("before_agent_start" as any, (event: unknown) => {
-    const eventId = crypto.randomUUID();
-    state = accumulate(state, "before_agent_start", eventId, asRecord(event));
+    state = accumulate(state, "before_agent_start", realId(), asRecord(event));
   });
 
-  pi.on("agent_start" as any, (event: unknown) => {
-    const eventId = crypto.randomUUID();
-    state = accumulate(state, "agent_start", eventId, asRecord(event));
+  pi.on("agent_start" as any, () => {
+    state = accumulate(state, "agent_start", realId(), asRecord({}));
     if (state) {
       emit(projectTask(crypto.randomUUID(), state));
     }
   });
 
   pi.on("turn_start" as any, (event: unknown) => {
-    const eventId = crypto.randomUUID();
-    state = accumulate(state, "turn_start", eventId, asRecord(event));
+    state = accumulate(state, "turn_start", realId(), asRecord(event));
   });
 
   pi.on("message_update", (event: any) => {
-    const eventId = crypto.randomUUID();
-    state = accumulate(state, "message_update", eventId, asRecord(event));
+    state = accumulate(state, "message_update", realId(), asRecord(event));
   });
 
   pi.on("tool_call" as any, (event: unknown) => {
-    const eventId = crypto.randomUUID();
-    state = accumulate(state, "tool_call", eventId, asRecord(event));
+    state = accumulate(state, "tool_call", realId(), asRecord(event));
   });
 
   pi.on("tool_result" as any, (event: unknown) => {
-    const eventId = crypto.randomUUID();
-    state = accumulate(state, "tool_result", eventId, asRecord(event));
+    state = accumulate(state, "tool_result", realId(), asRecord(event));
   });
 
   pi.on("turn_end" as any, (event: unknown) => {
-    const turnEndEventId = crypto.randomUUID();
-    state = accumulate(state, "turn_end", turnEndEventId, asRecord(event));
+    const id = realId();
+    state = accumulate(state, "turn_end", id, asRecord(event));
     if (state) {
       const traceId = crypto.randomUUID();
-      const row = projectReasoning(traceId, state, turnEndEventId);
+      const row = projectReasoning(traceId, state, id);
       emit(row);
-      // Push trace ID into run-level accumulator for AgentResultProduced
       state = { ...state, reasoningTraceIds: [...state.reasoningTraceIds, traceId] };
     }
   });
 
   pi.on("agent_end" as any, (event: unknown) => {
-    const eventId = crypto.randomUUID();
-    state = accumulate(state, "agent_end", eventId, asRecord(event));
+    state = accumulate(state, "agent_end", realId(), asRecord(event));
     if (state) {
       emit(projectChanges(crypto.randomUUID(), state));
       emit(projectResult(crypto.randomUUID(), state));
-      state = null; // Run complete
+      state = null;
     }
   });
 }

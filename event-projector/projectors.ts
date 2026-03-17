@@ -68,7 +68,7 @@ export function projectResult(id: string, state: RunState): AgentResultProducedR
     total_msg_count: state.agentEndMsgCount,
     agent_end_event_id: state.agentEndEventId,
     final_message_event_id: state.finalMessageEventId,
-    output_summary: null, // Resolved by UI from final_message_event_id
+    output_summary: state.outputSummary,
   };
 }
 

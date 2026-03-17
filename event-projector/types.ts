@@ -43,6 +43,7 @@ export interface RunState {
   agentEndEventId: string | null;
   finalMessageEventId: string | null;
   agentEndMsgCount: number | null;
+  outputSummary: string | null;
 }
 
 // ─── Projection Types ──────────────────────────────────────────────

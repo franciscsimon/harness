@@ -41,6 +41,7 @@ export function createRunState(
     agentEndEventId: null,
     finalMessageEventId: null,
     agentEndMsgCount: null,
+    outputSummary: null,
   };
 }
 
@@ -86,7 +87,7 @@ export function accumulate(
 
     case "message_update": {
       const ame = event.assistantMessageEvent as { type?: string } | undefined;
-      if (ame?.type === "thinking") {
+      if (ame?.type?.startsWith("thinking")) {
         s.currentTurn = { ...s.currentTurn, thinkingEventIds: [...s.currentTurn.thinkingEventIds, eventId] };
       }
       break;
@@ -144,11 +145,20 @@ export function accumulate(
       const messages = event.messages;
       if (Array.isArray(messages)) {
         s.agentEndMsgCount = messages.length;
-        // Try to find final assistant message for output_summary
         for (let i = messages.length - 1; i >= 0; i--) {
           const msg = messages[i] as Record<string, unknown> | undefined;
           if (msg?.role === "assistant") {
-            s.finalMessageEventId = eventId; // best we have — the agent_end event itself
+            s.finalMessageEventId = eventId;
+            const content = msg.content;
+            if (Array.isArray(content)) {
+              const textBlock = content.find((b: any) => b?.type === "text" && b?.text);
+              if (textBlock) {
+                const text = (textBlock as any).text as string;
+                s.outputSummary = text.length > 500 ? text.slice(0, 497) + "..." : text;
+              }
+            } else if (typeof content === "string") {
+              s.outputSummary = content.length > 500 ? content.slice(0, 497) + "..." : content;
+            }
             break;
           }
         }

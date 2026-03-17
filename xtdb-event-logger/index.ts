@@ -59,6 +59,9 @@ export default function (pi: ExtensionAPI) {
     const normalized = routeEvent(eventName, rawEvent, meta);
     if (!normalized) return;
 
+    // Publish real ID for other extensions (event-projector) running in same process
+    (globalThis as any).__piLastEvent = { _id: normalized.id, seq: normalized.seq, eventName, sessionId: normalized.sessionId };
+
     let jsonld: string;
     try {
       const triples = eventToTriples(normalized);

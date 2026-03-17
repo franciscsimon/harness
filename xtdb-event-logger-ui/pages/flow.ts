@@ -16,6 +16,18 @@ function typeColor(type: string): string {
   return TYPE_COLORS[type] ?? DEFAULT_TYPE_COLOR;
 }
 
+function eventLink(id: string, label: string): string {
+  return `<a href="/event/${encodeURIComponent(id)}" class="flow-event-link" title="${esc(id)}">${label}</a>`;
+}
+
+function parseJsonArray(val: unknown): string[] {
+  if (!val) return [];
+  try {
+    const arr = typeof val === "string" ? JSON.parse(val) : val;
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
 // ─── Card Body Renderers ───────────────────────────────────────
 
 function renderCardBody(p: ProjectionRow): string {
@@ -29,29 +41,47 @@ function renderCardBody(p: ProjectionRow): string {
     }
 
     case "AgentReasoningTrace": {
-      const turnIndex = p.turn_index ?? p.turnIndex ?? "—";
-      const toolCount = p.tool_count ?? p.toolCount ?? 0;
-      return `<div class="flow-field">
-        <span class="field-k">turn:</span> <span class="flow-field-val">${esc(String(turnIndex))}</span>
-      </div>
-      <div class="flow-field">
-        <span class="field-k">tools:</span> <span class="flow-field-val">${esc(String(toolCount))}</span>
-      </div>`;
+      const turnIndex = p.turn_index ?? "—";
+      const toolCount = p.tool_count ?? 0;
+      const thinkingIds = parseJsonArray(p.thinking_event_ids);
+      const toolCallIds = parseJsonArray(p.tool_call_event_ids);
+      const toolResultIds = parseJsonArray(p.tool_result_event_ids);
+      const turnStartLink = p.turn_start_event_id ? eventLink(p.turn_start_event_id, "turn_start") : "";
+      const turnEndLink = p.turn_end_event_id ? eventLink(p.turn_end_event_id, "turn_end") : "";
+
+      let html = `<div class="flow-field"><span class="field-k">turn:</span> <span class="flow-field-val">${esc(String(turnIndex))}</span> ${turnStartLink} ${turnEndLink}</div>`;
+
+      if (thinkingIds.length > 0) {
+        html += `<div class="flow-field"><span class="field-k">thinking:</span> <span class="flow-field-val">${thinkingIds.length} events ${thinkingIds.slice(0, 3).map(id => eventLink(id, "💭")).join(" ")}</span></div>`;
+      }
+
+      if (toolCount > 0) {
+        const toolLinks = toolCallIds.map((id, i) => {
+          const resultLink = toolResultIds[i] ? ` → ${eventLink(toolResultIds[i], "result")}` : "";
+          return `<li>${eventLink(id, "call")}${resultLink}</li>`;
+        }).join("");
+        html += `<div class="flow-field"><span class="field-k">tools (${toolCount}):</span><ul class="flow-mutation-list">${toolLinks}</ul></div>`;
+      }
+
+      return html;
     }
 
     case "AgentResultProduced": {
-      const totalTurns = p.total_turns ?? p.totalTurns ?? "—";
-      const msgCount = p.msg_count ?? p.msgCount ?? p.message_count ?? "—";
-      return `<div class="flow-field">
-        <span class="field-k">totalTurns:</span> <span class="flow-field-val">${esc(String(totalTurns))}</span>
-      </div>
-      <div class="flow-field">
-        <span class="field-k">msgCount:</span> <span class="flow-field-val">${esc(String(msgCount))}</span>
-      </div>`;
+      const totalTurns = p.total_turns ?? "—";
+      const msgCount = p.total_msg_count ?? "—";
+      const summary = p.output_summary ?? null;
+      const agentEndLink = p.agent_end_event_id ? eventLink(p.agent_end_event_id, "agent_end") : "";
+
+      let html = `<div class="flow-field"><span class="field-k">turns:</span> <span class="flow-field-val">${esc(String(totalTurns))}</span></div>`;
+      html += `<div class="flow-field"><span class="field-k">messages:</span> <span class="flow-field-val">${esc(String(msgCount))}</span> ${agentEndLink}</div>`;
+      if (summary) {
+        html += `<div class="flow-field"><span class="field-k">output:</span> <span class="flow-field-val">${esc(truncate(summary, 300))}</span></div>`;
+      }
+      return html;
     }
 
     case "ProjectStateChanged": {
-      const raw = p.mutations ?? p.mutation ?? "[]";
+      const raw = p.mutations ?? "[]";
       let mutations: any[];
       try {
         mutations = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -62,12 +92,13 @@ function renderCardBody(p: ProjectionRow): string {
         return `<div class="flow-field"><span class="field-k">mutations:</span> <span class="flow-field-val">—</span></div>`;
       }
       const items = mutations.map((m: any) => {
-        const op = m.op ?? m.type ?? "?";
-        const path = m.path ?? m.key ?? m.file ?? "?";
-        return `<li><code>${esc(String(op))}</code> ${esc(String(path))}</li>`;
+        const summary = m.inputSummary ?? "?";
+        const callLink = m.toolCallEventId ? eventLink(m.toolCallEventId, "call") : "";
+        const resultLink = m.toolResultEventId ? eventLink(m.toolResultEventId, "result") : "";
+        return `<li><code>${esc(String(summary))}</code> ${callLink} ${resultLink}</li>`;
       }).join("\n");
       return `<div class="flow-field">
-        <span class="field-k">mutations:</span>
+        <span class="field-k">mutations (${mutations.length}):</span>
         <ul class="flow-mutation-list">${items}</ul>
       </div>`;
     }
@@ -174,6 +205,12 @@ export function renderFlow(sessionId: string, projections: ProjectionRow[]): str
       color: var(--text-dim);
       margin-bottom: 2px;
     }
+    .flow-event-link {
+      font-size: 10px; padding: 1px 5px; border-radius: 3px;
+      background: #3b82f620; color: #3b82f6; text-decoration: none;
+      border: 1px solid #3b82f630;
+    }
+    .flow-event-link:hover { background: #3b82f640; }
     .flow-mutation-list code {
       font-family: var(--mono);
       font-size: 11px;
