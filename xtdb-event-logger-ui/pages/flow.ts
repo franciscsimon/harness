@@ -115,23 +115,81 @@ function renderCardBody(p: ProjectionRow): string {
   }
 }
 
+// ─── Helpers ───────────────────────────────────────────────────
+
+function isEmptyTrace(p: ProjectionRow): boolean {
+  if (p.type !== "AgentReasoningTrace") return false;
+  const toolCount = Number(p.tool_count ?? 0);
+  const thinkingIds = parseJsonArray(p.thinking_event_ids);
+  return toolCount === 0 && thinkingIds.length === 0;
+}
+
+function renderFullCard(p: ProjectionRow): string {
+  const color = typeColor(p.type);
+  return `<div class="flow-card" style="--type-color:${color}">
+    <div class="flow-card-header">
+      <span class="cat-badge" style="background:${color}">${esc(p.type)}</span>
+      <span class="tl-time">${relativeTime(p.ts)}</span>
+    </div>
+    <div class="flow-card-body">${renderCardBody(p)}</div>
+  </div>`;
+}
+
+function renderCollapsedGroup(traces: ProjectionRow[]): string {
+  const color = typeColor("AgentReasoningTrace");
+  const turns = traces.map(t => t.turn_index ?? "?");
+  const first = turns[0], last = turns[turns.length - 1];
+  const label = traces.length === 1
+    ? `Turn ${first} — empty`
+    : `Turns ${first}–${last} — ${traces.length} empty turns`;
+  const gid = `g${traces[0]._id}`;
+
+  const expandedCards = traces.map(t => {
+    const turnIdx = t.turn_index ?? "—";
+    const startLink = t.turn_start_event_id ? eventLink(t.turn_start_event_id, "turn_start") : "";
+    const endLink = t.turn_end_event_id ? eventLink(t.turn_end_event_id, "turn_end") : "";
+    return `<div class="flow-collapsed-detail"><span class="field-k">turn ${esc(String(turnIdx))}</span> ${startLink} ${endLink}</div>`;
+  }).join("\n");
+
+  return `<div class="flow-collapsed-group" style="--type-color:${color}">
+    <div class="flow-collapsed-bar" onclick="var el=document.getElementById('${gid}');el.style.display=el.style.display==='none'?'block':'none'">
+      <span class="flow-collapsed-dot" style="background:${color}"></span>
+      <span class="flow-collapsed-label">${label}</span>
+      <span class="flow-collapsed-toggle">▸</span>
+    </div>
+    <div id="${gid}" class="flow-collapsed-body" style="display:none">${expandedCards}</div>
+  </div>`;
+}
+
 // ─── Page Renderer ─────────────────────────────────────────────
 
 export function renderFlow(sessionId: string, projections: ProjectionRow[]): string {
   const name = sessionId.split("/").pop() ?? sessionId;
+  const contentCount = projections.filter(p => !isEmptyTrace(p)).length;
+  const emptyCount = projections.length - contentCount;
 
-  const cards = projections.map((p) => {
-    const color = typeColor(p.type);
-    const body = renderCardBody(p);
+  // Group projections: consecutive empty traces merge into one collapsed row
+  const chunks: string[] = [];
+  let emptyBuf: ProjectionRow[] = [];
 
-    return `<div class="flow-card" style="--type-color:${color}">
-      <div class="flow-card-header">
-        <span class="cat-badge" style="background:${color}">${esc(p.type)}</span>
-        <span class="tl-time">${relativeTime(p.ts)}</span>
-      </div>
-      <div class="flow-card-body">${body}</div>
-    </div>`;
-  }).join("\n    ");
+  function flushEmpty() {
+    if (emptyBuf.length > 0) {
+      chunks.push(renderCollapsedGroup(emptyBuf));
+      emptyBuf = [];
+    }
+  }
+
+  for (const p of projections) {
+    if (isEmptyTrace(p)) {
+      emptyBuf.push(p);
+    } else {
+      flushEmpty();
+      chunks.push(renderFullCard(p));
+    }
+  }
+  flushEmpty();
+
+  const cards = chunks.join("\n    ");
 
   const empty = projections.length === 0
     ? `<p class="empty-msg">No projections found for this session.</p>`
@@ -219,6 +277,60 @@ export function renderFlow(sessionId: string, projections: ProjectionRow[]): str
       padding: 1px 5px;
       border-radius: 3px;
     }
+    /* Collapsed empty trace groups */
+    .flow-collapsed-group {
+      position: relative;
+      margin-left: 36px;
+      margin-bottom: 8px;
+    }
+    .flow-collapsed-group::before {
+      content: "";
+      position: absolute;
+      left: -27px;
+      top: 10px;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      border: 2px solid var(--bg);
+      opacity: 0.5;
+    }
+    .flow-collapsed-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 4px 12px;
+      border-radius: var(--radius);
+      background: var(--bg-card);
+      border: 1px dashed var(--border);
+      font-size: 12px;
+      color: var(--text-dim);
+      user-select: none;
+    }
+    .flow-collapsed-bar:hover {
+      background: var(--bg-input);
+      color: var(--text);
+    }
+    .flow-collapsed-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      opacity: 0.5;
+      flex-shrink: 0;
+    }
+    .flow-collapsed-toggle {
+      margin-left: auto;
+      font-size: 10px;
+    }
+    .flow-collapsed-body {
+      margin: 4px 0 0 20px;
+      font-size: 12px;
+    }
+    .flow-collapsed-detail {
+      padding: 2px 0;
+      color: var(--text-dim);
+    }
   </style>
 </head>
 <body>
@@ -233,7 +345,7 @@ export function renderFlow(sessionId: string, projections: ProjectionRow[]): str
         <span class="header-sep">·</span>
         🔀 Flow
       </h1>
-      <span class="total-badge">${projections.length} projections</span>
+      <span class="total-badge">${contentCount} projections${emptyCount > 0 ? ` · ${emptyCount} empty collapsed` : ""}</span>
     </div>
   </header>
   <main class="flow-timeline">
