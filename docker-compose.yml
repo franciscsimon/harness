@@ -1,0 +1,29 @@
+services:
+  xtdb:
+    image: ghcr.io/xtdb/xtdb:2.1.0
+    container_name: xtdb-events
+    restart: unless-stopped
+    ports:
+      - "5433:5432"   # Postgres wire protocol
+      - "8081:8080"   # HTTP API + healthz
+    volumes:
+      - xtdb-data:/var/lib/xtdb
+    environment:
+      # Heap 4G + Arrow off-heap 4G — prevents the OOM on VariableWidthVector realloc
+      JDK_JAVA_OPTIONS: >-
+        -Xms2g
+        -Xmx4g
+        -XX:MaxDirectMemorySize=4g
+    deploy:
+      resources:
+        limits:
+          memory: 10g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  xtdb-data:

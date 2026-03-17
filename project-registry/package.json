@@ -1,0 +1,12 @@
+{
+  "name": "project-registry",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Pi.dev extension — resolves project identity from cwd, persists to XTDB with JSON-LD",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "postgres": "^3.4.8"
+  }
+}
