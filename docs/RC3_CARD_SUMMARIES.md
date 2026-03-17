@@ -29,4 +29,11 @@
 | context | context_msg_count | count (already fine) |
 | before_provider_request | provider_payload_bytes | bytes (already fine) |
 
-## Status: NOT STARTED
+## Tasks
+- [x] T3.1: Audited all FIELD_PICKERS — identified 12 events that benefit from content previews
+- [x] T3.2: Added `preview()` helper — extracts readable text from JSON content fields
+- [x] T3.3: Updated 12 pickers: message_start/end, message_update, tool_call, tool_result, tool_execution_start/update/end, turn_end, before_agent_start, message_start, message_end
+- [x] T3.4: Fixed assistant message preview to skip thinking blocks, show first text block
+- [x] T3.5: Tested — session timeline shows system_prompt preview, delta text, content previews, tool input/output
+
+## Status: DONE
