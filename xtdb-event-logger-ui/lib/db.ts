@@ -498,6 +498,28 @@ export async function wipeAllEvents(): Promise<number> {
   return count;
 }
 
+// ─── Projections ───────────────────────────────────────────────
+
+export interface ProjectionRow {
+  _id: string;
+  session_id: string;
+  type: string;
+  ts: string;
+  [key: string]: any;
+}
+
+/**
+ * Get all projections for a session, ordered chronologically.
+ */
+export async function getProjections(sessionId: string): Promise<ProjectionRow[]> {
+  const rows = await sql`
+    SELECT * FROM projections
+    WHERE session_id = ${t(sessionId)}
+    ORDER BY ts ASC
+  `;
+  return rows as unknown as ProjectionRow[];
+}
+
 /**
  * Close the connection.
  */

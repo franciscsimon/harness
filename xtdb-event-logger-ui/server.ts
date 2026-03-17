@@ -17,6 +17,7 @@ import {
   getToolUsageStats,
   getSessionKnowledge,
   getErrorPatterns,
+  getProjections,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -28,6 +29,7 @@ import { renderSessions } from "./pages/sessions.ts";
 import { renderSessionDetail } from "./pages/session-detail.ts";
 import { renderDashboard } from "./pages/dashboard.ts";
 import { renderKnowledge } from "./pages/knowledge.ts";
+import { renderFlow } from "./pages/flow.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -78,6 +80,12 @@ app.get("/sessions", async (c) => {
 app.get("/dashboard", async (c) => {
   const [sessions, tools, errors] = await Promise.all([getDashboardSessions(), getToolUsageStats(), getErrorPatterns()]);
   return c.html(renderDashboard(sessions, tools, errors));
+});
+
+app.get("/sessions/:id{.+}/flow", async (c) => {
+  const id = decodeURIComponent(c.req.param("id"));
+  const projections = await getProjections(id);
+  return c.html(renderFlow(id, projections));
 });
 
 app.get("/sessions/:id{.+}/knowledge", async (c) => {

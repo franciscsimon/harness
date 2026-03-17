@@ -195,6 +195,7 @@ export function renderSessionDetail(sessionId: string, events: EventRow[]): stri
     <div class="ses-detail-actions">
       <button class="btn" id="btn-expand-all">Expand All</button>
       <button class="btn" id="btn-collapse-all">Collapse All</button>
+      <a class="btn" href="/sessions/${encodeURIComponent(sessionId)}/flow">🔀 Flow</a>
       <a class="btn" href="/sessions/${encodeURIComponent(sessionId)}/knowledge">📝 Knowledge</a>
     </div>
     ${sparkline}
