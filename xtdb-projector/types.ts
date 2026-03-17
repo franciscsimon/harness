@@ -9,10 +9,16 @@ export interface MutationRecord {
 
 // ─── Current Turn ──────────────────────────────────────────────────
 
+export interface ToolSummary {
+  name: string;
+  input: string;
+}
+
 export interface CurrentTurn {
   thinkingEventIds: string[];
   toolCallEventIds: string[];
   toolResultEventIds: string[];
+  toolSummaries: ToolSummary[];
   providerPayloadBytes: number | null;
   turnStartEventId: string | null;
 }
@@ -83,6 +89,7 @@ export interface AgentReasoningTraceRow extends ProjectionBase {
   tool_result_event_ids: string; // JSON array
   provider_payload_bytes: number | null;
   tool_count: number;
+  tools_summary: string;           // JSON array of ToolSummary
   turn_start_event_id: string | null;
   turn_end_event_id: string | null;
 }

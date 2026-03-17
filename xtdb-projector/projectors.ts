@@ -48,6 +48,7 @@ export function projectReasoning(
     tool_result_event_ids: JSON.stringify(turn.toolResultEventIds),
     provider_payload_bytes: turn.providerPayloadBytes,
     tool_count: turn.toolCallEventIds.length,
+    tools_summary: JSON.stringify(turn.toolSummaries),
     turn_start_event_id: turn.turnStartEventId,
     turn_end_event_id: turnEndEventId,
   };

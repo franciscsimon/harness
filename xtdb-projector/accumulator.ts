@@ -9,6 +9,7 @@ function freshTurn(): CurrentTurn {
     thinkingEventIds: [],
     toolCallEventIds: [],
     toolResultEventIds: [],
+    toolSummaries: [],
     providerPayloadBytes: null,
     turnStartEventId: null,
   };
@@ -97,10 +98,13 @@ export function accumulate(
     }
 
     case "tool_call": {
-      s.currentTurn = { ...s.currentTurn, toolCallEventIds: [...s.currentTurn.toolCallEventIds, eventId] };
-
       const toolName = typeof event.toolName === "string" ? event.toolName : "";
       const input = (event.input ?? {}) as Record<string, unknown>;
+      s.currentTurn = {
+        ...s.currentTurn,
+        toolCallEventIds: [...s.currentTurn.toolCallEventIds, eventId],
+        toolSummaries: [...s.currentTurn.toolSummaries, { name: toolName, input: inputSummary(toolName, input) }],
+      };
 
       if (isMutation(toolName, input)) {
         s.mutations = [

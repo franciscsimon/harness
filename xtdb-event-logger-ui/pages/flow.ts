@@ -56,11 +56,14 @@ function renderCardBody(p: ProjectionRow): string {
       }
 
       if (toolCount > 0) {
-        const toolLinks = toolCallIds.map((id, i) => {
-          const resultLink = toolResultIds[i] ? ` → ${eventLink(toolResultIds[i], "result")}` : "";
-          return `<li>${eventLink(id, "call")}${resultLink}</li>`;
+        const toolSummaries = parseJsonArray(p.tools_summary);
+        const toolLines = toolCallIds.map((id, i) => {
+          const summary = toolSummaries[i] as any;
+          const label = summary?.input ?? summary?.name ?? "call";
+          const resultLink = toolResultIds[i] ? ` ${eventLink(toolResultIds[i], "→ result")}` : "";
+          return `<li><code>${esc(String(label))}</code> ${eventLink(id, "call")}${resultLink}</li>`;
         }).join("");
-        html += `<div class="flow-field"><span class="field-k">tools (${toolCount}):</span><ul class="flow-mutation-list">${toolLinks}</ul></div>`;
+        html += `<div class="flow-field"><span class="field-k">tools (${toolCount}):</span><ul class="flow-mutation-list">${toolLines}</ul></div>`;
       }
 
       return html;
