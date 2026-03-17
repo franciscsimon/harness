@@ -1,32 +1,72 @@
-const BASE = `http://localhost:${process.env.PORT ?? 4000}`;
+import { strict as assert } from "node:assert";
+import { Hono } from "hono";
+import { serve } from "@hono/node-server";
+import { registerRoutes } from "./routes";
+
+const PORT = 9876;
+const BASE = `http://localhost:${PORT}`;
 
 async function run() {
-  console.log("Testing hello-service...\n");
+  const app = new Hono();
+  registerRoutes(app);
 
-  // Test root
-  const r1 = await fetch(`${BASE}/`);
-  const j1 = await r1.json();
-  console.log(`GET /         → ${JSON.stringify(j1)}`);
-  assert(j1.service === "hello-service", "root returns service name");
+  const server = serve({ fetch: app.fetch, port: PORT });
+  await new Promise((r) => setTimeout(r, 500));
 
-  // Test hello
-  const r2 = await fetch(`${BASE}/hello/World`);
-  const j2 = await r2.json();
-  console.log(`GET /hello/World → ${JSON.stringify(j2)}`);
-  assert(j2.message === "Hello World!", "hello returns greeting");
+  let passed = 0;
+  let failed = 0;
 
-  // Test with different name
-  const r3 = await fetch(`${BASE}/hello/Pi`);
-  const j3 = await r3.json();
-  console.log(`GET /hello/Pi    → ${JSON.stringify(j3)}`);
-  assert(j3.message === "Hello Pi!", "hello returns greeting with name");
+  async function test(name: string, fn: () => Promise<void>) {
+    try {
+      await fn();
+      console.log(`  ✓ ${name}`);
+      passed++;
+    } catch (err: any) {
+      console.error(`  ✗ ${name}`);
+      console.error(`    ${err.message}`);
+      failed++;
+    }
+  }
 
-  console.log("\n✅ All tests passed");
+  console.log("hello-service tests\n");
+
+  // 1. GET / — correct JSON shape
+  await test("GET / returns 200 with { name, version }", async () => {
+    const res = await fetch(BASE);
+    assert.equal(res.status, 200);
+    assert.ok(res.headers.get("content-type")?.includes("application/json"));
+    const body = await res.json();
+    assert.equal(body.name, "hello-service");
+    assert.equal(body.version, "1.0.0");
+    assert.deepEqual(Object.keys(body).sort(), ["name", "version"]);
+  });
+
+  // 2. GET /hello/World
+  await test("GET /hello/World returns greeting", async () => {
+    const res = await fetch(`${BASE}/hello/World`);
+    assert.equal(res.status, 200);
+    assert.ok(res.headers.get("content-type")?.includes("application/json"));
+    const body = await res.json();
+    assert.equal(body.greeting, "Hello, World!");
+  });
+
+  // 3. GET /hello/Pi
+  await test("GET /hello/Pi returns greeting", async () => {
+    const res = await fetch(`${BASE}/hello/Pi`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.greeting, "Hello, Pi!");
+  });
+
+  // 4. GET /nonexistent — 404
+  await test("GET /nonexistent returns 404", async () => {
+    const res = await fetch(`${BASE}/nonexistent`);
+    assert.equal(res.status, 404);
+  });
+
+  console.log(`\n${passed} passed, ${failed} failed`);
+  server.close();
+  process.exit(failed > 0 ? 1 : 0);
 }
 
-function assert(ok: boolean, msg: string) {
-  if (!ok) { console.error(`❌ FAIL: ${msg}`); process.exit(1); }
-  console.log(`  ✅ ${msg}`);
-}
-
-run().catch((e) => { console.error(e); process.exit(1); });
+run();
