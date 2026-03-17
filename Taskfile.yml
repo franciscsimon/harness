@@ -1,0 +1,250 @@
+version: '3'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  setup:
+    desc: Minimal local setup for XTDB event capture (XTDB + deployed logger + UI deps)
+    deps:
+      - 'xtdb:up'
+      - 'ext:deploy:xtdb-logger'
+      - 'ui:install'
+    cmds:
+      - 'echo "Setup complete. Start the UI with: task ui"'
+      - 'echo "Then start pi in another terminal."'
+
+  'setup:all':
+    desc: Full local setup (XTDB + all pi resources in this repo + UI deps)
+    deps:
+      - 'xtdb:up'
+      - 'resources:deploy:all'
+      - 'ui:install'
+    cmds:
+      - 'echo "Full setup complete. Start the UI with: task ui"'
+      - 'echo "Then start pi in another terminal."'
+
+  'xtdb:up':
+    desc: Start XTDB via docker compose
+    cmds:
+      - docker compose up -d xtdb
+
+  'xtdb:down':
+    desc: Stop XTDB
+    cmds:
+      - docker compose stop xtdb
+
+  'xtdb:reset':
+    desc: Destroy XTDB data and recreate the container (destructive)
+    cmds:
+      - docker compose down -v
+      - docker compose up -d xtdb
+
+  'xtdb:logs':
+    desc: Tail XTDB logs
+    cmds:
+      - docker compose logs -f xtdb
+
+  'xtdb:health':
+    desc: Check XTDB HTTP health and SQL connectivity
+    cmds:
+      - curl -sf http://localhost:8081/healthz/alive
+      - PGPASSWORD=xtdb psql -h localhost -p 5433 -U xtdb -d xtdb -c "SELECT 1"
+
+  'xtdb:psql':
+    desc: Open a psql shell against XTDB
+    cmds:
+      - PGPASSWORD=xtdb psql -h localhost -p 5433 -U xtdb -d xtdb
+
+  'ui:install':
+    desc: Install UI dependencies
+    dir: xtdb-event-logger-ui
+    cmds:
+      - npm install
+
+  ui:
+    desc: Start the XTDB event stream UI
+    dir: xtdb-event-logger-ui
+    cmds:
+      - npm start
+
+  'ui:background':
+    desc: Start the XTDB event stream UI in the background and write logs to .task/ui.log
+    cmds:
+      - |
+        set -euo pipefail
+        mkdir -p .task
+        if [ -f .task/ui.pid ] && kill -0 "$(cat .task/ui.pid)" 2>/dev/null; then
+          echo "UI already running with PID $(cat .task/ui.pid)"
+          exit 0
+        fi
+        (
+          cd xtdb-event-logger-ui
+          nohup npm start > ../.task/ui.log 2>&1 &
+          echo $! > ../.task/ui.pid
+        )
+        echo "UI started with PID $(cat .task/ui.pid)"
+        echo "Logs: .task/ui.log"
+
+  'ui:stop':
+    desc: Stop the background UI started by ui:background
+    cmds:
+      - |
+        set -euo pipefail
+        if [ ! -f .task/ui.pid ]; then
+          echo "No UI pid file found"
+          exit 0
+        fi
+        PID="$(cat .task/ui.pid)"
+        if kill -0 "$PID" 2>/dev/null; then
+          kill "$PID"
+          echo "Stopped UI process $PID"
+        else
+          echo "UI process $PID is not running"
+        fi
+        rm -f .task/ui.pid
+
+  pi:
+    desc: Start pi
+    cmds:
+      - pi
+
+  'agents:deploy':
+    desc: Deploy agent definitions into pi's agents + prompts directories
+    cmds:
+      - |
+        set -euo pipefail
+        mkdir -p "$HOME/.pi/agent/agents"
+        mkdir -p "$HOME/.pi/agent/prompts"
+        for file in agents/*.md; do
+          test -f "$file" || continue
+          name="$(basename "$file")"
+          echo "→ Deploying agent $name"
+          cp "$file" "$HOME/.pi/agent/agents/$name"
+          cp "$file" "$HOME/.pi/agent/prompts/$name"
+        done
+
+  'skills:deploy':
+    desc: Deploy skill packages into pi's skills directory
+    cmds:
+      - |
+        set -euo pipefail
+        mkdir -p "$HOME/.pi/agent/skills"
+        for dir in skills/*; do
+          test -d "$dir" || continue
+          name="$(basename "$dir")"
+          echo "→ Deploying skill $name"
+          rm -rf "$HOME/.pi/agent/skills/$name"
+          cp -r "$dir" "$HOME/.pi/agent/skills/$name"
+        done
+
+  'resources:deploy:all':
+    desc: Deploy all pi resources (extensions, agents as prompts, skills)
+    deps:
+      - 'ext:deploy:all'
+      - 'agents:deploy'
+      - 'skills:deploy'
+
+  'ext:deploy:xtdb-logger':
+    desc: Deploy xtdb-event-logger into pi's auto-load directory and install deps
+    cmds:
+      - mkdir -p "$HOME/.pi/agent/extensions"
+      - rm -rf "$HOME/.pi/agent/extensions/xtdb-event-logger"
+      - cp -r xtdb-event-logger "$HOME/.pi/agent/extensions/xtdb-event-logger"
+      - cd "$HOME/.pi/agent/extensions/xtdb-event-logger" && npm install
+
+  'ext:deploy':
+    desc: Deploy a single extension by name, e.g. task ext:deploy EXT=project-registry
+    requires:
+      vars: [EXT]
+    cmds:
+      - |
+        set -euo pipefail
+        test -f "{{.EXT}}/package.json" || { echo "Missing package: {{.EXT}}/package.json"; exit 1; }
+        node --input-type=module - <<'EOF'
+        import { readFileSync } from 'node:fs';
+        const pkg = JSON.parse(readFileSync('{{.EXT}}/package.json', 'utf8'));
+        if (!pkg.pi?.extensions) {
+          console.error('Package does not declare pi.extensions: {{.EXT}}');
+          process.exit(1);
+        }
+        EOF
+        mkdir -p "$HOME/.pi/agent/extensions"
+        rm -rf "$HOME/.pi/agent/extensions/{{.EXT}}"
+        cp -r "{{.EXT}}" "$HOME/.pi/agent/extensions/{{.EXT}}"
+        (cd "$HOME/.pi/agent/extensions/{{.EXT}}" && npm install)
+
+  'ext:deploy:all':
+    desc: Deploy every package in this repo that declares a pi extension
+    cmds:
+      - |
+        set -euo pipefail
+        mkdir -p "$HOME/.pi/agent/extensions"
+        EXTENSIONS="$(node --input-type=module - <<'EOF'
+        import { readdirSync, readFileSync, statSync } from 'node:fs';
+        import { join } from 'node:path';
+
+        for (const name of readdirSync('.').sort()) {
+          try {
+            if (!statSync(name).isDirectory()) continue;
+            const pkg = JSON.parse(readFileSync(join(name, 'package.json'), 'utf8'));
+            if (pkg.pi?.extensions) console.log(name);
+          } catch {}
+        }
+        EOF
+        )"
+        for dir in $EXTENSIONS; do
+          echo "→ Deploying $dir"
+          rm -rf "$HOME/.pi/agent/extensions/$dir"
+          cp -r "$dir" "$HOME/.pi/agent/extensions/$dir"
+          (cd "$HOME/.pi/agent/extensions/$dir" && npm install)
+        done
+
+  'ext:list':
+    desc: List repo packages that declare a pi extension
+    cmds:
+      - |
+        node --input-type=module - <<'EOF'
+        import { readdirSync, readFileSync, statSync } from 'node:fs';
+        import { join } from 'node:path';
+
+        for (const name of readdirSync('.').sort()) {
+          try {
+            if (!statSync(name).isDirectory()) continue;
+            const pkg = JSON.parse(readFileSync(join(name, 'package.json'), 'utf8'));
+            if (pkg.pi?.extensions) console.log(name);
+          } catch {}
+        }
+        EOF
+
+  'ext:status':
+    desc: Show deployed pi extensions under ~/.pi/agent/extensions
+    cmds:
+      - ls -la "$HOME/.pi/agent/extensions" || true
+
+  'events:count':
+    desc: Show the number of rows currently in XTDB's events table
+    cmds:
+      - PGPASSWORD=xtdb psql -h localhost -p 5433 -U xtdb -d xtdb -Atqc "SELECT COUNT(*) FROM events"
+
+  'events:recent':
+    desc: Show the most recent events from XTDB
+    cmds:
+      - PGPASSWORD=xtdb psql -h localhost -p 5433 -U xtdb -d xtdb -c "SELECT seq, event_name, session_id, ts FROM events ORDER BY seq DESC LIMIT 20"
+
+  smoke:
+    desc: Post-deploy smoke test — verify all extensions, agents, skills, and prompts are deployed
+    dir: test
+    cmds:
+      - npx jiti smoke-test.ts
+
+  doctor:
+    desc: Verify XTDB, deployed logger, and current event count
+    deps:
+      - 'xtdb:health'
+    cmds:
+      - 'test -d "$HOME/.pi/agent/extensions/xtdb-event-logger" && echo "xtdb-event-logger deployed" || (echo "xtdb-event-logger missing"; exit 1)'
+      - 'echo "Current XTDB event count:"'
+      - 'PGPASSWORD=xtdb psql -h localhost -p 5433 -U xtdb -d xtdb -Atqc "SELECT COUNT(*) FROM events"'
