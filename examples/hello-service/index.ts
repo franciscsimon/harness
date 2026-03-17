@@ -1,11 +1,6 @@
-import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { registerRoutes } from "./routes";
+import app from "./app";
 
-const app = new Hono();
-registerRoutes(app);
-
-const port = Number(process.env.PORT) || 3111;
-serve({ fetch: app.fetch, port }, () => {
-  console.log(`  🎯 hello-service → http://localhost:${port}`);
+serve({ fetch: app.fetch, port: 3111 }, () => {
+  console.log("hello-service listening on http://localhost:3111");
 });
