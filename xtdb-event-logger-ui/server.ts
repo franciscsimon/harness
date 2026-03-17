@@ -18,6 +18,9 @@ import {
   getSessionKnowledge,
   getErrorPatterns,
   getProjections,
+  getProjects,
+  getProject,
+  getProjectSessions,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -30,6 +33,7 @@ import { renderSessionDetail } from "./pages/session-detail.ts";
 import { renderDashboard } from "./pages/dashboard.ts";
 import { renderKnowledge } from "./pages/knowledge.ts";
 import { renderFlow } from "./pages/flow.ts";
+import { renderProjects, renderProjectDetail } from "./pages/projects.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -80,6 +84,19 @@ app.get("/sessions", async (c) => {
 app.get("/dashboard", async (c) => {
   const [sessions, tools, errors] = await Promise.all([getDashboardSessions(), getToolUsageStats(), getErrorPatterns()]);
   return c.html(renderDashboard(sessions, tools, errors));
+});
+
+app.get("/projects", async (c) => {
+  const projects = await getProjects();
+  return c.html(renderProjects(projects));
+});
+
+app.get("/projects/:id{.+}", async (c) => {
+  const id = decodeURIComponent(c.req.param("id"));
+  const project = await getProject(id);
+  if (!project) return c.html("<h1>Project not found</h1>", 404);
+  const sessions = await getProjectSessions(id);
+  return c.html(renderProjectDetail(project, sessions));
 });
 
 app.get("/sessions/:id{.+}/flow", async (c) => {

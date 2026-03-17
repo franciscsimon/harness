@@ -520,6 +520,64 @@ export async function getProjections(sessionId: string): Promise<ProjectionRow[]
   return rows as unknown as ProjectionRow[];
 }
 
+// ─── Projects ──────────────────────────────────────────────────
+
+export interface ProjectRow {
+  _id: string;
+  canonical_id: string;
+  name: string;
+  identity_type: string;
+  git_remote_url: string | null;
+  git_root_path: string | null;
+  first_seen_ts: string;
+  last_seen_ts: string;
+  session_count: string;
+  jsonld: string;
+}
+
+export interface SessionProjectRow {
+  _id: string;
+  session_id: string;
+  project_id: string;
+  canonical_id: string;
+  cwd: string;
+  git_root_path: string | null;
+  ts: string;
+  is_first_session: boolean;
+}
+
+/**
+ * Get all registered projects, most recently seen first.
+ */
+export async function getProjects(): Promise<ProjectRow[]> {
+  const rows = await sql`
+    SELECT * FROM projects ORDER BY last_seen_ts DESC
+  `;
+  return rows as unknown as ProjectRow[];
+}
+
+/**
+ * Get a single project by ID.
+ */
+export async function getProject(id: string): Promise<ProjectRow | null> {
+  const rows = await sql`
+    SELECT * FROM projects WHERE _id = ${t(id)}
+  `;
+  return (rows[0] as unknown as ProjectRow) ?? null;
+}
+
+/**
+ * Get all session links for a project, most recent first.
+ */
+export async function getProjectSessions(projectId: string): Promise<SessionProjectRow[]> {
+  const rows = await sql`
+    SELECT * FROM session_projects
+    WHERE project_id = ${t(projectId)}
+    ORDER BY ts DESC
+  `;
+  return rows as unknown as SessionProjectRow[];
+}
+
 /**
  * Close the connection.
  */

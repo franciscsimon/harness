@@ -15,6 +15,15 @@ export const XSD = "http://www.w3.org/2001/XMLSchema#";
 /** Schema.org vocabulary */
 export const SCHEMA = "https://schema.org/";
 
+/** DOAP — Description of a Project */
+export const DOAP = "http://usefulinc.com/ns/doap#";
+
+/** PROV-O — W3C Provenance Ontology */
+export const PROV = "http://www.w3.org/ns/prov#";
+
+/** FOAF — Friend of a Friend (agent identity) */
+export const FOAF = "http://xmlns.com/foaf/0.1/";
+
 /**
  * JSON-LD @context object for serialization.
  * Used by rdf/serialize.ts when producing JSON-LD output.
@@ -24,4 +33,7 @@ export const JSONLD_CONTEXT = {
   rdf: RDF,
   xsd: XSD,
   schema: SCHEMA,
+  doap: DOAP,
+  prov: PROV,
+  foaf: FOAF,
 };

@@ -6,7 +6,7 @@ This walks through building a REST service **using the harness tools and agents*
 
 ```bash
 # XTDB (events are captured automatically)
-docker run -d --name xtdb-events -p 5433:5432 -p 8081:8080 ghcr.io/xtdb/xtdb:latest
+cd ~/harness && docker compose up -d
 
 # Event stream UI (optional, to watch events flow)
 cd ~/harness/xtdb-event-logger-ui && npm install && npm start
