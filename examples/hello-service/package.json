@@ -1,12 +1,6 @@
 {
   "name": "hello-service",
   "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "start": "npx jiti index.ts"
-  },
-  "dependencies": {
-    "hono": "^4",
-    "@hono/node-server": "^1"
-  }
+  "scripts": { "start": "npx jiti index.ts", "test": "npx jiti test.ts" },
+  "dependencies": { "hono": "^4.0.0", "@hono/node-server": "^1.0.0" }
 }

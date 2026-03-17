@@ -6,7 +6,6 @@ const app = new Hono();
 registerRoutes(app);
 
 const port = Number(process.env.PORT) || 3111;
-
 serve({ fetch: app.fetch, port }, () => {
-  console.log(`hello-service listening on http://localhost:${port}`);
+  console.log(`  🎯 hello-service → http://localhost:${port}`);
 });
