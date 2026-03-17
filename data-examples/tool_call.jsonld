@@ -1,0 +1,126 @@
+{
+  "@context": {
+    "ev": "https://pi.dev/events/",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "schema": "https://schema.org/"
+  },
+  "@graph": [
+    {
+      "@id": "urn:uuid:1cd346ff-814f-47a0-bc05-377791059d56",
+      "@type": [
+        "ev:ToolCall"
+      ],
+      "ev:eventName": [
+        {
+          "@value": "tool_call"
+        }
+      ],
+      "ev:category": [
+        {
+          "@value": "tool"
+        }
+      ],
+      "ev:canIntercept": [
+        {
+          "@value": "true",
+          "@type": "http://www.w3.org/2001/XMLSchema#boolean"
+        }
+      ],
+      "ev:schemaVersion": [
+        {
+          "@value": "1",
+          "@type": "http://www.w3.org/2001/XMLSchema#integer"
+        }
+      ],
+      "ev:timestamp": [
+        {
+          "@value": "1773688744306",
+          "@type": "http://www.w3.org/2001/XMLSchema#long"
+        }
+      ],
+      "ev:seq": [
+        {
+          "@value": "64",
+          "@type": "http://www.w3.org/2001/XMLSchema#long"
+        }
+      ],
+      "ev:environment": [
+        {
+          "@value": "pi.dev"
+        }
+      ],
+      "ev:sessionId": [
+        {
+          "@value": "/Users/opunix/.pi/agent/sessions/--Users-opunix-harness--/2026-03-16T15-02-50-041Z_ff16c41e-e98b-4e25-a63b-c0eb16af997d.jsonl"
+        }
+      ],
+      "ev:cwd": [
+        {
+          "@value": "/Users/opunix/harness"
+        }
+      ],
+      "ev:toolName": [
+        {
+          "@value": "bash"
+        }
+      ],
+      "ev:toolCallId": [
+        {
+          "@value": "toolu_01GJarnY666YrDmDnmreTPeR"
+        }
+      ],
+      "ev:payload": [
+        {
+          "@value": "{\"command\":\"# Check if there are any CLAUDE.md or agent config files in the project\\nfind ~/.pi -name \\\"CLAUDE.md\\\" -o -name \\\"agents.json\\\" -o -name \\\"agent.json\\\" 2>/dev/null\\necho \\\"---\\\"\\n# Check the patterns repo for anything about \\\"agents\\\" specifically\\ncurl -s https://api.github.com/repos/lexler/augmented-coding-patterns/git/trees/main?recursive=1 | python3 -c \\\"\\nimport sys, json\\ndata = json.load(sys.stdin)\\nfor item in data.get('tree', []):\\n    p = item['path']\\n    if 'agent' in p.lower() and not 'anti' in p:\\n        print(p)\\n\\\"\"}"
+        }
+      ],
+      "ev:environmentMeta": [
+        {
+          "@id": "_:env_1cd346ff-814f-47a0-bc05-377791059d56"
+        }
+      ]
+    },
+    {
+      "@id": "_:env_1cd346ff-814f-47a0-bc05-377791059d56",
+      "@type": [
+        "schema:SoftwareApplication"
+      ],
+      "schema:name": [
+        {
+          "@value": "pi.dev"
+        }
+      ],
+      "schema:version": [
+        {
+          "@value": "unknown"
+        }
+      ],
+      "schema:operatingSystem": [
+        {
+          "@value": "Darwin 25.3.0"
+        }
+      ],
+      "ev:arch": [
+        {
+          "@value": "arm64"
+        }
+      ],
+      "ev:nodeVersion": [
+        {
+          "@value": "v25.6.1"
+        }
+      ],
+      "ev:hostname": [
+        {
+          "@value": "Mac-mini-von-opunix.local"
+        }
+      ],
+      "ev:username": [
+        {
+          "@value": "opunix"
+        }
+      ]
+    }
+  ]
+}

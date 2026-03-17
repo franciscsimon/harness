@@ -1,0 +1,127 @@
+{
+  "@context": {
+    "ev": "https://pi.dev/events/",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "schema": "https://schema.org/"
+  },
+  "@graph": [
+    {
+      "@id": "urn:uuid:6ed2592a-6a40-43a5-a959-03d1db347c48",
+      "@type": [
+        "ev:ToolResult"
+      ],
+      "ev:eventName": [
+        {
+          "@value": "tool_result"
+        }
+      ],
+      "ev:category": [
+        {
+          "@value": "tool"
+        }
+      ],
+      "ev:canIntercept": [
+        {
+          "@value": "true",
+          "@type": "http://www.w3.org/2001/XMLSchema#boolean"
+        }
+      ],
+      "ev:schemaVersion": [
+        {
+          "@value": "1",
+          "@type": "http://www.w3.org/2001/XMLSchema#integer"
+        }
+      ],
+      "ev:timestamp": [
+        {
+          "@value": "1773689556458",
+          "@type": "http://www.w3.org/2001/XMLSchema#long"
+        }
+      ],
+      "ev:seq": [
+        {
+          "@value": "101",
+          "@type": "http://www.w3.org/2001/XMLSchema#long"
+        }
+      ],
+      "ev:environment": [
+        {
+          "@value": "pi.dev"
+        }
+      ],
+      "ev:sessionId": [
+        {
+          "@value": "/Users/opunix/.pi/agent/sessions/--Users-opunix-harness--/2026-03-16T15-02-50-041Z_ff16c41e-e98b-4e25-a63b-c0eb16af997d.jsonl"
+        }
+      ],
+      "ev:cwd": [
+        {
+          "@value": "/Users/opunix/harness"
+        }
+      ],
+      "ev:toolName": [
+        {
+          "@value": "bash"
+        }
+      ],
+      "ev:toolCallId": [
+        {
+          "@value": "toolu_01W15xaLNop1yww3t7odp4ww"
+        }
+      ],
+      "ev:isError": [
+        {
+          "@value": "false",
+          "@type": "http://www.w3.org/2001/XMLSchema#boolean"
+        }
+      ],
+      "ev:environmentMeta": [
+        {
+          "@id": "_:env_6ed2592a-6a40-43a5-a959-03d1db347c48"
+        }
+      ]
+    },
+    {
+      "@id": "_:env_6ed2592a-6a40-43a5-a959-03d1db347c48",
+      "@type": [
+        "schema:SoftwareApplication"
+      ],
+      "schema:name": [
+        {
+          "@value": "pi.dev"
+        }
+      ],
+      "schema:version": [
+        {
+          "@value": "unknown"
+        }
+      ],
+      "schema:operatingSystem": [
+        {
+          "@value": "Darwin 25.3.0"
+        }
+      ],
+      "ev:arch": [
+        {
+          "@value": "arm64"
+        }
+      ],
+      "ev:nodeVersion": [
+        {
+          "@value": "v25.6.1"
+        }
+      ],
+      "ev:hostname": [
+        {
+          "@value": "Mac-mini-von-opunix.local"
+        }
+      ],
+      "ev:username": [
+        {
+          "@value": "opunix"
+        }
+      ]
+    }
+  ]
+}
