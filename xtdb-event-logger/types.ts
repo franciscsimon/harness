@@ -2,7 +2,7 @@ import type { Quad } from "n3";
 
 // ─── Schema Version ────────────────────────────────────────────────
 // Bump when any handler's extraction logic changes.
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 // ─── Event Categories ──────────────────────────────────────────────
 
@@ -68,6 +68,23 @@ export interface EventFields {
   modelSource?: string | null;
   prevModelProvider?: string | null;
   prevModelId?: string | null;
+
+  // Full content — no truncation (schema v2)
+  messageContent?: string | null;       // full message JSON (message_start, message_end, turn_end)
+  streamDelta?: string | null;          // actual delta text (message_update)
+  toolInput?: string | null;            // full tool input/args JSON (tool_call, tool_execution_start, tool_result)
+  toolContent?: string | null;          // full tool output content JSON (tool_result, tool_execution_end)
+  toolDetails?: string | null;          // tool result details JSON (tool_result, tool_execution_end)
+  toolPartialResult?: string | null;    // streaming partial result (tool_execution_update)
+  toolArgs?: string | null;             // tool args JSON (tool_execution_start, tool_execution_update)
+  agentMessages?: string | null;        // full messages array JSON (agent_end)
+  systemPrompt?: string | null;         // system prompt text (before_agent_start)
+  images?: string | null;               // images JSON (before_agent_start, input)
+  contextMessages?: string | null;      // full context messages JSON (context)
+  providerPayload?: string | null;      // full provider request JSON (before_provider_request)
+  turnMessage?: string | null;          // assistant message JSON (turn_end)
+  turnToolResults?: string | null;      // tool results array JSON (turn_end)
+  compactBranchEntries?: string | null; // branch entries JSON (session_before_compact)
 
   // Generic
   payload?: string | null;
