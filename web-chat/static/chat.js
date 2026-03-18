@@ -133,8 +133,14 @@ let currentSessionFile = null;
 function fetchDecisionsAndArtifacts() {
   if (!currentSessionFile) return;
   const sid = encodeURIComponent(currentSessionFile);
-  fetch(`${DASHBOARD_API}/decisions?session_id=${sid}`).then(r => r.json()).then(renderDecisions).catch(() => {});
-  fetch(`${DASHBOARD_API}/artifacts?session_id=${sid}`).then(r => r.json()).then(renderArtifacts).catch(() => {});
+  fetch(`${DASHBOARD_API}/decisions?session_id=${sid}`)
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(renderDecisions)
+    .catch(e => console.warn("[sidebar] decisions fetch failed:", e.message));
+  fetch(`${DASHBOARD_API}/artifacts?session_id=${sid}`)
+    .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(renderArtifacts)
+    .catch(e => console.warn("[sidebar] artifacts fetch failed:", e.message));
 }
 
 function renderDecisions(decisions) {

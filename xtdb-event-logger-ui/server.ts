@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -58,6 +59,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // ─── App ───────────────────────────────────────────────────────────
 
 const app = new Hono();
+app.use("/api/*", cors());
 
 // ── Static files ───────────────────────────────────────────────────
 
