@@ -24,7 +24,12 @@ import {
   getDecisions,
   getProjectDecisions,
   getArtifacts,
-  getArtifactHistory,
+  getArtifactVersionSummaries,
+  getArtifactReadCounts,
+  getArtifactVersionsByPath,
+  getArtifactReadsByPath,
+  getArtifactVersion,
+  getAdjacentVersions,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -39,7 +44,9 @@ import { renderKnowledge } from "./pages/knowledge.ts";
 import { renderFlow } from "./pages/flow.ts";
 import { renderProjects, renderProjectDetail } from "./pages/projects.ts";
 import { renderDecisions, renderProjectDecisionsSection } from "./pages/decisions.ts";
-import { renderArtifacts, renderArtifactHistory } from "./pages/artifacts.ts";
+import { renderArtifacts } from "./pages/artifacts.ts";
+import { renderArtifactVersions } from "./pages/artifact-versions.ts";
+import { renderArtifactContent } from "./pages/artifact-content.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -112,16 +119,28 @@ app.get("/decisions", async (c) => {
 });
 
 app.get("/artifacts", async (c) => {
-  const [artifacts, projects] = await Promise.all([getArtifacts(), getProjects()]);
-  return c.html(renderArtifacts(artifacts, projects));
+  const [artifacts, projects, versionSummaries, readCounts] = await Promise.all([
+    getArtifacts(), getProjects(), getArtifactVersionSummaries(), getArtifactReadCounts()
+  ]);
+  return c.html(renderArtifacts(artifacts, projects, versionSummaries, readCounts));
 });
 
-app.get("/artifacts/history", async (c) => {
-  const projectId = c.req.query("project") ?? "";
+app.get("/artifacts/versions", async (c) => {
   const path = c.req.query("path") ?? "";
-  if (!projectId || !path) return c.html("<h1>Missing project or path</h1>", 400);
-  const history = await getArtifactHistory(projectId, path);
-  return c.html(renderArtifactHistory(path, history));
+  if (!path) return c.html("<h1>Missing path parameter</h1>", 400);
+  const [versions, reads] = await Promise.all([
+    getArtifactVersionsByPath(path), getArtifactReadsByPath(path)
+  ]);
+  if (versions.length === 0) return c.html("<h1>No versions found for this path</h1>", 404);
+  return c.html(renderArtifactVersions(path, versions, reads));
+});
+
+app.get("/artifacts/content/:id{.+}", async (c) => {
+  const id = decodeURIComponent(c.req.param("id"));
+  const version = await getArtifactVersion(id);
+  if (!version) return c.html("<h1>Version not found</h1>", 404);
+  const { prev, next } = await getAdjacentVersions(version.path, Number(version.ts));
+  return c.html(renderArtifactContent(version, prev, next));
 });
 
 app.get("/sessions/:id{.+}/flow", async (c) => {

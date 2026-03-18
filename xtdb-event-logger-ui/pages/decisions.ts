@@ -66,6 +66,8 @@ export function renderDecisions(decisions: DecisionRow[], projects: ProjectRow[]
         <span class="header-sep">·</span>
         <a href="/sessions" class="back-link">📂 Sessions</a>
         <span class="header-sep">·</span>
+        <a href="/artifacts" class="back-link">📦 Artifacts</a>
+        <span class="header-sep">·</span>
         <a href="/dashboard" class="back-link">📊 Dashboard</a>
       </h1>
       <span class="total-badge">${decisions.length} decision${decisions.length !== 1 ? "s" : ""}</span>

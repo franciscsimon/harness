@@ -78,6 +78,8 @@ export function renderDashboard(
         <span class="header-sep">·</span>
         <a href="/decisions" class="back-link">📋 Decisions</a>
         <span class="header-sep">·</span>
+        <a href="/artifacts" class="back-link">📦 Artifacts</a>
+        <span class="header-sep">·</span>
         📊 Dashboard
       </h1>
       <button class="btn btn-danger" id="btn-wipe">🗑 Wipe DB</button>

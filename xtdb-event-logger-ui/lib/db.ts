@@ -21,6 +21,8 @@ async function ensureTables(): Promise<void> {
     { table: "file_metrics", columns: "_id, project_id, session_id, file_path, edit_count, error_count, ts", values: "'_seed', '', '', '', 0, 0, 0" },
     { table: "session_postmortems", columns: "_id, project_id, session_id, goal, what_worked, what_failed, files_changed, error_count, turn_count, ts, jsonld", values: "'_seed', '', '', '', '', '', '', 0, 0, 0, ''" },
     { table: "artifacts", columns: "_id, project_id, session_id, path, content_hash, kind, operation, tool_call_id, ts, jsonld", values: "'_seed', '', '', '', '', '', '', '', 0, ''" },
+    { table: "artifact_versions", columns: "_id, session_id, path, relative_path, version, content_hash, content, size_bytes, operation, tool_call_id, ts, jsonld", values: "'_seed', '', '', '', 0, '', '', 0, '', '', 0, ''" },
+    { table: "artifact_reads", columns: "_id, session_id, path, tool_call_id, ts", values: "'_seed', '', '', '', 0" },
   ];
   for (const s of seeds) {
     try {
@@ -772,6 +774,103 @@ export async function getSessionArtifacts(sessionId: string): Promise<ArtifactRo
     SELECT * FROM artifacts WHERE session_id = ${t(sessionId)} ORDER BY ts DESC
   `;
   return rows as unknown as ArtifactRow[];
+}
+
+// ─── Artifact Versions ─────────────────────────────────────────
+
+export interface ArtifactVersionRow {
+  _id: string;
+  session_id: string;
+  path: string;
+  relative_path: string;
+  version: number;
+  content_hash: string;
+  content: string;
+  size_bytes: number;
+  operation: string;
+  tool_call_id: string;
+  ts: string;
+  jsonld: string;
+}
+
+export interface ArtifactVersionSummary {
+  _id: string;
+  session_id: string;
+  path: string;
+  relative_path: string;
+  version: number;
+  content_hash: string;
+  size_bytes: number;
+  operation: string;
+  tool_call_id: string;
+  ts: string;
+}
+
+export interface ArtifactReadRow {
+  _id: string;
+  session_id: string;
+  path: string;
+  tool_call_id: string;
+  ts: string;
+}
+
+export async function getArtifactVersionSummaries(): Promise<ArtifactVersionSummary[]> {
+  await _tablesReady;
+  const rows = await sql`
+    SELECT _id, session_id, path, relative_path, version, content_hash,
+           size_bytes, operation, tool_call_id, ts
+    FROM artifact_versions ORDER BY ts DESC
+  `;
+  return rows as unknown as ArtifactVersionSummary[];
+}
+
+export async function getArtifactReadCounts(): Promise<Record<string, number>> {
+  await _tablesReady;
+  const rows = await sql`SELECT path, COUNT(*)::int AS cnt FROM artifact_reads GROUP BY path`;
+  const result: Record<string, number> = {};
+  for (const r of rows as any[]) result[r.path] = r.cnt;
+  return result;
+}
+
+export async function getArtifactVersionsByPath(path: string): Promise<ArtifactVersionRow[]> {
+  await _tablesReady;
+  const rows = await sql`SELECT * FROM artifact_versions WHERE path = ${t(path)} ORDER BY ts DESC`;
+  return rows as unknown as ArtifactVersionRow[];
+}
+
+export async function getArtifactReadsByPath(path: string): Promise<ArtifactReadRow[]> {
+  await _tablesReady;
+  const rows = await sql`SELECT * FROM artifact_reads WHERE path = ${t(path)} ORDER BY ts DESC`;
+  return rows as unknown as ArtifactReadRow[];
+}
+
+export async function getArtifactVersion(id: string): Promise<ArtifactVersionRow | null> {
+  await _tablesReady;
+  const rows = await sql`SELECT * FROM artifact_versions WHERE _id = ${t(id)}`;
+  return (rows[0] as unknown as ArtifactVersionRow) ?? null;
+}
+
+export async function getAdjacentVersions(path: string, ts: number): Promise<{
+  prev: ArtifactVersionSummary | null;
+  next: ArtifactVersionSummary | null;
+}> {
+  await _tablesReady;
+  const prevRows = await sql`
+    SELECT _id, session_id, path, relative_path, version, content_hash,
+           size_bytes, operation, tool_call_id, ts
+    FROM artifact_versions WHERE path = ${t(path)} AND ts < ${n(ts)}
+    ORDER BY ts DESC LIMIT 1
+  `;
+  const nextRows = await sql`
+    SELECT _id, session_id, path, relative_path, version, content_hash,
+           size_bytes, operation, tool_call_id, ts
+    FROM artifact_versions WHERE path = ${t(path)} AND ts > ${n(ts)}
+    ORDER BY ts ASC LIMIT 1
+  `;
+  return {
+    prev: (prevRows[0] as unknown as ArtifactVersionSummary) ?? null,
+    next: (nextRows[0] as unknown as ArtifactVersionSummary) ?? null,
+  };
 }
 
 /**
