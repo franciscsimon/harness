@@ -286,6 +286,21 @@ app.get("/api/sessions/:id{.+}/knowledge", async (c) => {
   return c.text(md, 200, { "Content-Type": "text/markdown; charset=utf-8" });
 });
 
+app.get("/api/decisions", async (c) => {
+  const sessionId = c.req.query("session_id");
+  const projectId = c.req.query("project_id");
+  const decisions = projectId ? await getProjectDecisions(projectId) : await getDecisions();
+  const filtered = sessionId ? decisions.filter(d => d.session_id === sessionId) : decisions;
+  return c.json(filtered);
+});
+
+app.get("/api/artifacts", async (c) => {
+  const sessionId = c.req.query("session_id");
+  const artifacts = await getArtifacts();
+  const filtered = sessionId ? artifacts.filter(a => a.session_id === sessionId) : artifacts;
+  return c.json(filtered);
+});
+
 app.post("/api/wipe", async (c) => {
   const deleted = await wipeAllEvents();
   return c.json({ deleted, message: `Erased ${deleted} events` });

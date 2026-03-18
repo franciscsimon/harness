@@ -87,6 +87,26 @@ export function renderChat(): string {
       </div>
     </details>
 
+    <!-- Decisions — accordion, collapsed -->
+    <details class="sb-accordion">
+      <summary class="sb-accordion-head">Decisions <span class="sb-badge" id="sb-decisions-count">0</span></summary>
+      <div class="sb-accordion-body">
+        <div id="sb-decisions" class="sb-scroll-list">
+          <div class="sb-empty">No decisions yet</div>
+        </div>
+      </div>
+    </details>
+
+    <!-- Artifacts — accordion, collapsed -->
+    <details class="sb-accordion">
+      <summary class="sb-accordion-head">Artifacts <span class="sb-badge" id="sb-artifacts-count">0</span></summary>
+      <div class="sb-accordion-body">
+        <div id="sb-artifacts" class="sb-scroll-list">
+          <div class="sb-empty">No artifacts yet</div>
+        </div>
+      </div>
+    </details>
+
     <!-- Dashboard — accordion, collapsed -->
     <details class="sb-accordion">
       <summary class="sb-accordion-head">Dashboard</summary>

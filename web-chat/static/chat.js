@@ -120,8 +120,46 @@ function updateSessionInfo(msg) {
     : "";
   if (msg.sessionFile) {
     sessionStorage.setItem("pi-chat-sessionFile", msg.sessionFile);
+    currentSessionFile = msg.sessionFile;
     $sbDashLink.href = `http://localhost:3333/sessions#${encodeURIComponent(msg.sessionFile)}`;
+    fetchDecisionsAndArtifacts();
   }
+}
+
+// ─── Decisions & Artifacts (sidebar) ─────────────────────────────
+const DASHBOARD_API = "http://localhost:3333/api";
+let currentSessionFile = null;
+
+function fetchDecisionsAndArtifacts() {
+  if (!currentSessionFile) return;
+  const sid = encodeURIComponent(currentSessionFile);
+  fetch(`${DASHBOARD_API}/decisions?session_id=${sid}`).then(r => r.json()).then(renderDecisions).catch(() => {});
+  fetch(`${DASHBOARD_API}/artifacts?session_id=${sid}`).then(r => r.json()).then(renderArtifacts).catch(() => {});
+}
+
+function renderDecisions(decisions) {
+  const container = document.getElementById("sb-decisions");
+  const badge = document.getElementById("sb-decisions-count");
+  badge.textContent = decisions.length;
+  if (!decisions.length) { container.innerHTML = '<div class="sb-empty">No decisions yet</div>'; return; }
+  container.innerHTML = decisions.map(d => {
+    const icon = d.outcome === "success" ? "✅" : d.outcome === "failure" ? "❌" : "⏸️";
+    return `<div class="sb-decision-item">${icon} <span class="sb-decision-what">${esc(d.what?.slice(0, 80) || "")}</span><span class="sb-decision-task">${esc(d.task || "")}</span></div>`;
+  }).join("");
+}
+
+function renderArtifacts(artifacts) {
+  const container = document.getElementById("sb-artifacts");
+  const badge = document.getElementById("sb-artifacts-count");
+  badge.textContent = artifacts.length;
+  if (!artifacts.length) { container.innerHTML = '<div class="sb-empty">No artifacts yet</div>'; return; }
+  // Dedupe by path, keep latest
+  const byPath = new Map();
+  for (const a of artifacts) byPath.set(a.path, a);
+  const unique = [...byPath.values()];
+  container.innerHTML = unique.map(a =>
+    `<div class="sb-artifact-item"><span class="sb-artifact-path">${esc(a.path?.replace(/^.*\//, "") || a.path)}</span><span class="sb-artifact-op">${esc(a.operation || a.kind)}</span></div>`
+  ).join("");
 }
 
 // ─── Stats (sidebar) ────────────────────────────────────────────
@@ -140,7 +178,7 @@ function setState(s) {
   $send.disabled = s !== "idle";
   $abort.style.display = s === "streaming" ? "" : "none";
   $send.style.display = s === "streaming" ? "none" : "";
-  if (s === "idle") $input.focus();
+  if (s === "idle") { $input.focus(); fetchDecisionsAndArtifacts(); }
 }
 
 // ─── Bubble Management ──────────────────────────────────────────

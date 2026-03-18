@@ -189,6 +189,28 @@ header { flex-shrink: 0; }
   padding: 6px 0; margin: 4px 0;
 }
 
+/* ─── Sidebar lists (decisions, artifacts) ───────────────────── */
+.sb-badge {
+  font-size: 9px; background: rgba(255,255,255,0.08); color: var(--text-dim);
+  padding: 1px 5px; border-radius: 8px; margin-left: 4px; font-weight: normal;
+  letter-spacing: normal; text-transform: none;
+}
+.sb-scroll-list { max-height: 200px; overflow-y: auto; }
+.sb-empty { font-size: 11px; color: var(--text-dim); padding: 4px 0; font-style: italic; }
+.sb-decision-item, .sb-artifact-item {
+  font-size: 11px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.04);
+  line-height: 1.4;
+}
+.sb-decision-item:last-child, .sb-artifact-item:last-child { border-bottom: none; }
+.sb-decision-outcome { font-size: 9px; font-weight: 600; text-transform: uppercase; margin-right: 4px; }
+.sb-decision-outcome.success { color: #22c55e; }
+.sb-decision-outcome.failure { color: #ef4444; }
+.sb-decision-outcome.deferred { color: #eab308; }
+.sb-decision-what { color: var(--text); }
+.sb-decision-task { color: var(--text-dim); font-size: 10px; display: block; margin-top: 2px; }
+.sb-artifact-path { font-family: var(--mono); color: #3b82f6; font-size: 10px; word-break: break-all; }
+.sb-artifact-op { font-size: 9px; color: var(--text-dim); text-transform: uppercase; margin-left: 4px; }
+
 /* ─── Command Autocomplete ───────────────────────────────────── */
 .ac-popup {
   position: fixed; z-index: 900; background: var(--bg-card); border: 1px solid var(--border);
