@@ -55,10 +55,12 @@ app.get("/ws", upgradeWebSocket((c) => {
       const msg = parseClientMessage(raw);
       if (!msg) return;
 
+      // Wrapper for sending to this specific WS connection (used by uiBridge)
+      const wsSend = (m: Record<string, unknown>) => send(ws, m as any);
+
       try {
         if (msg.type === "set_cwd") {
           connCwd = msg.cwd;
-          // If already initialized, destroy old session so next prompt creates a new one
           if (initialized) {
             await destroyPoolSession(connId);
             initialized = false;
@@ -71,7 +73,7 @@ app.get("/ws", upgradeWebSocket((c) => {
 
         if (msg.type === "init" && !initialized) {
           send(ws, { type: "status", state: "initializing" });
-          const session = await createPoolSession(connId, connCwd, msg.sessionFile);
+          const session = await createPoolSession(connId, connCwd, wsSend, msg.sessionFile);
 
           const unsub = session.subscribe((ev: any) => {
             switch (ev.type) {
@@ -112,7 +114,7 @@ app.get("/ws", upgradeWebSocket((c) => {
 
         if (!initialized && msg.type !== "list_sessions") {
           send(ws, { type: "status", state: "initializing" });
-          const session = await createPoolSession(connId, connCwd);
+          const session = await createPoolSession(connId, connCwd, wsSend);
 
           const unsub = session.subscribe((ev: any) => {
             switch (ev.type) {
@@ -169,6 +171,21 @@ app.get("/ws", upgradeWebSocket((c) => {
 
           case "steer":
             try { await session!.steer(msg.text); } catch {}
+            break;
+
+          case "followUp":
+            try { await session!.followUp(msg.text); } catch {}
+            break;
+
+          case "compact":
+            send(ws, { type: "status", state: "compacting" });
+            try {
+              const result = await session!.compact();
+              send(ws, { type: "compact_done", summary: result?.summary ?? "Compacted" });
+            } catch (err: any) {
+              send(ws, { type: "error", message: `Compact failed: ${err.message}` });
+            }
+            send(ws, { type: "status", state: "idle" });
             break;
 
           case "abort":

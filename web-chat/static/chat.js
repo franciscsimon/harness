@@ -60,13 +60,16 @@ function handleMessage(msg) {
       $cwdInput.value = msg.cwd;
       break;
     case "session_list": break; // future use
+    case "ui:notify": showNotify(msg.message, msg.level); break;
+    case "ui:status": showExtStatus(msg.key, msg.text); break;
+    case "compact_done": showSystemMsg(`📦 Compacted: ${msg.summary}`); break;
   }
 }
 
 // ─── State Management ───────────────────────────────────────────
 function setState(s) {
   state = s;
-  const colors = { disconnected: "#ef4444", idle: "#22c55e", streaming: "#f97316", initializing: "#eab308" };
+  const colors = { disconnected: "#ef4444", idle: "#22c55e", streaming: "#f97316", initializing: "#eab308", compacting: "#a855f7" };
   $status.innerHTML = `<span style="color:${colors[s] ?? "#999"}">●</span> ${s}`;
   $input.disabled = s !== "idle";
   $send.disabled = s !== "idle";
@@ -158,6 +161,37 @@ function showError(message) {
   scrollDown();
 }
 
+function showNotify(message, level) {
+  const colors = { info: "#3b82f6", warn: "#f97316", error: "#ef4444", success: "#22c55e" };
+  const color = colors[level] ?? colors.info;
+  const toast = el("div", "chat-toast");
+  toast.style.borderLeftColor = color;
+  toast.textContent = message;
+  $messages.appendChild(toast);
+  scrollDown();
+  setTimeout(() => { toast.style.opacity = "0.4"; }, 8000);
+}
+
+function showExtStatus(key, text) {
+  let bar = document.getElementById("ext-status-bar");
+  if (!bar) {
+    bar = el("div", "chat-ext-status");
+    bar.id = "ext-status-bar";
+    document.querySelector(".chat-input-wrap").prepend(bar);
+  }
+  if (!text) { bar.querySelectorAll(`[data-key="${key}"]`).forEach(e => e.remove()); return; }
+  let span = bar.querySelector(`[data-key="${key}"]`);
+  if (!span) { span = el("span", "chat-ext-status-item"); span.dataset.key = key; bar.appendChild(span); }
+  span.textContent = text;
+}
+
+function showSystemMsg(text) {
+  const div = el("div", "chat-system-msg");
+  div.textContent = text;
+  $messages.appendChild(div);
+  scrollDown();
+}
+
 // ─── History ────────────────────────────────────────────────────
 function renderHistory(messages) {
   $messages.innerHTML = "";
@@ -205,6 +239,16 @@ $input.addEventListener("input", autoResize);
 function sendPrompt() {
   const text = $input.value.trim();
   if (!text || state !== "idle") return;
+
+  // Handle built-in commands
+  if (text === "/compact") { wsSend({ type: "compact" }); showSystemMsg("📦 Compacting..."); $input.value = ""; autoResize(); return; }
+  if (text.startsWith("/followup ") || text.startsWith("/followUp ")) {
+    const msg = text.slice(text.indexOf(" ") + 1);
+    addUserBubble(`[followUp] ${msg}`);
+    wsSend({ type: "followUp", text: msg });
+    $input.value = ""; autoResize(); return;
+  }
+
   addUserBubble(text);
   wsSend({ type: "prompt", text });
   $input.value = "";

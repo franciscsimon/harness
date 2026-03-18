@@ -2,6 +2,8 @@ export type ClientMessage =
   | { type: "init"; sessionFile?: string }
   | { type: "prompt"; text: string }
   | { type: "steer"; text: string }
+  | { type: "followUp"; text: string }
+  | { type: "compact" }
   | { type: "abort" }
   | { type: "new_session" }
   | { type: "switch_session"; path: string }
@@ -26,8 +28,11 @@ export type ServerMessage =
   | { type: "session_list"; sessions: Array<{ id: string; path: string; firstMessage: string; messageCount: number }> }
   | { type: "history"; messages: Array<{ role: string; text: string; toolCalls?: Array<{ name: string; input: string; output: string; isError: boolean }> }> }
   | { type: "error"; message: string }
-  | { type: "status"; state: "idle" | "streaming" | "initializing" }
-  | { type: "cwd"; cwd: string };
+  | { type: "status"; state: "idle" | "streaming" | "initializing" | "compacting" }
+  | { type: "cwd"; cwd: string }
+  | { type: "ui:notify"; message: string; level: string }
+  | { type: "ui:status"; key: string; text: string }
+  | { type: "compact_done"; summary: string };
 
 export function parseClientMessage(raw: string): ClientMessage | null {
   try { return JSON.parse(raw); } catch { return null; }
