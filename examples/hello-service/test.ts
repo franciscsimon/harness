@@ -1,72 +1,35 @@
-import { serve } from "@hono/node-server";
-import app from "./app";
+import { serve } from '@hono/node-server'
+import assert from 'node:assert/strict'
+import app from './app.js'
 
-const PORT = 3111;
-const BASE = `http://localhost:${PORT}`;
-
-let passed = 0;
-let failed = 0;
-
-async function test(label: string, fn: () => Promise<void>) {
-  try {
-    await fn();
-    console.log(`✅ ${label}`);
-    passed++;
-  } catch (err: any) {
-    console.log(`❌ ${label} — ${err.message}`);
-    failed++;
-  }
-}
-
-function assert(condition: boolean, msg: string) {
-  if (!condition) throw new Error(msg);
-}
+const server = serve({ fetch: app.fetch, port: 3111 })
 
 async function run() {
-  // Start server
-  const server = serve({ fetch: app.fetch, port: PORT });
-  await new Promise((r) => setTimeout(r, 200));
+  // --- GET / ---
+  const root = await fetch('http://localhost:3111/')
+  assert.equal(root.status, 200, 'GET / should return 200')
+  const rootBody = await root.json()
+  assert.equal(rootBody.name, 'hello-service', 'name should be hello-service')
+  assert.equal(rootBody.version, '1.0.0', 'version should be 1.0.0')
 
-  // GET / — health/info endpoint
-  await test("GET / returns 200", async () => {
-    const res = await fetch(`${BASE}/`);
-    assert(res.status === 200, `expected 200, got ${res.status}`);
-  });
+  // --- GET /hello/:name ---
+  const hello = await fetch('http://localhost:3111/hello/world')
+  assert.equal(hello.status, 200, 'GET /hello/world should return 200')
+  const helloBody = await hello.json()
+  assert.equal(helloBody.greeting, 'Hello, world!', 'greeting should interpolate name')
 
-  await test("GET / returns correct body", async () => {
-    const res = await fetch(`${BASE}/`);
-    const body = await res.json();
-    assert(body.name === "hello-service", `expected name "hello-service", got "${body.name}"`);
-    assert(body.version === "1.0.0", `expected version "1.0.0", got "${body.version}"`);
-  });
+  // --- 404 ---
+  const notFound = await fetch('http://localhost:3111/nonexistent')
+  assert.equal(notFound.status, 404, 'Unknown route should return 404')
 
-  // GET /hello/:name
-  await test("GET /hello/World returns 200 with greeting", async () => {
-    const res = await fetch(`${BASE}/hello/World`);
-    assert(res.status === 200, `expected 200, got ${res.status}`);
-    const body = await res.json();
-    assert(body.greeting === "Hello, World!", `expected "Hello, World!", got "${body.greeting}"`);
-  });
-
-  await test("GET /hello/Pi returns 200 with greeting", async () => {
-    const res = await fetch(`${BASE}/hello/Pi`);
-    assert(res.status === 200, `expected 200, got ${res.status}`);
-    const body = await res.json();
-    assert(body.greeting === "Hello, Pi!", `expected "Hello, Pi!", got "${body.greeting}"`);
-  });
-
-  // 404 for unknown route
-  await test("GET /nonexistent returns 404", async () => {
-    const res = await fetch(`${BASE}/nonexistent`);
-    assert(res.status === 404, `expected 404, got ${res.status}`);
-  });
-
-  // Summary
-  console.log(`\n${passed + failed} tests: ${passed} passed, ${failed} failed`);
-
-  // Stop server
-  server.close();
-  process.exit(failed > 0 ? 1 : 0);
+  console.log('All tests passed')
 }
 
-run();
+run()
+  .catch((err) => {
+    console.error('Test failed:', err.message)
+    process.exit(1)
+  })
+  .finally(() => {
+    server.close()
+  })
