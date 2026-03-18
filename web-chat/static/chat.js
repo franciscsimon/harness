@@ -348,7 +348,7 @@ function sendPrompt() {
   if (text === "/copy") { wsSend({ type: "copy_last" }); $input.value = ""; autoResize(); return; }
   if (text === "/reload") { wsSend({ type: "reload" }); showSystemMsg("🔄 Reloading…"); $input.value = ""; autoResize(); return; }
   if (text === "/stats") { wsSend({ type: "get_stats" }); $input.value = ""; autoResize(); return; }
-  if (text === "/help" || text === "/commands") { wsSend({ type: "list_commands" }); $input.value = ""; autoResize(); return; }
+  if (text === "/help" || text === "/commands") { showCommandListInChat = true; wsSend({ type: "list_commands" }); $input.value = ""; autoResize(); return; }
 
   addUserBubble(text);
   wsSend({ type: "prompt", text });
@@ -409,8 +409,18 @@ function inline(s) {
 // ─── Command List & Autocomplete ────────────────────────────────
 let knownCommands = [];
 
+let showCommandListInChat = false;
+
 function showCommandList(commands) {
   knownCommands = commands;
+  // Retry pending autocomplete
+  if (acPendingFilter !== null) {
+    const f = acPendingFilter; acPendingFilter = null;
+    showAutocomplete(f);
+  }
+  // Only render the full list in chat if /help was typed
+  if (!showCommandListInChat) return;
+  showCommandListInChat = false;
   const div = el("div", "chat-system-msg");
   const lines = ["📋 Available commands:"];
   for (const c of commands) {
@@ -428,14 +438,22 @@ function showCommandList(commands) {
 // Simple autocomplete dropdown for / commands
 let acPopup = null;
 
+let acPendingFilter = null; // retry after fetch
+
 function showAutocomplete(filter) {
   hideAutocomplete();
-  if (!knownCommands.length) { wsSend({ type: "list_commands" }); return; }
-  const matches = knownCommands.filter(c => c.name.startsWith(filter));
+  if (!knownCommands.length) {
+    acPendingFilter = filter;
+    wsSend({ type: "list_commands" });
+    return;
+  }
+  const matches = filter
+    ? knownCommands.filter(c => c.name.startsWith(filter))
+    : knownCommands;
   if (!matches.length) return;
 
   acPopup = el("div", "ac-popup");
-  for (const c of matches.slice(0, 12)) {
+  for (const c of matches.slice(0, 15)) {
     const item = el("div", "ac-item");
     item.innerHTML = `<span class="ac-name">/${esc(c.name)}</span> <span class="ac-desc">${esc(c.description)}</span>`;
     item.addEventListener("mousedown", (e) => {
@@ -460,8 +478,8 @@ function hideAutocomplete() {
 $input.addEventListener("input", () => {
   autoResize();
   const val = $input.value;
-  if (val.startsWith("/") && !val.includes(" ") && val.length > 1) {
-    showAutocomplete(val.slice(1));
+  if (val.startsWith("/") && !val.includes(" ")) {
+    showAutocomplete(val.length > 1 ? val.slice(1) : "");
   } else {
     hideAutocomplete();
   }
