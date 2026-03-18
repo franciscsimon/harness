@@ -125,7 +125,7 @@ export default function (pi: ExtensionAPI) {
       alternatives: Type.Optional(Type.String({ description: "Alternatives considered before deciding" })),
       tags: Type.Optional(Type.Array(Type.String(), { description: "Tags for categorization (e.g. 'architecture', 'dependency')" })),
     }),
-    async execute(_toolCallId, params: LogDecisionInput, _signal, _onUpdate, _ctx) {
+    async execute(_toolCallId, params: LogDecisionInput, _signal, _onUpdate, ctx) {
       const current = (globalThis as any).__piCurrentProject;
       if (!current?.projectId) {
         return {
@@ -145,7 +145,7 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      const sessionId = _ctx.sessionManager?.getSessionFile?.() ?? "unknown";
+      const sessionId = ctx.sessionManager?.getSessionFile?.() ?? "unknown";
       const now = Date.now();
       const t = (v: string | null) => sql!.typed(v as any, 25);
       const n = (v: number | null) => sql!.typed(v as any, 20);
