@@ -256,7 +256,7 @@ export default function (pi: ExtensionAPI) {
       const result = await runSubagent(params.task, agentPrompt);
 
       // Persist delegation lineage to XTDB
-      const parentSession = _ctx.sessionManager?.getSessionFile?.() ?? "unknown";
+      const parentSession = ctx.sessionManager?.getSessionFile?.() ?? "unknown";
       const status = result.exitCode === 0 ? "success" : "failure";
       persistDelegation(parentSession, result.childSessionId, agentName, params.task, status, result.exitCode);
 

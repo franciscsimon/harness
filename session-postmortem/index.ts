@@ -132,6 +132,20 @@ export default function (pi: ExtensionAPI) {
       ? state.failedTools.slice(0, 5).map(f => `${f.tool}: ${f.error.slice(0, 100)}`).join("; ")
       : "No tool failures";
 
+    let artifactVersionCount = 0, decisionCount = 0, delegationCount = 0;
+    try {
+      const [av] = await db`SELECT COUNT(*)::int AS c FROM artifact_versions WHERE session_id = ${sessionId}`;
+      artifactVersionCount = av?.c ?? 0;
+    } catch {}
+    try {
+      const [dc] = await db`SELECT COUNT(*)::int AS c FROM decisions WHERE session_id = ${sessionId}`;
+      decisionCount = dc?.c ?? 0;
+    } catch {}
+    try {
+      const [dl] = await db`SELECT COUNT(*)::int AS c FROM delegations WHERE parent_session_id = ${sessionId}`;
+      delegationCount = dl?.c ?? 0;
+    } catch {}
+
     const jsonld = JSON.stringify({
       "@context": JSONLD_CONTEXT,
       "@id": `urn:pi:${id}`,
@@ -144,6 +158,9 @@ export default function (pi: ExtensionAPI) {
       "ev:filesChanged": files,
       "ev:errorCount": { "@value": String(state.errorCount), "@type": "xsd:integer" },
       "ev:turnCount": { "@value": String(state.turnCount), "@type": "xsd:integer" },
+      "ev:artifactVersionsProduced": { "@value": String(artifactVersionCount), "@type": "xsd:integer" },
+      "ev:decisionsLogged": { "@value": String(decisionCount), "@type": "xsd:integer" },
+      "ev:delegationsSpawned": { "@value": String(delegationCount), "@type": "xsd:integer" },
       "ev:ts": { "@value": String(now), "@type": "xsd:long" },
     });
 
