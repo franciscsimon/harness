@@ -19,6 +19,8 @@ export type ClientMessage =
   | { type: "get_fork_points" }
   // P5: Slash commands
   | { type: "command"; name: string; args?: string }
+  // P5: Commands
+  | { type: "list_commands" }
   // P6: Extras
   | { type: "export_html" }
   | { type: "copy_last" }
@@ -63,6 +65,8 @@ export type ServerMessage =
   // P4: Branching
   | { type: "fork_points"; points: Array<{ id: string; text: string }> }
   | { type: "forked"; sessionFile: string }
+  // P5: Commands
+  | { type: "command_list"; commands: Array<{ name: string; description: string; source: string }> }
   // P6: Extras
   | { type: "exported_html"; path: string }
   | { type: "copied_text"; text: string }

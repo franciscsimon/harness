@@ -273,6 +273,37 @@ export function getForkPoints(session: AgentSession): Array<{ id: string; text: 
   } catch { return []; }
 }
 
+// P5: List all available slash commands (built-in + extension)
+export function getAvailableCommands(session: AgentSession): Array<{ name: string; description: string; source: string }> {
+  const cmds: Array<{ name: string; description: string; source: string }> = [];
+
+  // Built-in web-chat commands
+  for (const [name, desc] of Object.entries({
+    compact: "Compact session context",
+    copy: "Copy last assistant reply",
+    export: "Export session to HTML",
+    reload: "Reload extensions/skills/prompts",
+    stats: "Show session stats",
+    name: "Set session display name",
+    followup: "Queue a follow-up message",
+    new: "Start new session (button)",
+    help: "Show available commands",
+  })) {
+    cmds.push({ name, description: desc, source: "web-chat" });
+  }
+
+  // Extension-registered commands
+  const runner = session.extensionRunner;
+  if (runner) {
+    const reserved = new Set(cmds.map(c => c.name));
+    for (const cmd of runner.getRegisteredCommands(reserved)) {
+      cmds.push({ name: cmd.name, description: cmd.description ?? "", source: "extension" });
+    }
+  }
+
+  return cmds.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // Evict idle sessions periodically
 setInterval(() => {
   const now = Date.now();

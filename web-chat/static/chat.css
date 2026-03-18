@@ -169,6 +169,19 @@ header { flex-shrink: 0; }
   padding: 6px 0; margin: 4px 0;
 }
 
+/* ─── Command Autocomplete ───────────────────────────────────── */
+.ac-popup {
+  position: fixed; z-index: 900; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  max-height: 260px; overflow-y: auto;
+}
+.ac-item {
+  padding: 6px 10px; cursor: pointer; font-size: 12px; display: flex; gap: 8px; align-items: baseline;
+}
+.ac-item:hover { background: rgba(59, 130, 246, 0.1); }
+.ac-name { font-family: var(--mono); color: #3b82f6; white-space: nowrap; }
+.ac-desc { color: var(--text-dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ─── UI Dialogs (extension confirm/select/input) ────────────── */
 .ui-dialog-overlay {
   position: fixed; inset: 0; z-index: 1000;

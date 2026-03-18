@@ -99,6 +99,7 @@ function handleMessage(msg) {
       break;
     // P4: Branching
     case "fork_points": break; // future: fork picker UI
+    case "command_list": showCommandList(msg.commands); break;
     case "forked": showSystemMsg(`🌿 Forked → ${msg.sessionFile}`); break;
     // P6: Export/copy
     case "exported_html": showSystemMsg(`📄 Exported: ${msg.path}`); break;
@@ -315,8 +316,6 @@ $cwdInput.addEventListener("keydown", (e) => {
     $cwdInput.blur();
   }
 });
-$input.addEventListener("input", autoResize);
-
 // Sidebar buttons
 document.getElementById("btn-export").addEventListener("click", () => wsSend({ type: "export_html" }));
 document.getElementById("btn-copy-last").addEventListener("click", () => wsSend({ type: "copy_last" }));
@@ -349,6 +348,7 @@ function sendPrompt() {
   if (text === "/copy") { wsSend({ type: "copy_last" }); $input.value = ""; autoResize(); return; }
   if (text === "/reload") { wsSend({ type: "reload" }); showSystemMsg("🔄 Reloading…"); $input.value = ""; autoResize(); return; }
   if (text === "/stats") { wsSend({ type: "get_stats" }); $input.value = ""; autoResize(); return; }
+  if (text === "/help" || text === "/commands") { wsSend({ type: "list_commands" }); $input.value = ""; autoResize(); return; }
 
   addUserBubble(text);
   wsSend({ type: "prompt", text });
@@ -405,6 +405,69 @@ function inline(s) {
   h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
   return h;
 }
+
+// ─── Command List & Autocomplete ────────────────────────────────
+let knownCommands = [];
+
+function showCommandList(commands) {
+  knownCommands = commands;
+  const div = el("div", "chat-system-msg");
+  const lines = ["📋 Available commands:"];
+  for (const c of commands) {
+    const tag = c.source === "extension" ? " (ext)" : "";
+    lines.push(`  /${c.name}${tag}${c.description ? " — " + c.description : ""}`);
+  }
+  div.style.textAlign = "left";
+  div.style.whiteSpace = "pre-wrap";
+  div.style.fontFamily = "var(--mono)";
+  div.textContent = lines.join("\n");
+  $messages.appendChild(div);
+  scrollDown();
+}
+
+// Simple autocomplete dropdown for / commands
+let acPopup = null;
+
+function showAutocomplete(filter) {
+  hideAutocomplete();
+  if (!knownCommands.length) { wsSend({ type: "list_commands" }); return; }
+  const matches = knownCommands.filter(c => c.name.startsWith(filter));
+  if (!matches.length) return;
+
+  acPopup = el("div", "ac-popup");
+  for (const c of matches.slice(0, 12)) {
+    const item = el("div", "ac-item");
+    item.innerHTML = `<span class="ac-name">/${esc(c.name)}</span> <span class="ac-desc">${esc(c.description)}</span>`;
+    item.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      $input.value = "/" + c.name + " ";
+      hideAutocomplete();
+      $input.focus();
+    });
+    acPopup.appendChild(item);
+  }
+  const rect = $input.getBoundingClientRect();
+  acPopup.style.bottom = (window.innerHeight - rect.top + 4) + "px";
+  acPopup.style.left = rect.left + "px";
+  acPopup.style.width = Math.min(rect.width, 400) + "px";
+  document.body.appendChild(acPopup);
+}
+
+function hideAutocomplete() {
+  if (acPopup) { acPopup.remove(); acPopup = null; }
+}
+
+$input.addEventListener("input", () => {
+  autoResize();
+  const val = $input.value;
+  if (val.startsWith("/") && !val.includes(" ") && val.length > 1) {
+    showAutocomplete(val.slice(1));
+  } else {
+    hideAutocomplete();
+  }
+});
+
+$input.addEventListener("blur", () => setTimeout(hideAutocomplete, 150));
 
 // ─── UI Dialogs (extension round-trip) ──────────────────────────
 function handleConfirm(msg) {

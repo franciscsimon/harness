@@ -10,7 +10,7 @@ import { parseClientMessage, send } from "./lib/ws-protocol.ts";
 import {
   createPoolSession, getPoolSession, destroyPoolSession, setUnsubscribe,
   setSessionModel, getSessionInfo, getContextUsageInfo, getSessionStatsInfo,
-  extractHistory, getForkPoints, poolSize, resolveDialog,
+  extractHistory, getForkPoints, getAvailableCommands, poolSize, resolveDialog,
 } from "./lib/session-pool.ts";
 import { renderChat } from "./pages/chat.ts";
 
@@ -321,6 +321,13 @@ app.get("/ws", upgradeWebSocket((c) => {
           case "get_fork_points":
             if (session) {
               send(ws, { type: "fork_points", points: getForkPoints(session) });
+            }
+            break;
+
+          // ─── P5: List commands ──────────────────────────
+          case "list_commands":
+            if (session) {
+              send(ws, { type: "command_list", commands: getAvailableCommands(session) });
             }
             break;
 
