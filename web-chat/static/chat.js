@@ -23,8 +23,11 @@ function connect() {
   ws = new WebSocket(`${proto}//${location.host}/ws`);
   ws.onopen = () => {
     reconnectDelay = 1000;
+    const urlSession = new URLSearchParams(location.search).get("session");
     const stored = sessionStorage.getItem("pi-chat-sessionFile");
-    wsSend({ type: "init", sessionFile: stored || undefined });
+    const sessionFile = urlSession || stored || undefined;
+    if (urlSession) { sessionStorage.setItem("pi-chat-sessionFile", urlSession); history.replaceState(null, "", "/"); }
+    wsSend({ type: "init", sessionFile });
   };
   ws.onclose = () => { setState("disconnected"); setTimeout(connect, reconnectDelay); reconnectDelay = Math.min(reconnectDelay * 2, 30000); };
   ws.onerror = () => {};
