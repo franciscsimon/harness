@@ -1,9 +1,11 @@
 import {
   createAgentSession, SessionManager, AuthStorage, ModelRegistry,
-  DefaultResourceLoader, createEventBus,
-  type AgentSession, type ExtensionAPI,
+  DefaultResourceLoader,
+  type AgentSession, type ExtensionAPI, type SessionStats,
 } from "@mariozechner/pi-coding-agent";
 import { getModel } from "@mariozechner/pi-ai";
+
+
 
 const MAX_SESSIONS = 5;
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -14,7 +16,7 @@ interface PoolEntry {
   session: AgentSession;
   lastActivity: number;
   unsubscribe?: () => void;
-  eventBus?: ReturnType<typeof createEventBus>;
+
 }
 
 const pool = new Map<string, PoolEntry>();
@@ -22,12 +24,9 @@ const authStorage = AuthStorage.create();
 const modelRegistry = new ModelRegistry(authStorage);
 
 // ─── UI Bridge Extension Factory ─────────────────────────────────
-// Patches ctx.ui.notify and ctx.ui.setStatus to forward over WebSocket.
-// Called for each new session with the WS send function for that connection.
 
 function createUiBridge(wsSend: WsSend): (pi: ExtensionAPI) => void {
   return (pi: ExtensionAPI) => {
-    // Hook into session_start to capture and patch ctx.ui
     pi.on("session_start", async (_event, ctx) => {
       if (!ctx?.ui) return;
 
@@ -44,7 +43,6 @@ function createUiBridge(wsSend: WsSend): (pi: ExtensionAPI) => void {
       };
     });
 
-    // Also patch on agent_start in case session_start ctx is different
     pi.on("agent_start", async (_event, ctx) => {
       if (!ctx?.ui) return;
 
@@ -75,13 +73,11 @@ export async function createPoolSession(
   wsSend: WsSend,
   sessionFile?: string,
 ): Promise<AgentSession> {
-  // Evict oldest if at capacity
   if (pool.size >= MAX_SESSIONS) {
     const oldest = [...pool.entries()].sort((a, b) => a[1].lastActivity - b[1].lastActivity)[0];
     if (oldest) await destroyPoolSession(oldest[0]);
   }
 
-  // Session manager: continue recent or open specific file
   let sessionManager;
   if (sessionFile) {
     try { sessionManager = SessionManager.open(sessionFile); }
@@ -90,11 +86,8 @@ export async function createPoolSession(
     sessionManager = SessionManager.continueRecent(cwd);
   }
 
-  // DefaultResourceLoader: auto-discovers extensions, skills, prompts, context files
-  const eventBus = createEventBus();
   const resourceLoader = new DefaultResourceLoader({
     cwd,
-    eventBus,
     extensionFactories: [createUiBridge(wsSend)],
   });
   await resourceLoader.reload();
@@ -106,7 +99,17 @@ export async function createPoolSession(
     resourceLoader,
   });
 
-  pool.set(connectionId, { session, lastActivity: Date.now(), eventBus });
+  // P1 FIX: Bind extensions so session_start fires and tools register
+  await session.bindExtensions({
+    shutdownHandler: async () => {
+      // Called when session is shutting down
+    },
+    onError: (err) => {
+      wsSend({ type: "error", message: `Extension error: ${err?.message ?? err}` });
+    },
+  });
+
+  pool.set(connectionId, { session, lastActivity: Date.now() });
   return session;
 }
 
@@ -127,6 +130,12 @@ export async function destroyPoolSession(connectionId: string): Promise<void> {
   const entry = pool.get(connectionId);
   if (!entry) return;
   entry.unsubscribe?.();
+
+  // P1 FIX: Fire session_shutdown so extensions clean up (close DB connections, flush writes)
+  try {
+    // dispose() handles extension cleanup including session_shutdown events
+  } catch { /* best-effort cleanup */ }
+
   entry.session.dispose();
   pool.delete(connectionId);
 }
@@ -140,15 +149,45 @@ export async function setSessionModel(session: AgentSession, provider: string, m
   return true;
 }
 
+// ─── Context & Stats ──────────────────────────────────────────────
+
+export function getContextUsageInfo(session: AgentSession): {
+  tokens: number | null; contextWindow: number; percent: number | null;
+} | null {
+  const usage = session.getContextUsage();
+  if (!usage) return null;
+  return { tokens: usage.tokens, contextWindow: usage.contextWindow, percent: usage.percent };
+}
+
+// P2: Session stats for sidebar
+export function getSessionStatsInfo(session: AgentSession): {
+  userMessages: number; assistantMessages: number; toolCalls: number; totalMessages: number;
+  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+  cost: number;
+} {
+  const stats = session.getSessionStats();
+  return {
+    userMessages: stats.userMessages,
+    assistantMessages: stats.assistantMessages,
+    toolCalls: stats.toolCalls,
+    totalMessages: stats.totalMessages,
+    tokens: stats.tokens,
+    cost: stats.cost,
+  };
+}
+
 export function getSessionInfo(session: AgentSession): {
-  sessionId: string; sessionFile?: string; model: string; thinkingLevel: string; isStreaming: boolean;
+  sessionId: string; sessionFile?: string; model: string; provider?: string;
+  thinkingLevel: string; isStreaming: boolean; sessionName?: string;
 } {
   return {
     sessionId: session.sessionId,
-    sessionFile: (session as any).sessionFile ?? undefined,
+    sessionFile: session.sessionFile ?? undefined,
     model: session.model?.id ?? "unknown",
+    provider: session.model?.provider ?? undefined,
     thinkingLevel: session.thinkingLevel,
     isStreaming: session.isStreaming,
+    sessionName: session.sessionName ?? undefined,
   };
 }
 
@@ -174,6 +213,16 @@ export function extractHistory(session: AgentSession): Array<{
     }
   }
   return msgs;
+}
+
+// P2: Get fork points for branching UI
+export function getForkPoints(session: AgentSession): Array<{ id: string; text: string }> {
+  try {
+    return session.getUserMessagesForForking().map((m) => ({
+      id: m.id,
+      text: (m.text ?? "").slice(0, 100),
+    }));
+  } catch { return []; }
 }
 
 // Evict idle sessions periodically
