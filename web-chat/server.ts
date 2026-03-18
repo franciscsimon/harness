@@ -10,7 +10,7 @@ import { parseClientMessage, send } from "./lib/ws-protocol.ts";
 import {
   createPoolSession, getPoolSession, destroyPoolSession, setUnsubscribe,
   setSessionModel, getSessionInfo, getContextUsageInfo, getSessionStatsInfo,
-  extractHistory, getForkPoints, poolSize,
+  extractHistory, getForkPoints, poolSize, resolveDialog,
 } from "./lib/session-pool.ts";
 import { renderChat } from "./pages/chat.ts";
 
@@ -169,6 +169,12 @@ app.get("/ws", upgradeWebSocket((c) => {
           send(ws, { type: "cwd", cwd: connCwd });
           send(ws, { type: "history", messages: [] });
           send(ws, { type: "status", state: "idle" });
+          return;
+        }
+
+        // ─── UI dialog responses (no session needed) ─────
+        if (msg.type === "ui:response") {
+          resolveDialog(msg.id, msg.value);
           return;
         }
 

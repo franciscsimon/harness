@@ -24,7 +24,9 @@ export type ClientMessage =
   | { type: "copy_last" }
   | { type: "reload" }
   | { type: "set_auto_compact"; enabled: boolean }
-  | { type: "set_auto_retry"; enabled: boolean };
+  | { type: "set_auto_retry"; enabled: boolean }
+  // UI dialog responses
+  | { type: "ui:response"; id: string; value: any };
 
 export type ServerMessage =
   | { type: "text_delta"; text: string }
@@ -46,6 +48,9 @@ export type ServerMessage =
   | { type: "cwd"; cwd: string }
   | { type: "ui:notify"; message: string; level: string }
   | { type: "ui:status"; key: string; text: string }
+  | { type: "ui:confirm"; id: string; title: string; message: string }
+  | { type: "ui:select"; id: string; title: string; options: string[] }
+  | { type: "ui:input"; id: string; title: string; placeholder?: string }
   | { type: "compact_done"; summary: string }
   | { type: "context_usage"; tokens: number | null; contextWindow: number; percent: number | null }
   // P2: Session stats

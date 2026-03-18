@@ -71,6 +71,9 @@ function handleMessage(msg) {
     case "session_list": break; // future: session picker
     case "ui:notify": showNotify(msg.message, msg.level); break;
     case "ui:status": showExtStatus(msg.key, msg.text); break;
+    case "ui:confirm": handleConfirm(msg); break;
+    case "ui:select": handleSelect(msg); break;
+    case "ui:input": handleInput(msg); break;
     case "compact_done": showSystemMsg(`📦 Compacted: ${msg.summary}`); break;
     case "context_usage": updateContextUsage(msg); break;
     // P2: Stats
@@ -401,6 +404,119 @@ function inline(s) {
   h = h.replace(/\*([^*]+)\*/g, "<em>$1</em>");
   h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
   return h;
+}
+
+// ─── UI Dialogs (extension round-trip) ──────────────────────────
+function handleConfirm(msg) {
+  showDialogOverlay({
+    title: msg.title,
+    body: msg.message,
+    buttons: [
+      { label: "Yes", value: true, primary: true },
+      { label: "No", value: false },
+    ],
+    onResult: (val) => wsSend({ type: "ui:response", id: msg.id, value: val }),
+    fallback: false,
+  });
+}
+
+function handleSelect(msg) {
+  showDialogOverlay({
+    title: msg.title,
+    options: msg.options,
+    onResult: (val) => wsSend({ type: "ui:response", id: msg.id, value: val }),
+    fallback: undefined,
+  });
+}
+
+function handleInput(msg) {
+  showDialogOverlay({
+    title: msg.title,
+    inputPlaceholder: msg.placeholder || "",
+    onResult: (val) => wsSend({ type: "ui:response", id: msg.id, value: val }),
+    fallback: undefined,
+  });
+}
+
+function showDialogOverlay({ title, body, buttons, options, inputPlaceholder, onResult, fallback }) {
+  // Remove any existing dialog
+  document.querySelectorAll(".ui-dialog-overlay").forEach(e => e.remove());
+
+  const overlay = el("div", "ui-dialog-overlay");
+  const dialog = el("div", "ui-dialog");
+
+  const titleEl = el("h3", "ui-dialog-title");
+  titleEl.textContent = title || "Confirm";
+  dialog.appendChild(titleEl);
+
+  let responded = false;
+  function respond(value) {
+    if (responded) return;
+    responded = true;
+    overlay.remove();
+    onResult(value);
+  }
+
+  if (body) {
+    const bodyEl = el("p", "ui-dialog-body");
+    bodyEl.textContent = body;
+    dialog.appendChild(bodyEl);
+  }
+
+  if (options) {
+    // Select list
+    const list = el("div", "ui-dialog-options");
+    for (const opt of options) {
+      const btn = el("button", "ui-dialog-option");
+      btn.textContent = opt;
+      btn.addEventListener("click", () => respond(opt));
+      list.appendChild(btn);
+    }
+    dialog.appendChild(list);
+    // Cancel
+    const cancel = el("button", "ui-dialog-cancel");
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => respond(undefined));
+    dialog.appendChild(cancel);
+  } else if (inputPlaceholder !== undefined) {
+    // Text input
+    const input = el("input", "ui-dialog-input");
+    input.type = "text";
+    input.placeholder = inputPlaceholder;
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") respond(input.value);
+      if (e.key === "Escape") respond(undefined);
+    });
+    dialog.appendChild(input);
+    const row = el("div", "ui-dialog-buttons");
+    const ok = el("button", "ui-dialog-btn ui-dialog-btn-primary");
+    ok.textContent = "OK";
+    ok.addEventListener("click", () => respond(input.value));
+    const cancel = el("button", "ui-dialog-btn");
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => respond(undefined));
+    row.appendChild(ok);
+    row.appendChild(cancel);
+    dialog.appendChild(row);
+    setTimeout(() => input.focus(), 50);
+  } else if (buttons) {
+    // Confirm buttons
+    const row = el("div", "ui-dialog-buttons");
+    for (const b of buttons) {
+      const btn = el("button", "ui-dialog-btn" + (b.primary ? " ui-dialog-btn-primary" : ""));
+      btn.textContent = b.label;
+      btn.addEventListener("click", () => respond(b.value));
+      row.appendChild(btn);
+    }
+    dialog.appendChild(row);
+  }
+
+  // Escape to dismiss
+  overlay.addEventListener("keydown", (e) => { if (e.key === "Escape") respond(fallback); });
+  overlay.tabIndex = -1;
+  overlay.appendChild(dialog);
+  document.body.appendChild(overlay);
+  overlay.focus();
 }
 
 // ─── Helpers ────────────────────────────────────────────────────
