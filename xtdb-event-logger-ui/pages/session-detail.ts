@@ -185,6 +185,8 @@ export function renderSessionDetail(sessionId: string, events: EventRow[]): stri
         <span class="header-sep">·</span>
         <a href="/artifacts" class="back-link">📦 Artifacts</a>
         <span class="header-sep">·</span>
+        <a href="http://localhost:3334" class="back-link">💬 Chat</a>
+        <span class="header-sep">·</span>
         📂 ${esc(name)}
       </h1>
       <span class="total-badge">${events.length} events</span>

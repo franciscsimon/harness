@@ -40,6 +40,8 @@ export function renderKnowledge(sessionId: string, knowledge: SessionKnowledge):
         <a href="/sessions/${encodeURIComponent(sessionId)}" class="back-link">${esc(name)}</a>
         <span class="header-sep">·</span>
         📝 Knowledge
+        <span class="header-sep">·</span>
+        <a href="http://localhost:3334" class="back-link">💬 Chat</a>
       </h1>
     </div>
   </header>

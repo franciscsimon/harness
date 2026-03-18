@@ -50,6 +50,8 @@ export function renderArtifactContent(
     <span class="header-sep">·</span>
     <a href="/artifacts/versions?path=${encodeURIComponent(version.path)}" class="back-link">📦 ${esc(fileName)}</a>
     <span class="header-sep">·</span> v${version.version}
+    <span class="header-sep">·</span>
+    <a href="http://localhost:3334" class="back-link">💬 Chat</a>
   </h1>
 </div></header>
 <main class="artc-page">

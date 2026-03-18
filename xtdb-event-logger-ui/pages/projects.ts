@@ -58,6 +58,8 @@ export function renderProjects(projects: ProjectRow[]): string {
         <a href="/artifacts" class="back-link">📦 Artifacts</a>
         <span class="header-sep">·</span>
         <a href="/dashboard" class="back-link">📊 Dashboard</a>
+        <span class="header-sep">·</span>
+        <a href="http://localhost:3334" class="back-link">💬 Chat</a>
       </h1>
       <span class="total-badge">${projects.length} project${projects.length !== 1 ? "s" : ""}</span>
     </div>

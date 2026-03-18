@@ -81,6 +81,8 @@ export function renderDashboard(
         <a href="/artifacts" class="back-link">📦 Artifacts</a>
         <span class="header-sep">·</span>
         📊 Dashboard
+        <span class="header-sep">·</span>
+        <a href="http://localhost:3334" class="back-link">💬 Chat</a>
       </h1>
       <button class="btn btn-danger" id="btn-wipe">🗑 Wipe DB</button>
     </div>
