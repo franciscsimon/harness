@@ -37,17 +37,8 @@ export function renderChat(): string {
   </div>
   <aside class="chat-sidebar" id="sidebar">
 
-    <!-- Session -->
-    <section class="sb-section">
-      <h3 class="sb-heading">Session</h3>
-      <div class="sb-row" id="sb-session-id"></div>
-      <div class="sb-row" id="sb-session-name"></div>
-      <div class="sb-row" id="sb-model"></div>
-      <div class="sb-row" id="sb-thinking"></div>
-    </section>
-
-    <!-- Context Window -->
-    <section class="sb-section">
+    <!-- Context Window — always visible -->
+    <section class="sb-section sb-section-pinned">
       <h3 class="sb-heading">Context Window</h3>
       <div class="chat-context-usage" id="context-usage">
         <div class="chat-context-bar"><div class="chat-context-fill" id="context-fill"></div></div>
@@ -55,37 +46,56 @@ export function renderChat(): string {
       </div>
     </section>
 
-    <!-- Stats -->
-    <section class="sb-section">
-      <h3 class="sb-heading">Stats</h3>
-      <div class="sb-row" id="sb-turns">Turns: —</div>
-      <div class="sb-row" id="sb-tokens">Tokens: —</div>
-      <div class="sb-row" id="sb-cost">Cost: —</div>
-    </section>
+    <!-- Session — accordion, collapsed -->
+    <details class="sb-accordion">
+      <summary class="sb-accordion-head">Session</summary>
+      <div class="sb-accordion-body">
+        <div class="sb-row" id="sb-session-id"></div>
+        <div class="sb-row" id="sb-session-name"></div>
+        <div class="sb-row" id="sb-model"></div>
+        <div class="sb-row" id="sb-thinking"></div>
+      </div>
+    </details>
 
-    <!-- Settings -->
-    <section class="sb-section">
-      <h3 class="sb-heading">Settings</h3>
-      <label class="sb-toggle"><input type="checkbox" id="chk-auto-compact" checked> Auto-compact</label>
-      <label class="sb-toggle"><input type="checkbox" id="chk-auto-retry" checked> Auto-retry</label>
-    </section>
+    <!-- Stats — accordion, collapsed -->
+    <details class="sb-accordion">
+      <summary class="sb-accordion-head">Stats</summary>
+      <div class="sb-accordion-body">
+        <div class="sb-row" id="sb-turns">Turns: —</div>
+        <div class="sb-row" id="sb-tokens">Tokens: —</div>
+        <div class="sb-row" id="sb-cost">Cost: —</div>
+      </div>
+    </details>
 
-    <!-- Actions -->
-    <section class="sb-section">
-      <h3 class="sb-heading">Actions</h3>
-      <button class="sb-btn" id="btn-export">📄 Export HTML</button>
-      <button class="sb-btn" id="btn-copy-last">📋 Copy last reply</button>
-      <button class="sb-btn" id="btn-reload">🔄 Reload extensions</button>
-      <button class="sb-btn" id="btn-compact">📦 Compact</button>
-    </section>
+    <!-- Settings — accordion, collapsed -->
+    <details class="sb-accordion">
+      <summary class="sb-accordion-head">Settings</summary>
+      <div class="sb-accordion-body">
+        <label class="sb-toggle"><input type="checkbox" id="chk-auto-compact" checked> Auto-compact</label>
+        <label class="sb-toggle"><input type="checkbox" id="chk-auto-retry" checked> Auto-retry</label>
+      </div>
+    </details>
 
-    <!-- Dashboard -->
-    <section class="sb-section">
-      <h3 class="sb-heading">Dashboard</h3>
-      <a href="http://localhost:3333/" class="sb-link" target="_blank">📊 Events</a>
-      <a href="http://localhost:3333/sessions" class="sb-link" id="sb-dashboard-link" target="_blank">📂 Sessions</a>
-      <a href="http://localhost:3333/artifacts" class="sb-link" target="_blank">📦 Artifacts</a>
-    </section>
+    <!-- Actions — accordion, collapsed -->
+    <details class="sb-accordion">
+      <summary class="sb-accordion-head">Actions</summary>
+      <div class="sb-accordion-body">
+        <button class="sb-btn" id="btn-export">📄 Export HTML</button>
+        <button class="sb-btn" id="btn-copy-last">📋 Copy last reply</button>
+        <button class="sb-btn" id="btn-reload">🔄 Reload extensions</button>
+        <button class="sb-btn" id="btn-compact">📦 Compact</button>
+      </div>
+    </details>
+
+    <!-- Dashboard — accordion, collapsed -->
+    <details class="sb-accordion">
+      <summary class="sb-accordion-head">Dashboard</summary>
+      <div class="sb-accordion-body">
+        <a href="http://localhost:3333/" class="sb-link" target="_blank">📊 Events</a>
+        <a href="http://localhost:3333/sessions" class="sb-link" id="sb-dashboard-link" target="_blank">📂 Sessions</a>
+        <a href="http://localhost:3333/artifacts" class="sb-link" target="_blank">📦 Artifacts</a>
+      </div>
+    </details>
 
   </aside>
 </div>

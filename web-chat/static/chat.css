@@ -9,14 +9,34 @@ header { flex-shrink: 0; }
 
 /* ─── Sidebar ────────────────────────────────────────────────── */
 .chat-sidebar {
-  width: 240px; flex-shrink: 0; border-left: 1px solid var(--border);
+  width: 300px; flex-shrink: 0; border-left: 1px solid var(--border);
   background: var(--bg-card); overflow-y: auto; padding: 12px;
   display: flex; flex-direction: column; gap: 0;
 }
-.sb-section { padding: 10px 0; border-bottom: 1px solid var(--border); }
-.sb-section:first-child { padding-top: 0; }
-.sb-section:last-child { border-bottom: none; }
+
+/* Pinned section (context window) */
+.sb-section-pinned { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.sb-section-pinned:first-child { padding-top: 0; }
 .sb-heading { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin: 0 0 8px; font-weight: 600; }
+
+/* Accordion sections */
+.sb-accordion { border-bottom: 1px solid var(--border); }
+.sb-accordion:last-child { border-bottom: none; }
+.sb-accordion-head {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--text-dim); font-weight: 600; padding: 10px 0; cursor: pointer;
+  list-style: none; display: flex; align-items: center; gap: 6px;
+  user-select: none;
+}
+.sb-accordion-head::-webkit-details-marker { display: none; }
+.sb-accordion-head::before {
+  content: "▸"; font-size: 9px; color: var(--text-dim);
+  transition: transform 0.15s ease;
+}
+.sb-accordion[open] > .sb-accordion-head::before { transform: rotate(90deg); }
+.sb-accordion-body { padding: 0 0 10px; }
+
+/* Shared content styles */
 .sb-row { font-size: 11px; font-family: var(--mono); color: var(--text); padding: 2px 0; word-break: break-all; line-height: 1.5; }
 .sb-row-label { color: var(--text-dim); }
 .sb-link {
