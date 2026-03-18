@@ -14,18 +14,21 @@ const pool = new Map<string, PoolEntry>();
 const authStorage = AuthStorage.create();
 const modelRegistry = new ModelRegistry(authStorage);
 
-export async function createPoolSession(connectionId: string, cwd: string): Promise<AgentSession> {
+export async function createPoolSession(connectionId: string, cwd: string, sessionFile?: string): Promise<AgentSession> {
   if (pool.size >= MAX_SESSIONS) {
     const oldest = [...pool.entries()].sort((a, b) => a[1].lastActivity - b[1].lastActivity)[0];
     if (oldest) await destroyPoolSession(oldest[0]);
   }
 
-  const { session } = await createAgentSession({
-    sessionManager: SessionManager.create(cwd),
-    authStorage,
-    modelRegistry,
-  });
+  let sessionManager;
+  if (sessionFile) {
+    try { sessionManager = SessionManager.open(sessionFile); }
+    catch { sessionManager = SessionManager.continueRecent(cwd); }
+  } else {
+    sessionManager = SessionManager.continueRecent(cwd);
+  }
 
+  const { session } = await createAgentSession({ sessionManager, authStorage, modelRegistry });
   pool.set(connectionId, { session, lastActivity: Date.now() });
   return session;
 }
@@ -58,9 +61,10 @@ export async function setSessionModel(session: AgentSession, provider: string, m
   return true;
 }
 
-export function getSessionInfo(session: AgentSession): { sessionId: string; model: string; thinkingLevel: string; isStreaming: boolean } {
+export function getSessionInfo(session: AgentSession): { sessionId: string; sessionFile?: string; model: string; thinkingLevel: string; isStreaming: boolean } {
   return {
     sessionId: session.sessionId,
+    sessionFile: (session as any).sessionFile ?? undefined,
     model: session.model?.id ?? "unknown",
     thinkingLevel: session.thinkingLevel,
     isStreaming: session.isStreaming,

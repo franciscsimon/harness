@@ -21,7 +21,11 @@ const $cwdInput = document.getElementById("cwd-input");
 function connect() {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   ws = new WebSocket(`${proto}//${location.host}/ws`);
-  ws.onopen = () => { reconnectDelay = 1000; };
+  ws.onopen = () => {
+    reconnectDelay = 1000;
+    const stored = sessionStorage.getItem("pi-chat-sessionFile");
+    wsSend({ type: "init", sessionFile: stored || undefined });
+  };
   ws.onclose = () => { setState("disconnected"); setTimeout(connect, reconnectDelay); reconnectDelay = Math.min(reconnectDelay * 2, 30000); };
   ws.onerror = () => {};
   ws.onmessage = (e) => handleMessage(JSON.parse(e.data));
@@ -35,6 +39,7 @@ function handleMessage(msg) {
     case "status": setState(msg.state); break;
     case "session_info":
       $sessionId.textContent = `Session: ${msg.sessionId.split("/").pop()}  ·  Model: ${msg.model}  ·  Thinking: ${msg.thinkingLevel}`;
+      if (msg.sessionFile) sessionStorage.setItem("pi-chat-sessionFile", msg.sessionFile);
       break;
     case "text_delta": appendText(msg.text); break;
     case "thinking_delta": appendThinking(msg.text); break;
@@ -179,7 +184,7 @@ $input.addEventListener("keydown", (e) => {
 });
 $send.addEventListener("click", sendPrompt);
 $abort.addEventListener("click", () => wsSend({ type: "abort" }));
-$newBtn.addEventListener("click", () => { wsSend({ type: "new_session" }); $messages.innerHTML = ""; });
+$newBtn.addEventListener("click", () => { sessionStorage.removeItem("pi-chat-sessionFile"); wsSend({ type: "new_session" }); $messages.innerHTML = ""; });
 $thinking.addEventListener("change", () => wsSend({ type: "set_thinking", level: $thinking.value }));
 $cwdInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {

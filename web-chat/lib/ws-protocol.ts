@@ -1,4 +1,5 @@
 export type ClientMessage =
+  | { type: "init"; sessionFile?: string }
   | { type: "prompt"; text: string }
   | { type: "steer"; text: string }
   | { type: "abort" }
@@ -21,8 +22,8 @@ export type ServerMessage =
   | { type: "agent_end" }
   | { type: "turn_start" }
   | { type: "turn_end" }
-  | { type: "session_info"; sessionId: string; model: string; thinkingLevel: string; isStreaming: boolean }
-  | { type: "session_list"; sessions: Array<{ id: string; firstMessage: string; messageCount: number }> }
+  | { type: "session_info"; sessionId: string; sessionFile?: string; model: string; thinkingLevel: string; isStreaming: boolean }
+  | { type: "session_list"; sessions: Array<{ id: string; path: string; firstMessage: string; messageCount: number }> }
   | { type: "history"; messages: Array<{ role: string; text: string; toolCalls?: Array<{ name: string; input: string; output: string; isError: boolean }> }> }
   | { type: "error"; message: string }
   | { type: "status"; state: "idle" | "streaming" | "initializing" }

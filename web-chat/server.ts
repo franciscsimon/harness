@@ -69,6 +69,47 @@ app.get("/ws", upgradeWebSocket((c) => {
           return;
         }
 
+        if (msg.type === "init" && !initialized) {
+          send(ws, { type: "status", state: "initializing" });
+          const session = await createPoolSession(connId, connCwd, msg.sessionFile);
+
+          const unsub = session.subscribe((ev: any) => {
+            switch (ev.type) {
+              case "message_update":
+                if (ev.assistantMessageEvent?.type === "text_delta")
+                  send(ws, { type: "text_delta", text: ev.assistantMessageEvent.delta });
+                if (ev.assistantMessageEvent?.type === "thinking_delta")
+                  send(ws, { type: "thinking_delta", text: ev.assistantMessageEvent.delta });
+                break;
+              case "tool_execution_start":
+                send(ws, { type: "tool_start", toolName: ev.toolName, toolCallId: ev.toolCallId ?? "", input: ev.input ?? {} });
+                break;
+              case "tool_execution_update":
+                send(ws, { type: "tool_update", toolCallId: ev.toolCallId ?? "", output: ev.text ?? "" });
+                break;
+              case "tool_execution_end":
+                send(ws, { type: "tool_end", toolCallId: ev.toolCallId ?? "", isError: ev.isError ?? false });
+                break;
+              case "agent_start": send(ws, { type: "agent_start" }); break;
+              case "agent_end": send(ws, { type: "agent_end" }); break;
+              case "turn_start": send(ws, { type: "turn_start" }); break;
+              case "turn_end": send(ws, { type: "turn_end" }); break;
+              case "message_start":
+                if (ev.message?.role) send(ws, { type: "message_start", role: ev.message.role });
+                break;
+              case "message_end": send(ws, { type: "message_end" }); break;
+            }
+          });
+          setUnsubscribe(connId, unsub);
+          initialized = true;
+
+          send(ws, { type: "session_info", ...getSessionInfo(session) });
+          const history = extractHistory(session);
+          if (history.length) send(ws, { type: "history", messages: history });
+          send(ws, { type: "status", state: "idle" });
+          return;
+        }
+
         if (!initialized && msg.type !== "list_sessions") {
           send(ws, { type: "status", state: "initializing" });
           const session = await createPoolSession(connId, connCwd);
@@ -153,8 +194,8 @@ app.get("/ws", upgradeWebSocket((c) => {
 
           case "list_sessions":
             try {
-              const list = await SessionManager.list(CWD);
-              send(ws, { type: "session_list", sessions: list.map(s => ({ id: s.id, firstMessage: s.firstMessage ?? "", messageCount: s.messageCount })) });
+              const list = await SessionManager.list(connCwd);
+              send(ws, { type: "session_list", sessions: list.map(s => ({ id: s.id, path: (s as any).path ?? "", firstMessage: s.firstMessage ?? "", messageCount: s.messageCount })) });
             } catch (err: any) { send(ws, { type: "error", message: err.message }); }
             break;
 
