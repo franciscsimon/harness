@@ -7,14 +7,7 @@ export function renderChat(): string {
 </head><body>
 <header>
   <div class="header-top">
-    <h1>💬 pi Chat
-      <span class="header-sep">·</span>
-      <a href="http://localhost:3333/" class="nav-link">📊 Events</a>
-      <span class="header-sep">·</span>
-      <a href="http://localhost:3333/sessions" class="nav-link">📂 Sessions</a>
-      <span class="header-sep">·</span>
-      <a href="http://localhost:3333/artifacts" class="nav-link">📦 Artifacts</a>
-    </h1>
+    <h1>💬 pi Chat</h1>
     <div class="chat-controls">
       <span class="chat-status" id="status">● Connecting</span>
       <label class="chat-cwd-label" title="Project directory for this chat session">
@@ -31,14 +24,70 @@ export function renderChat(): string {
     </div>
   </div>
 </header>
-<main class="chat-messages" id="messages"></main>
-<div class="chat-input-wrap">
-  <div class="chat-input-row">
-    <textarea id="input" class="chat-input" placeholder="Type a message... (Shift+Enter for newline)" rows="1"></textarea>
-    <button class="btn chat-send-btn" id="btn-send">Send</button>
-    <button class="btn chat-abort-btn" id="btn-abort" style="display:none">⏹ Stop</button>
+<div class="chat-layout">
+  <div class="chat-main">
+    <main class="chat-messages" id="messages"></main>
+    <div class="chat-input-wrap">
+      <div class="chat-input-row">
+        <textarea id="input" class="chat-input" placeholder="Type a message… (Shift+Enter for newline)" rows="1"></textarea>
+        <button class="btn chat-send-btn" id="btn-send">Send</button>
+        <button class="btn chat-abort-btn" id="btn-abort" style="display:none">⏹ Stop</button>
+      </div>
+    </div>
   </div>
-  <div class="chat-session-id" id="session-id"></div>
+  <aside class="chat-sidebar" id="sidebar">
+
+    <!-- Session -->
+    <section class="sb-section">
+      <h3 class="sb-heading">Session</h3>
+      <div class="sb-row" id="sb-session-id"></div>
+      <div class="sb-row" id="sb-session-name"></div>
+      <div class="sb-row" id="sb-model"></div>
+      <div class="sb-row" id="sb-thinking"></div>
+    </section>
+
+    <!-- Context Window -->
+    <section class="sb-section">
+      <h3 class="sb-heading">Context Window</h3>
+      <div class="chat-context-usage" id="context-usage">
+        <div class="chat-context-bar"><div class="chat-context-fill" id="context-fill"></div></div>
+        <span class="chat-context-label" id="context-label">—</span>
+      </div>
+    </section>
+
+    <!-- Stats -->
+    <section class="sb-section">
+      <h3 class="sb-heading">Stats</h3>
+      <div class="sb-row" id="sb-turns">Turns: —</div>
+      <div class="sb-row" id="sb-tokens">Tokens: —</div>
+      <div class="sb-row" id="sb-cost">Cost: —</div>
+    </section>
+
+    <!-- Settings -->
+    <section class="sb-section">
+      <h3 class="sb-heading">Settings</h3>
+      <label class="sb-toggle"><input type="checkbox" id="chk-auto-compact" checked> Auto-compact</label>
+      <label class="sb-toggle"><input type="checkbox" id="chk-auto-retry" checked> Auto-retry</label>
+    </section>
+
+    <!-- Actions -->
+    <section class="sb-section">
+      <h3 class="sb-heading">Actions</h3>
+      <button class="sb-btn" id="btn-export">📄 Export HTML</button>
+      <button class="sb-btn" id="btn-copy-last">📋 Copy last reply</button>
+      <button class="sb-btn" id="btn-reload">🔄 Reload extensions</button>
+      <button class="sb-btn" id="btn-compact">📦 Compact</button>
+    </section>
+
+    <!-- Dashboard -->
+    <section class="sb-section">
+      <h3 class="sb-heading">Dashboard</h3>
+      <a href="http://localhost:3333/" class="sb-link" target="_blank">📊 Events</a>
+      <a href="http://localhost:3333/sessions" class="sb-link" id="sb-dashboard-link" target="_blank">📂 Sessions</a>
+      <a href="http://localhost:3333/artifacts" class="sb-link" target="_blank">📦 Artifacts</a>
+    </section>
+
+  </aside>
 </div>
 <script src="/static/chat.js"></script>
 </body></html>`;
