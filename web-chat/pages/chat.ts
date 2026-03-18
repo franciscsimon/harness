@@ -10,17 +10,6 @@ export function renderChat(): string {
     <h1>💬 pi Chat</h1>
     <div class="chat-controls">
       <span class="chat-status" id="status">● Connecting</span>
-      <label class="chat-cwd-label" title="Project directory for this chat session">
-        📁 <input id="cwd-input" class="chat-cwd-input" type="text" placeholder="/path/to/project" spellcheck="false">
-      </label>
-      <select id="model-select" title="Model"><option>Loading...</option></select>
-      <select id="thinking-select" title="Thinking">
-        <option value="off">off</option>
-        <option value="low">low</option>
-        <option value="medium" selected>medium</option>
-        <option value="high">high</option>
-      </select>
-      <button class="btn btn-sm" id="btn-new">+ New</button>
     </div>
   </div>
 </header>
@@ -36,6 +25,24 @@ export function renderChat(): string {
     </div>
   </div>
   <aside class="chat-sidebar" id="sidebar">
+
+    <!-- Project & Model — always visible -->
+    <section class="sb-section sb-section-pinned">
+      <h3 class="sb-heading">Project</h3>
+      <label class="sb-field-label" title="Working directory for this chat session">
+        <input id="cwd-input" class="sb-input" type="text" placeholder="/path/to/project" spellcheck="false">
+      </label>
+      <div class="sb-row-controls">
+        <select id="model-select" class="sb-select" title="Model"><option>Loading...</option></select>
+        <select id="thinking-select" class="sb-select" title="Thinking">
+          <option value="off">off</option>
+          <option value="low">low</option>
+          <option value="medium" selected>medium</option>
+          <option value="high">high</option>
+        </select>
+      </div>
+      <button class="sb-btn" id="btn-new">+ New Session</button>
+    </section>
 
     <!-- Context Window — always visible -->
     <section class="sb-section sb-section-pinned">
