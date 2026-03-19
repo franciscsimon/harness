@@ -19,6 +19,7 @@ const NAV = `<a href="/" class="back-link">← Stream</a>
 <span class="header-sep">·</span>📦 Artifacts
 <span class="header-sep">·</span><a href="/sessions" class="back-link">📂 Sessions</a>
 <span class="header-sep">·</span><a href="/dashboard" class="back-link">📊 Dashboard</a>
+<span class="header-sep">·</span><a href="/ops" class="back-link">Ops</a>
 <span class="header-sep">·</span><a href="http://localhost:3334" class="back-link">💬 Chat</a>`;
 
 export function renderArtifacts(

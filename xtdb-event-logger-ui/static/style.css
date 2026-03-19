@@ -1311,6 +1311,91 @@ main#stream {
 
 .btn-disabled { opacity: 0.3; pointer-events: none; }
 
+/* ─── Ops Dashboard ──────────────────────────────────────────── */
+
+.ops-page { padding: 16px 20px; max-width: 1100px; }
+.ops-section { margin-bottom: 28px; }
+.ops-section h2 { font-size: 14px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+.ops-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.ops-section-header h2 { margin-bottom: 0; }
+.ops-refresh-badge { font-size: 11px; color: var(--text-dim); background: var(--bg-input); padding: 2px 8px; border-radius: 10px; }
+
+.ops-health-cards { display: flex; gap: 12px; flex-wrap: wrap; }
+.ops-health-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; flex: 1; min-width: 200px; transition: border-color 0.2s; }
+.ops-hc-healthy { border-left: 3px solid #22c55e; }
+.ops-hc-unhealthy { border-left: 3px solid #ef4444; }
+.ops-hc-unknown { border-left: 3px solid #6b7280; }
+.ops-hc-name { font-weight: 700; font-size: 15px; color: var(--text-bright); margin-bottom: 4px; }
+.ops-hc-port { font-size: 11px; color: var(--text-dim); font-family: var(--mono); margin-bottom: 8px; }
+.ops-hc-status { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.ops-hc-status-healthy { color: #22c55e; }
+.ops-hc-status-unhealthy { color: #ef4444; }
+.ops-hc-status-unknown { color: #6b7280; }
+.ops-hc-details { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+
+.ops-replication { display: flex; gap: 24px; flex-wrap: wrap; }
+.ops-repl-stat { display: flex; flex-direction: column; gap: 4px; }
+.ops-repl-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; }
+.ops-repl-value { font-size: 20px; font-weight: 700; color: var(--text-bright); font-family: var(--mono); }
+.ops-repl-synced { color: #22c55e; }
+.ops-repl-lagging { color: #ef4444; }
+
+.ops-replica-controls { display: flex; align-items: center; gap: 12px; }
+.ops-replica-status-badge { font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 10px; }
+.ops-replica-running { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+.ops-replica-stopped { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+
+.ops-backup-actions { display: flex; gap: 10px; margin-bottom: 12px; }
+.ops-backup-progress { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 16px; margin-bottom: 12px; }
+.ops-progress-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; font-weight: 600; color: var(--text-bright); }
+.ops-progress-spinner { width: 14px; height: 14px; border: 2px solid var(--border); border-top-color: #3b82f6; border-radius: 50%; animation: ops-spin 0.8s linear infinite; display: inline-block; }
+@keyframes ops-spin { to { transform: rotate(360deg); } }
+.ops-progress-log { font-family: var(--mono); font-size: 12px; color: var(--text-dim); max-height: 200px; overflow-y: auto; line-height: 1.6; }
+.ops-progress-line { padding: 2px 0; border-bottom: 1px solid rgba(42,45,58,0.5); }
+
+.ops-backup-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 6px; flex-wrap: wrap; }
+.ops-backup-name { font-family: var(--mono); font-size: 13px; color: var(--text-bright); flex: 1; min-width: 200px; }
+.ops-backup-size { font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
+.ops-backup-date { font-size: 11px; color: var(--text-dim); }
+.ops-backup-type { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 8px; text-transform: uppercase; }
+.ops-backup-type-snapshot { background: rgba(59,130,246,0.15); color: #3b82f6; }
+.ops-backup-type-csv { background: rgba(34,197,94,0.15); color: #22c55e; }
+.ops-backup-type-unknown { background: rgba(107,114,128,0.15); color: #6b7280; }
+
+.ops-restore { display: flex; gap: 10px; align-items: center; }
+.ops-restore select { background: var(--bg-input); color: var(--text); border: 1px solid var(--border); padding: 6px 12px; border-radius: var(--radius); font-size: 13px; min-width: 300px; }
+
+.ops-topic-row { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 4px; }
+.ops-topic-name { font-family: var(--mono); font-size: 13px; color: var(--text-bright); }
+.ops-topic-meta { font-size: 11px; color: var(--text-dim); }
+
+.btn-sm { font-size: 11px; padding: 3px 10px; }
+
+.ops-api-banner { padding: 10px 16px; border-radius: var(--radius); margin-bottom: 16px; font-size: 13px; display: flex; align-items: center; gap: 12px; }
+.ops-api-banner code { font-family: var(--mono); background: rgba(0,0,0,0.2); padding: 1px 6px; border-radius: 3px; }
+.ops-api-hint { font-size: 11px; color: var(--text-dim); margin-left: auto; }
+.ops-api-checking { background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); color: #93c5fd; }
+.ops-api-connected { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2); color: #86efac; }
+.ops-api-disconnected { background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; }
+
+/* ─── Modal ──────────────────────────────────────────────────── */
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; z-index: 9999; animation: modal-fade-in 0.15s ease; }
+@keyframes modal-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.modal-box { background: var(--bg-card, #1a1d27); border: 1px solid var(--border, #2a2d3a); border-radius: 10px; padding: 24px 28px; min-width: 340px; max-width: 480px; box-shadow: 0 16px 48px rgba(0,0,0,0.4); animation: modal-slide-in 0.15s ease; }
+@keyframes modal-slide-in { from { transform: translateY(-12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.modal-title { font-size: 15px; font-weight: 700; color: var(--text-bright, #e8eaf0); margin-bottom: 10px; }
+.modal-body { font-size: 13px; color: var(--text, #c0c4d0); line-height: 1.6; margin-bottom: 20px; white-space: pre-wrap; }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.modal-btn { padding: 7px 18px; border-radius: 6px; border: 1px solid var(--border, #2a2d3a); font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.1s, border-color 0.1s; }
+.modal-btn-cancel { background: var(--bg-input, #1e2130); color: var(--text, #c0c4d0); }
+.modal-btn-cancel:hover { background: #282b3a; }
+.modal-btn-ok { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+.modal-btn-ok:hover { background: #2563eb; }
+.modal-btn-danger { background: #ef4444; color: #fff; border-color: #ef4444; }
+.modal-btn-danger:hover { background: #dc2626; }
+.modal-btn-success { background: #22c55e; color: #fff; border-color: #22c55e; }
+
 /* ─── Responsive ──────────────────────────────────────────────── */
 
 @media (max-width: 768px) {

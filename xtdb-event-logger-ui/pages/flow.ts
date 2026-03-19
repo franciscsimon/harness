@@ -348,6 +348,8 @@ export function renderFlow(sessionId: string, projections: ProjectionRow[]): str
         <span class="header-sep">·</span>
         🔀 Flow
         <span class="header-sep">·</span>
+        <a href="/ops" class="back-link">Ops</a>
+        <span class="header-sep">·</span>
         <a href="http://localhost:3334" class="back-link">💬 Chat</a>
       </h1>
       <span class="total-badge">${contentCount} projections${emptyCount > 0 ? ` · ${emptyCount} empty collapsed` : ""}</span>

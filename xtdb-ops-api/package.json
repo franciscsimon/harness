@@ -1,0 +1,12 @@
+{
+  "name": "xtdb-ops-api",
+  "version": "1.0.0",
+  "description": "REST API wrapping XTDB cluster ops (Docker/Taskfile commands)",
+  "scripts": {
+    "start": "npx jiti server.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.1",
+    "hono": "^4.7.5"
+  }
+}

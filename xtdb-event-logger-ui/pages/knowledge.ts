@@ -41,6 +41,8 @@ export function renderKnowledge(sessionId: string, knowledge: SessionKnowledge):
         <span class="header-sep">·</span>
         📝 Knowledge
         <span class="header-sep">·</span>
+        <a href="/ops" class="back-link">Ops</a>
+        <span class="header-sep">·</span>
         <a href="http://localhost:3334" class="back-link">💬 Chat</a>
       </h1>
     </div>

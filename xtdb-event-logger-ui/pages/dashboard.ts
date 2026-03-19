@@ -82,6 +82,8 @@ export function renderDashboard(
         <span class="header-sep">·</span>
         📊 Dashboard
         <span class="header-sep">·</span>
+        <a href="/ops" class="back-link">Ops</a>
+        <span class="header-sep">·</span>
         <a href="http://localhost:3334" class="back-link">💬 Chat</a>
       </h1>
       <button class="btn btn-danger" id="btn-wipe">🗑 Wipe DB</button>
@@ -115,14 +117,20 @@ export function renderDashboard(
         : '<p class="empty-msg">No errors recorded.</p>'}
     </div>
   </main>
+  <script src="/static/modal.js"></script>
   <script>
     var btn = document.getElementById("btn-wipe");
     if (btn) btn.addEventListener("click", function () {
-      if (!confirm("⚠️ This will permanently erase ALL events from the database.\\n\\nAre you sure?")) return;
-      btn.disabled = true; btn.textContent = "⏳ Wiping...";
-      fetch("/api/wipe", { method: "POST" }).then(function(r){return r.json()}).then(function(d){
-        alert("✅ " + d.message); window.location.reload();
-      }).catch(function(e){ alert("❌ " + e); btn.disabled = false; btn.textContent = "🗑 Wipe DB"; });
+      modal.confirm("Wipe Database", "This will permanently erase ALL events from the database.\\n\\nAre you sure?", "danger").then(function (ok) {
+        if (!ok) return;
+        btn.disabled = true; btn.textContent = "Wiping...";
+        fetch("/api/wipe", { method: "POST" }).then(function(r){return r.json()}).then(function(d){
+          modal.alert("Database Wiped", d.message, "success").then(function(){ window.location.reload(); });
+        }).catch(function(e){
+          modal.alert("Wipe Failed", String(e), "danger");
+          btn.disabled = false; btn.textContent = "Wipe DB";
+        });
+      });
     });
   </script>
 </body>

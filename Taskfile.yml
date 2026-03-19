@@ -111,21 +111,22 @@ tasks:
   # ── Backup via replica (primary never stops) ───────────────────
 
   'xtdb:backup':
-    desc: Backup via replica — flush primary block, stop replica, export-snapshot, restart
+    desc: Backup via replica — flush primary block, stop replica, export-snapshot, tar to ~/backups, restart
     cmds:
       - |
         set -euo pipefail
-        BACKUP_DIR="$HOME/backups/xtdb/$(date +%Y%m%dT%H%M%S)"
-        mkdir -p "$BACKUP_DIR"
+        TS=$(date +%Y%m%dT%H%M%S)
+        BACKUP_BASE="$HOME/backups/xtdb"
+        mkdir -p "$BACKUP_BASE"
 
-        echo "1/4  Flushing primary block..."
+        echo "1/5  Flushing primary block..."
         curl -sf -X POST http://localhost:8083/system/finish-block || true
         sleep 5
 
-        echo "2/4  Stopping replica..."
+        echo "2/5  Stopping replica..."
         docker compose stop xtdb-replica
 
-        echo "3/4  Exporting snapshot from replica storage..."
+        echo "3/5  Exporting snapshot from replica storage..."
         VOLUME=$(docker volume ls -q | grep xtdb-replica-data | head -1)
         docker run --rm \
           --network harness_default \
@@ -134,10 +135,24 @@ tasks:
           ghcr.io/xtdb/xtdb-aws:2.1.0 \
           export-snapshot xtdb -f xtdb-export.yaml 2>&1 || echo "  (export-snapshot returned non-zero, check output above)"
 
-        echo "4/4  Restarting replica..."
+        echo "4/5  Copying snapshot to backup directory..."
+        LATEST=$(docker run --rm -v "$VOLUME":/var/lib/xtdb:ro alpine \
+          sh -c "ls -1t /var/lib/xtdb/buffers/v06/exports/ 2>/dev/null | head -1")
+        if [ -z "$LATEST" ]; then
+          echo "  No export found in replica volume"
+        else
+          docker run --rm \
+            -v "$VOLUME":/var/lib/xtdb:ro \
+            -v "$BACKUP_BASE":/backup \
+            alpine \
+            sh -c "tar czf /backup/snapshot-${TS}.tar.gz -C /var/lib/xtdb/buffers/v06/exports/${LATEST} ."
+          echo "  Archived: snapshot-${TS}.tar.gz ($(du -h "$BACKUP_BASE/snapshot-${TS}.tar.gz" | cut -f1))"
+        fi
+
+        echo "5/5  Restarting replica..."
         docker compose up -d xtdb-replica
 
-        echo "Backup complete. Snapshot written to replica storage volume."
+        echo "Backup complete."
 
   'xtdb:backup:csv':
     desc: Hot-backup all XTDB tables to CSV via pgwire (no downtime, legacy method)
@@ -274,6 +289,18 @@ tasks:
           echo "UI process $PID is not running"
         fi
         rm -f .task/ui.pid
+
+  'ops:api:install':
+    desc: Install ops API dependencies
+    dir: xtdb-ops-api
+    cmds:
+      - npm install
+
+  'ops:api':
+    desc: Start the XTDB ops API
+    dir: xtdb-ops-api
+    cmds:
+      - npx jiti server.ts
 
   pi:
     desc: Start pi

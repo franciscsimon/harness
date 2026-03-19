@@ -48,6 +48,7 @@ import { renderDecisions, renderProjectDecisionsSection } from "./pages/decision
 import { renderArtifacts } from "./pages/artifacts.ts";
 import { renderArtifactVersions } from "./pages/artifact-versions.ts";
 import { renderArtifactContent } from "./pages/artifact-content.ts";
+import { renderOps } from "./pages/ops.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -71,6 +72,8 @@ app.get("/static/:file", (c) => {
     "stream.js": "application/javascript",
     "session.js": "application/javascript",
     "dashboard.js": "application/javascript",
+    "ops.js": "application/javascript",
+    "modal.js": "application/javascript",
   };
   const contentType = allowed[file];
   if (!contentType) return c.text("Not found", 404);
@@ -99,6 +102,10 @@ app.get("/sessions", async (c) => {
 app.get("/dashboard", async (c) => {
   const [sessions, tools, errors] = await Promise.all([getDashboardSessions(), getToolUsageStats(), getErrorPatterns()]);
   return c.html(renderDashboard(sessions, tools, errors));
+});
+
+app.get("/ops", (c) => {
+  return c.html(renderOps());
 });
 
 app.get("/projects", async (c) => {

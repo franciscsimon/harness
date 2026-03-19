@@ -32,7 +32,7 @@ export function renderIndex(sessions: string[], stats: StatsResult): string {
 <body>
   <header>
     <div class="header-top">
-      <h1>📊 pi.dev Event Stream <span class="header-sep">·</span> <a href="/sessions" class="nav-link">📂 Sessions</a> <span class="header-sep">·</span> <a href="/projects" class="nav-link">📁 Projects</a> <span class="header-sep">·</span> <a href="/decisions" class="nav-link">📋 Decisions</a> <span class="header-sep">·</span> <a href="/artifacts" class="nav-link">📦 Artifacts</a> <span class="header-sep">·</span> <a href="/dashboard" class="nav-link">📊 Dashboard</a> <span class="header-sep">·</span> <a href="http://localhost:3334" class="nav-link">💬 Chat</a></h1>
+      <h1>📊 pi.dev Event Stream <span class="header-sep">·</span> <a href="/sessions" class="nav-link">📂 Sessions</a> <span class="header-sep">·</span> <a href="/projects" class="nav-link">📁 Projects</a> <span class="header-sep">·</span> <a href="/decisions" class="nav-link">📋 Decisions</a> <span class="header-sep">·</span> <a href="/artifacts" class="nav-link">📦 Artifacts</a> <span class="header-sep">·</span> <a href="/dashboard" class="nav-link">📊 Dashboard</a> <span class="header-sep">·</span> <a href="/ops" class="nav-link">Ops</a> <span class="header-sep">·</span> <a href="http://localhost:3334" class="nav-link">💬 Chat</a></h1>
       <div class="header-actions">
         <span class="total-badge" id="stat-total">Total: ${stats.total}</span>
         <span class="conn-status" id="conn-status">●</span>
@@ -65,6 +65,7 @@ export function renderIndex(sessions: string[], stats: StatsResult): string {
     <!-- Event cards inserted here by stream.js -->
   </main>
 
+  <script src="/static/modal.js"></script>
   <script src="/static/stream.js"></script>
 </body>
 </html>`;

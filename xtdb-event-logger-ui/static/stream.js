@@ -219,20 +219,23 @@
   var btnWipe = document.getElementById("btn-wipe");
   if (btnWipe) {
     btnWipe.addEventListener("click", function () {
-      if (!confirm("⚠️ This will permanently erase ALL events from the database.\n\nAre you sure?")) return;
-      btnWipe.disabled = true;
-      btnWipe.textContent = "⏳ Wiping...";
-      fetch("/api/wipe", { method: "POST" })
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          alert("✅ " + data.message);
-          window.location.reload();
-        })
-        .catch(function (err) {
-          alert("❌ Wipe failed: " + err);
-          btnWipe.disabled = false;
-          btnWipe.textContent = "🗑 Wipe DB";
-        });
+      modal.confirm("Wipe Database", "This will permanently erase ALL events from the database.\n\nAre you sure?", "danger").then(function (ok) {
+        if (!ok) return;
+        btnWipe.disabled = true;
+        btnWipe.textContent = "Wiping...";
+        fetch("/api/wipe", { method: "POST" })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            modal.alert("Database Wiped", data.message, "success").then(function () {
+              window.location.reload();
+            });
+          })
+          .catch(function (err) {
+            modal.alert("Wipe Failed", String(err), "danger");
+            btnWipe.disabled = false;
+            btnWipe.textContent = "Wipe DB";
+          });
+      });
     });
   }
 
