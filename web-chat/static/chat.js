@@ -471,12 +471,12 @@ function autoResize() {
 
 // ─── Scroll ─────────────────────────────────────────────────────
 $messages.addEventListener("scroll", () => {
-  const atBottom = $messages.scrollHeight - $messages.scrollTop - $messages.clientHeight < 60;
+  const atBottom = $messages.scrollHeight - $messages.scrollTop - $messages.clientHeight < 150;
   autoScroll = atBottom;
 });
 
 function scrollDown() {
-  if (autoScroll) $messages.scrollTop = $messages.scrollHeight;
+  if (autoScroll) requestAnimationFrame(() => { $messages.scrollTop = $messages.scrollHeight; });
 }
 
 // ─── Markdown ───────────────────────────────────────────────────
