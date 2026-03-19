@@ -241,67 +241,74 @@ export default function (pi: ExtensionAPI) {
 
   // ─── /workflow command ──────────────────────────────────────────
 
-  pi.addCommand({
-    name: "workflow",
+  pi.registerCommand("workflow", {
     description: "Manage workflow: /workflow list | start <name> <task> | advance | skip | abandon",
-    execute: async (args, ctx) => {
-      const parts = args.trim().split(/\s+/);
+    handler: async (args, ctx) => {
+      const parts = (args ?? "").trim().split(/\s+/);
       const sub = parts[0] ?? "list";
+      let msg: string;
 
       switch (sub) {
         case "list": {
-          if (workflows.size === 0) return "No workflows loaded. Add .jsonld files to ~/.pi/agent/workflows/";
+          if (workflows.size === 0) { msg = "No workflows loaded. Add .jsonld files to ~/.pi/agent/workflows/"; break; }
           const lines = [...workflows.entries()].map(([name, wf]) => {
             const chain = wf.steps.map(s => s.agentRole).join(" → ");
             return `  ${name}: ${chain}`;
           });
           const status = state.active ? `\nActive: ${state.workflowName} (step ${state.currentStep})` : "\nNo active workflow.";
-          return `Available workflows:\n${lines.join("\n")}${status}`;
+          msg = `Available workflows:\n${lines.join("\n")}${status}`; break;
         }
         case "start": {
           const name = parts[1];
           const task = parts.slice(2).join(" ");
-          if (!name) return "Usage: /workflow start <name> <task description>";
-          if (!task) return "Please provide a task description: /workflow start feature-build Add user authentication";
-          return activateWorkflow(name, task, ctx);
+          if (!name) { msg = "Usage: /workflow start <name> <task description>"; break; }
+          if (!task) { msg = "Please provide a task description: /workflow start feature-build Add user authentication"; break; }
+          msg = activateWorkflow(name, task, ctx); break;
         }
-        case "advance": return advanceStep(ctx);
-        case "skip": return skipStep(ctx);
-        case "abandon": return abandonWorkflow(ctx);
-        case "status": return state.active
-          ? `Workflow: ${state.workflowName} — Step ${state.currentStep} — ${progressBar()}`
-          : "No active workflow.";
+        case "advance": msg = advanceStep(ctx); break;
+        case "skip": msg = skipStep(ctx); break;
+        case "abandon": msg = abandonWorkflow(ctx); break;
+        case "status":
+          msg = state.active
+            ? `Workflow: ${state.workflowName} — Step ${state.currentStep} — ${progressBar()}`
+            : "No active workflow.";
+          break;
         default:
-          return "Usage: /workflow list | start <name> <task> | advance | skip | abandon | status";
+          msg = "Usage: /workflow list | start <name> <task> | advance | skip | abandon | status";
       }
+      ctx.ui.notify(msg, "info");
     },
   });
 
   // ─── set_workflow tool (LLM can activate workflows) ─────────────
 
-  pi.addTool({
+  pi.registerTool({
     name: "set_workflow",
+    label: "Set Workflow",
     description: "Activate a workflow template. Use /workflow list to see available workflows.",
     parameters: Type.Object({
       action: StringEnum(["start", "advance", "skip", "abandon", "list"]),
       workflowName: Type.Optional(Type.String({ description: "Workflow name (for start action)" })),
       task: Type.Optional(Type.String({ description: "Task description (for start action)" })),
     }),
-    async execute(_toolCallId, params, _signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      let msg: string;
       switch (params.action) {
         case "list": {
           const names = [...workflows.keys()];
-          return names.length ? `Available: ${names.join(", ")}` : "No workflows loaded.";
+          msg = names.length ? `Available: ${names.join(", ")}` : "No workflows loaded.";
+          break;
         }
         case "start": {
-          if (!params.workflowName || !params.task) return "Need workflowName and task.";
-          return activateWorkflow(params.workflowName, params.task, ctx);
+          if (!params.workflowName || !params.task) { msg = "Need workflowName and task."; break; }
+          msg = activateWorkflow(params.workflowName, params.task, ctx); break;
         }
-        case "advance": return advanceStep(ctx);
-        case "skip": return skipStep(ctx);
-        case "abandon": return abandonWorkflow(ctx);
-        default: return "Unknown action.";
+        case "advance": msg = advanceStep(ctx); break;
+        case "skip": msg = skipStep(ctx); break;
+        case "abandon": msg = abandonWorkflow(ctx); break;
+        default: msg = "Unknown action.";
       }
+      return { content: [{ type: "text" as const, text: msg }] };
     },
   });
 
