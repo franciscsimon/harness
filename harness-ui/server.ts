@@ -54,6 +54,7 @@ app.get("/sessions", async (c) => c.html(await renderSessions()));
 app.get("/dashboard", async (c) => c.html(await renderDashboard()));
 app.get("/decisions", async (c) => c.html(await renderDecisions()));
 app.get("/artifacts", async (c) => c.html(await renderArtifacts()));
+app.get("/projects", async (c) => c.html(await renderProjects()));
 app.get("/ops", async (c) => c.html(await renderOps()));
 app.get("/chat", async (c) => c.html(await renderChat()));
 
