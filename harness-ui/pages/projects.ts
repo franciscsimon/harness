@@ -84,3 +84,80 @@ export async function renderProjects(): Promise<string> {
 
   return layout(content, { title: "Projects", activePath: "/projects" });
 }
+
+// ─── Project Detail Page ───────────────────────────────────────
+
+export async function renderProjectDetail(projectId: string): Promise<string> {
+  const [decisions, artifacts] = await Promise.all([
+    fetchDecisions(500),
+    fetchArtifacts(),
+  ]);
+
+  const projDecisions = (decisions ?? []).filter((d: any) => d.project_id === projectId);
+  const projArtifacts = (artifacts ?? []).filter((a: any) => a.project_id === projectId);
+  const name = projectId.split("/").pop() ?? projectId;
+
+  // Decision cards (ported from xtdb-event-logger-ui/pages/decisions.ts)
+  const OUTCOME_ICONS: Record<string, string> = { success: "✅", failure: "❌", deferred: "⏸️" };
+  const OUTCOME_COLORS: Record<string, string> = { success: "#22c55e", failure: "#ef4444", deferred: "#eab308" };
+
+  const decisionCards = projDecisions.map((d: any) => {
+    const icon = OUTCOME_ICONS[d.outcome] ?? "•";
+    const color = OUTCOME_COLORS[d.outcome] ?? "#6b7280";
+    const date = d.ts ? new Date(Number(d.ts)).toISOString().slice(0, 10) : "—";
+    return `<div class="dec-card">
+      <div class="dec-card-top">
+        <span class="dec-outcome-badge" style="--outcome-color:${color}">${icon} ${escapeHtml(d.outcome ?? "unknown")}</span>
+        <span class="dec-date">${date}</span>
+        <span class="dec-ago">${relativeTime(d.ts)}</span>
+      </div>
+      <div class="dec-what">${escapeHtml(d.what ?? "—")}</div>
+      <div class="dec-detail"><span class="dec-label">Task:</span> ${escapeHtml(d.task ?? "—")}</div>
+      <div class="dec-detail"><span class="dec-label">Why:</span> ${escapeHtml(d.why ?? "—")}</div>
+    </div>`;
+  }).join("\n");
+
+  // Artifact cards
+  const artifactRows = projArtifacts.map((a: any) => {
+    const fileName = (a.path ?? "").split("/").pop() ?? a.path;
+    return `<div class="art-card">
+      <div class="art-card-top">
+        <span class="art-op">${a.operation === "write" ? "📝" : "✏️"}</span>
+        <span class="art-filename">${escapeHtml(fileName)}</span>
+        <span class="art-kind-badge" style="--kind-color:#3b82f6">${escapeHtml(a.kind ?? "file")}</span>
+        <span class="dec-ago">${relativeTime(a.ts)}</span>
+      </div>
+      <div class="art-path"><code>${escapeHtml(a.path?.replace(/.*harness\//, "") ?? "—")}</code></div>
+    </div>`;
+  }).join("\n");
+
+  const content = `
+    <div class="page-header">
+      <h1><a href="/projects" class="back-link">← Projects</a> · 📁 ${escapeHtml(name)}</h1>
+    </div>
+
+    <section class="proj-info">
+      <table class="proj-info-table">
+        <tr><td class="proj-label">ID</td><td><code>${escapeHtml(projectId)}</code></td></tr>
+        <tr><td class="proj-label">Decisions</td><td>${projDecisions.length}</td></tr>
+        <tr><td class="proj-label">Artifacts</td><td>${projArtifacts.length}</td></tr>
+      </table>
+    </section>
+
+    <section class="proj-sessions-section">
+      <h2>📋 Decisions <span class="total-badge">${projDecisions.length}</span></h2>
+      <div class="dec-list">
+        ${projDecisions.length === 0 ? '<p class="empty-msg">No decisions for this project.</p>' : decisionCards}
+      </div>
+    </section>
+
+    <section class="proj-sessions-section">
+      <h2>📦 Artifacts <span class="total-badge">${projArtifacts.length}</span></h2>
+      <div class="dec-list">
+        ${projArtifacts.length === 0 ? '<p class="empty-msg">No artifacts for this project.</p>' : artifactRows}
+      </div>
+    </section>
+  `;
+
+  return layout(content, { title: name, activePath: "/projects" });
+}

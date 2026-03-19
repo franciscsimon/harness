@@ -9,8 +9,8 @@ import { renderSessions } from "./pages/sessions.ts";
 import { renderSessionDetail } from "./pages/session-detail.ts";
 import { renderDashboard } from "./pages/dashboard.ts";
 import { renderDecisions } from "./pages/decisions.ts";
-import { renderArtifacts } from "./pages/artifacts.ts";
-import { renderProjects } from "./pages/projects.ts";
+import { renderArtifacts, renderArtifactVersions } from "./pages/artifacts.ts";
+import { renderProjects, renderProjectDetail } from "./pages/projects.ts";
 import { renderOps } from "./pages/ops.ts";
 import { renderChat } from "./pages/chat.ts";
 
@@ -35,13 +35,10 @@ const STATIC_TYPES: Record<string, string> = {
 
 app.get("/static/:file", (c) => {
   const file = c.req.param("file");
-  // Prevent directory traversal
   if (file.includes("..") || file.includes("/")) return c.text("Not found", 404);
-
   const ext = "." + file.split(".").pop();
   const contentType = STATIC_TYPES[ext];
   if (!contentType) return c.text("Not found", 404);
-
   try {
     const content = readFileSync(join(__dirname, "static", file), "utf-8");
     return c.body(content, 200, { "Content-Type": contentType + "; charset=utf-8" });
@@ -52,49 +49,20 @@ app.get("/static/:file", (c) => {
 
 // ── Pages ──────────────────────────────────────────────────────────
 
-app.get("/", async (c) => {
-  const html = await renderHome();
-  return c.html(html);
-});
+app.get("/", async (c) => c.html(await renderHome()));
+app.get("/sessions", async (c) => c.html(await renderSessions()));
+app.get("/dashboard", async (c) => c.html(await renderDashboard()));
+app.get("/decisions", async (c) => c.html(await renderDecisions()));
+app.get("/artifacts", async (c) => c.html(await renderArtifacts()));
+app.get("/ops", async (c) => c.html(await renderOps()));
+app.get("/chat", async (c) => c.html(await renderChat()));
 
-app.get("/sessions", async (c) => {
-  const html = await renderSessions();
-  return c.html(html);
-});
-
-app.get("/sessions/:id", async (c) => {
-  const html = await renderSessionDetail(c.req.param("id"));
-  return c.html(html);
-});
-
-app.get("/dashboard", async (c) => {
-  const html = await renderDashboard();
-  return c.html(html);
-});
-
-app.get("/decisions", async (c) => {
-  const html = await renderDecisions();
-  return c.html(html);
-});
-
-app.get("/artifacts", async (c) => {
-  const html = await renderArtifacts();
-  return c.html(html);
-});
-
-app.get("/projects", async (c) => {
-  const html = await renderProjects();
-  return c.html(html);
-});
-
-app.get("/ops", async (c) => {
-  const html = await renderOps();
-  return c.html(html);
-});
-
-app.get("/chat", async (c) => {
-  const html = await renderChat();
-  return c.html(html);
+// Routes with path params (IDs contain slashes — need {.+} wildcard)
+app.get("/sessions/:id{.+}", async (c) => c.html(await renderSessionDetail(c.req.param("id"))));
+app.get("/projects/:id{.+}", async (c) => c.html(await renderProjectDetail(c.req.param("id"))));
+app.get("/artifacts/versions", async (c) => {
+  const path = c.req.query("path") ?? "";
+  return c.html(await renderArtifactVersions(path));
 });
 
 // ── Start ──────────────────────────────────────────────────────────

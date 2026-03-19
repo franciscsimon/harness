@@ -128,11 +128,12 @@ function renderBackupsSection(backups: any[] | null): string {
     </div>`;
 
   const rows = backups.map((b: any) => {
-    const size = b.size ? (Number(b.size) / (1024 * 1024)).toFixed(1) + " MB" : "—";
+    const size = b.sizeHuman ?? (b.sizeBytes ? (Number(b.sizeBytes) / (1024 * 1024)).toFixed(1) + " MB" : "—");
     return `<tr>
       <td><code>${escapeHtml(b.filename ?? b._id ?? "—")}</code></td>
       <td>${size}</td>
-      <td>${b.created ? relativeTime(String(new Date(b.created).getTime())) : "—"}</td>
+      <td>${b.modifiedAt ? relativeTime(String(new Date(b.modifiedAt).getTime())) : "—"}</td>
+      <td>${escapeHtml(b.type ?? "—")}</td>
     </tr>`;
   }).join("\n");
 
@@ -140,7 +141,7 @@ function renderBackupsSection(backups: any[] | null): string {
     <div class="ops-section">
       <h2>Backup History</h2>
       <table class="error-patterns-table">
-        <thead><tr><th>File</th><th>Size</th><th>Created</th></tr></thead>
+        <thead><tr><th>File</th><th>Size</th><th>Created</th><th>Type</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
