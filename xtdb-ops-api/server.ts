@@ -13,6 +13,7 @@ import { getJob, startSnapshotBackup, startCsvBackup, restoreFromArchive, startS
 import { exec } from "./lib/exec.ts";
 import { processCIEvent, verifySignature, type CIEvent } from "./lib/ci-webhook.ts";
 import { startScheduler, stopScheduler, schedulerStatus } from "./lib/scheduler.ts";
+import { authMiddleware } from "./lib/auth.ts";
 import { verifyBackup } from "./lib/verify-backup.ts";
 import { createIncident, listIncidents, getIncident, updateIncident } from "./lib/incidents.ts";
 
@@ -20,6 +21,7 @@ const OPS_PORT = Number(process.env.OPS_PORT ?? "3335");
 const app = new Hono();
 
 app.use("/*", cors({ origin: "*" }));
+app.use("/*", authMiddleware());
 
 // ── Health ────────────────────────────────────────────────────────
 
@@ -369,6 +371,81 @@ app.patch("/api/incidents/:id", async (c) => {
     return c.json(updated);
   } catch (err: unknown) {
     return c.json({ error: String(err) }, 500);
+  }
+});
+
+// ── Dashboard UI ──────────────────────────────────────────────────
+
+import { Layout } from "./views/layout.tsx";
+import { portfolioPage } from "./views/portfolio.tsx";
+import { projectPage } from "./views/project.tsx";
+
+async function getDashboardDb() {
+  const { default: postgres } = await import("postgres");
+  return postgres({
+    host: "localhost", port: 5433, database: "xtdb",
+    user: "xtdb", password: "xtdb", max: 2, idle_timeout: 10,
+  });
+}
+
+app.get("/dashboard", async (c) => {
+  try {
+    const db = await getDashboardDb();
+    let projects: any[] = [];
+    let incidentsOpen = 0;
+    try {
+      projects = await db`SELECT * FROM projects ORDER BY name ASC`;
+    } catch { projects = []; }
+    try {
+      const res = await db`SELECT COUNT(*) as cnt FROM incidents WHERE status = 'open'`;
+      incidentsOpen = Number(res[0]?.cnt ?? 0);
+    } catch {}
+    await db.end();
+
+    const active = projects.filter((p) => p.lifecycle_phase === "active").length;
+    const stats = { total: projects.length, active, incidents_open: incidentsOpen };
+
+    const content = portfolioPage(projects, stats);
+    return c.html(Layout({ title: "Portfolio", children: content }));
+  } catch (err: unknown) {
+    return c.html(Layout({ title: "Error", children: `<p>Error loading dashboard: ${String(err)}</p>` }));
+  }
+});
+
+app.get("/dashboard/project/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const db = await getDashboardDb();
+
+    let project: any = null;
+    try {
+      const rows = await db`SELECT * FROM projects WHERE _id = ${id} LIMIT 1`;
+      project = rows[0] ?? null;
+    } catch {}
+
+    if (!project) {
+      await db.end();
+      return c.html(Layout({ title: "Not Found", children: `<p>Project not found: ${id}</p>` }), 404);
+    }
+
+    let requirements: any[] = [];
+    let releases: any[] = [];
+    let deployments: any[] = [];
+    let testRuns: any[] = [];
+    let incidents: any[] = [];
+
+    try { requirements = await db`SELECT * FROM requirements WHERE project_id = ${id} ORDER BY _id`; } catch {}
+    try { releases = await db`SELECT * FROM releases WHERE project_id = ${id} ORDER BY _id DESC`; } catch {}
+    try { deployments = await db`SELECT * FROM deployments WHERE project_id = ${id} ORDER BY _id DESC`; } catch {}
+    try { testRuns = await db`SELECT * FROM test_runs WHERE project_id = ${id} ORDER BY _id DESC`; } catch {}
+    try { incidents = await db`SELECT * FROM incidents WHERE project_id = ${id} ORDER BY _id DESC`; } catch {}
+
+    await db.end();
+
+    const content = projectPage(project, requirements, releases, deployments, testRuns, incidents);
+    return c.html(Layout({ title: project.name || id, children: content }));
+  } catch (err: unknown) {
+    return c.html(Layout({ title: "Error", children: `<p>Error loading project: ${String(err)}</p>` }));
   }
 });
 

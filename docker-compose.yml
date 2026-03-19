@@ -93,6 +93,27 @@ services:
       retries: 20
       start_period: 30s
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2.4
+    container_name: keycloak
+    restart: unless-stopped
+    command: start-dev
+    environment:
+      KC_DB: dev-mem
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8180:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080; echo -e 'GET /health/ready HTTP/1.1\r\nhost: localhost\r\nConnection: close\r\n\r\n' >&3; cat <&3 | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
 volumes:
   redpanda-data:
   xtdb-primary-data:
