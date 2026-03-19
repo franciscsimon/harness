@@ -64,7 +64,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // ─── App ───────────────────────────────────────────────────────────
 
 const app = new Hono();
-app.use("/api/*", cors());
+app.use("/*", cors({ origin: "*" }));
 
 // ── Static files ───────────────────────────────────────────────────
 

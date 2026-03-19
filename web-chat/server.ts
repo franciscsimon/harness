@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { readFileSync } from "node:fs";
@@ -19,6 +20,7 @@ const CWD = process.env.CHAT_CWD ?? process.cwd();
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = new Hono();
+app.use("/*", cors({ origin: "*" }));
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 
 // ─── Static files ─────────────────────────────────────────────────
