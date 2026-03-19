@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     ports:
       - "5433:5432"   # Postgres wire protocol
-      - "8081:8080"   # HTTP API + healthz
+      - "8081:8080"   # Healthz
     volumes:
       - xtdb-data:/var/lib/xtdb
     environment:
