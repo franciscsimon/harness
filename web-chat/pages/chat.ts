@@ -53,6 +53,27 @@ export function renderChat(): string {
       </div>
     </section>
 
+    <!-- Workflow — accordion, starts open when active -->
+    <details class="sb-accordion" id="sb-workflow-section">
+      <summary class="sb-accordion-head">Workflow</summary>
+      <div class="sb-accordion-body" id="sb-workflow-body">
+        <div class="wf-inactive" id="wf-inactive">No active workflow</div>
+        <div class="wf-active" id="wf-active" style="display:none">
+          <div class="wf-header">
+            <span class="wf-name" id="wf-name"></span>
+            <button class="wf-abandon-btn" id="wf-abandon" title="Abandon workflow">✕</button>
+          </div>
+          <div class="wf-steps" id="wf-steps"></div>
+          <div class="wf-progress" id="wf-progress"></div>
+          <div class="wf-actions">
+            <button class="sb-btn" id="wf-advance">▶ Advance</button>
+            <button class="sb-btn" id="wf-skip">⏭ Skip</button>
+          </div>
+        </div>
+        <button class="sb-btn" id="wf-pick">📋 Pick Workflow</button>
+      </div>
+    </details>
+
     <!-- Session — accordion, collapsed -->
     <details class="sb-accordion">
       <summary class="sb-accordion-head">Session</summary>

@@ -316,6 +316,7 @@ function showNotify(message, level) {
 }
 
 function showExtStatus(key, text) {
+  if (key === "workflow") { renderWorkflowSidebar(text); return; }
   let bar = document.getElementById("ext-status-bar");
   if (!bar) {
     bar = el("div", "chat-ext-status");
@@ -326,6 +327,29 @@ function showExtStatus(key, text) {
   let span = bar.querySelector(`[data-key="${key}"]`);
   if (!span) { span = el("span", "chat-ext-status-item"); span.dataset.key = key; bar.appendChild(span); }
   span.textContent = text;
+}
+
+function renderWorkflowSidebar(jsonText) {
+  const inactive = document.getElementById("wf-inactive");
+  const active = document.getElementById("wf-active");
+  const section = document.getElementById("sb-workflow-section");
+  if (!inactive || !active) return;
+  let data;
+  try { data = JSON.parse(jsonText); } catch { return; }
+  if (!data.active) {
+    inactive.style.display = ""; active.style.display = "none";
+    return;
+  }
+  inactive.style.display = "none"; active.style.display = "";
+  section.open = true;
+  document.getElementById("wf-name").textContent = data.workflowName;
+  const stepsEl = document.getElementById("wf-steps");
+  stepsEl.innerHTML = data.steps.map(s => {
+    const icon = s.status === "done" ? "✅" : s.status === "skipped" ? "⏭" : s.status === "active" ? "👉" : "⬜";
+    const cls = "wf-step wf-step-" + s.status;
+    return `<div class="${cls}">${icon} ${s.position}. ${esc(s.name)} <span class="wf-step-role">${esc(s.agentRole)}</span></div>`;
+  }).join("");
+  document.getElementById("wf-progress").innerHTML = data.progress || "";
 }
 
 function showSystemMsg(text) {
@@ -397,6 +421,10 @@ $cwdInput.addEventListener("keydown", (e) => {
   }
 });
 // Sidebar buttons
+document.getElementById("wf-advance").addEventListener("click", () => wsSend({ type: "prompt", text: "/workflow advance" }));
+document.getElementById("wf-skip").addEventListener("click", () => wsSend({ type: "prompt", text: "/workflow skip" }));
+document.getElementById("wf-abandon").addEventListener("click", () => wsSend({ type: "prompt", text: "/workflow abandon" }));
+document.getElementById("wf-pick").addEventListener("click", () => wsSend({ type: "prompt", text: "/workflow list" }));
 document.getElementById("btn-export").addEventListener("click", () => wsSend({ type: "export_html" }));
 document.getElementById("btn-copy-last").addEventListener("click", () => wsSend({ type: "copy_last" }));
 document.getElementById("btn-reload").addEventListener("click", () => { wsSend({ type: "reload" }); showSystemMsg("🔄 Reloading extensions…"); });

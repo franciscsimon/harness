@@ -264,6 +264,25 @@ header { flex-shrink: 0; }
 }
 .ui-dialog-input:focus { border-color: #3b82f6; }
 
+/* ─── Workflow (sidebar) ─────────────────────────────────────── */
+.wf-inactive { font-size: 11px; color: var(--text-dim); font-style: italic; padding: 2px 0; }
+.wf-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.wf-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.wf-abandon-btn {
+  background: none; border: none; color: var(--text-dim); cursor: pointer;
+  font-size: 14px; padding: 0 2px; line-height: 1;
+}
+.wf-abandon-btn:hover { color: #ef4444; }
+.wf-step { font-size: 11px; padding: 3px 0; display: flex; align-items: center; gap: 4px; }
+.wf-step-role { color: var(--text-dim); font-family: var(--mono); font-size: 10px; margin-left: auto; }
+.wf-step-active { color: var(--text); font-weight: 600; }
+.wf-step-done { color: var(--text-dim); }
+.wf-step-skipped { color: var(--text-dim); text-decoration: line-through; }
+.wf-step-pending { color: var(--text-dim); opacity: 0.5; }
+.wf-progress { font-family: var(--mono); font-size: 11px; color: var(--text-dim); padding: 4px 0; }
+.wf-actions { display: flex; gap: 6px; margin-top: 4px; }
+.wf-actions .sb-btn { flex: 1; text-align: center; }
+
 /* ─── Responsive: collapse sidebar on narrow screens ─────────── */
 @media (max-width: 720px) {
   .chat-sidebar { display: none; }
