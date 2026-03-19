@@ -1,0 +1,16 @@
+{
+  "name": "workflow-engine",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Composable workflow templates using Schema.org Action types + PROV-O in JSON-LD",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "@rdfjs/types": "^2.0.1",
+    "jsonld": "^9.0.0",
+    "jsonld-streaming-serializer": "^4.0.0",
+    "n3": "^2.0.3",
+    "postgres": "^3.4.8"
+  }
+}
