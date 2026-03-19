@@ -1,0 +1,14 @@
+{
+  "name": "harness-ui",
+  "version": "1.0.0",
+  "description": "Unified UI for the harness platform — pure rendering, zero DB access",
+  "scripts": {
+    "start": "npx jiti server.ts",
+    "dev": "npx jiti server.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.14.1",
+    "@hono/node-ws": "^1.1.1",
+    "hono": "^4.7.5"
+  }
+}
