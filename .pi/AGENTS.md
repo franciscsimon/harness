@@ -1,5 +1,34 @@
 # Harness Project Guidelines
 
+## Migration & Code Porting Rules
+
+When migrating, unifying, or consolidating existing code into a new location:
+
+1. **Read the original source file COMPLETELY before writing any replacement.** Never guess what it does.
+2. **Copy the rendering/logic functions, then change ONLY what must change** (data source, imports, wrapper). Keep all formatting, badges, links, health indicators, grouping logic.
+3. **Your new file must be within 20% line count of the original.** If it's half the size, you deleted functionality. Stop and re-read the original.
+4. **Diff your new file against the original.** Only data-source lines should differ, not rendering.
+
+## API Consumer Rules
+
+Before writing ANY code that calls an API endpoint:
+
+1. **curl the actual endpoint first** and examine the real JSON response.
+2. **Use the exact field names from the real response** — never assume (`sessionId` not `session_id`, `ts` not `timestamp`).
+3. **Paste the real response shape as a comment** in your code so it's verifiable.
+
+```bash
+# ALWAYS do this first
+curl -s http://localhost:3333/api/sessions/list | python3 -m json.tool | head -20
+```
+
+## Process Management Rules
+
+1. **Never start long-running services with `&` in bash calls.** They die silently or get killed by timeouts.
+2. **For testing server pages, use inline test scripts:** import the server, setTimeout to test, process.exit().
+3. **Always use `--max-time` with curl** to prevent hanging.
+4. **Always use `timeout` parameter on bash calls** that involve network or servers.
+
 ## Test Writing Rules
 
 When writing tests for this codebase, follow these rules strictly:
