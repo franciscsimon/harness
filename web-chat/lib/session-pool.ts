@@ -1,7 +1,7 @@
 import {
   createAgentSession, SessionManager, AuthStorage, ModelRegistry,
   DefaultResourceLoader,
-  type AgentSession, type ExtensionAPI, type SessionStats,
+  type AgentSession, type SessionStats,
 } from "@mariozechner/pi-coding-agent";
 import { getModel } from "@mariozechner/pi-ai";
 import { randomUUID } from "node:crypto";
@@ -53,63 +53,44 @@ const modelRegistry = new ModelRegistry(authStorage);
 
 // ─── UI Bridge Extension Factory ─────────────────────────────────
 
-function patchUi(ctx: any, wsSend: WsSend) {
-  if (!ctx?.ui) return;
-  const ui = ctx.ui;
-
-  // notify
-  if (!ui.notify?.__patched) {
-    const orig = ui.notify?.bind(ui);
-    ui.notify = Object.assign((message: string, level?: string) => {
-      wsSend({ type: "ui:notify", message, level: level ?? "info" });
-      return orig?.(message, level);
-    }, { __patched: true });
-  }
-
-  // setStatus
-  if (!ui.setStatus?.__patched) {
-    const orig = ui.setStatus?.bind(ui);
-    ui.setStatus = Object.assign((key: string, text: string) => {
-      wsSend({ type: "ui:status", key, text });
-      return orig?.(key, text);
-    }, { __patched: true });
-  }
-
-  // confirm → async round-trip to client
-  if (!ui.confirm?.__patched) {
-    ui.confirm = Object.assign(
-      (title: string, message: string, opts?: { timeout?: number }) => {
-        return requestDialog(wsSend, { type: "ui:confirm", title, message }, opts?.timeout);
-      },
-      { __patched: true },
-    );
-  }
-
-  // select → async round-trip to client
-  if (!ui.select?.__patched) {
-    ui.select = Object.assign(
-      (title: string, options: string[], opts?: { timeout?: number }) => {
-        return requestDialog(wsSend, { type: "ui:select", title, options }, opts?.timeout);
-      },
-      { __patched: true },
-    );
-  }
-
-  // input → async round-trip to client
-  if (!ui.input?.__patched) {
-    ui.input = Object.assign(
-      (title: string, placeholder?: string, opts?: { timeout?: number }) => {
-        return requestDialog(wsSend, { type: "ui:input", title, placeholder }, opts?.timeout);
-      },
-      { __patched: true },
-    );
-  }
-}
-
-function createUiBridge(wsSend: WsSend): (pi: ExtensionAPI) => void {
-  return (pi: ExtensionAPI) => {
-    pi.on("session_start", async (_event, ctx) => patchUi(ctx, wsSend));
-    pi.on("agent_start", async (_event, ctx) => patchUi(ctx, wsSend));
+// Build a UIContext that forwards all operations to the WebSocket client.
+// This is passed to bindExtensions so ALL extension contexts (commands, tools,
+// event handlers) get the same working UI — not just those patched in event hooks.
+function buildUiContext(wsSend: WsSend): any {
+  return {
+    notify: (message: string, type?: string) => {
+      wsSend({ type: "ui:notify", message, level: type ?? "info" });
+    },
+    setStatus: (key: string, text: string | undefined) => {
+      wsSend({ type: "ui:status", key, text: text ?? "" });
+    },
+    setWorkingMessage: (_message?: string) => { /* no-op for web */ },
+    setWidget: (_key: string, _content: any, _options?: any) => { /* no-op for web */ },
+    setFooter: (_factory: any) => { /* no-op for web */ },
+    setHeader: (_factory: any) => { /* no-op for web */ },
+    setTitle: (_title: string) => { /* no-op for web */ },
+    onTerminalInput: (_handler: any) => () => {},
+    select: (title: string, options: string[], opts?: { timeout?: number }) => {
+      return requestDialog(wsSend, { type: "ui:select", title, options }, opts?.timeout);
+    },
+    confirm: (title: string, message: string, opts?: { timeout?: number }) => {
+      return requestDialog(wsSend, { type: "ui:confirm", title, message }, opts?.timeout);
+    },
+    input: (title: string, placeholder?: string, opts?: { timeout?: number }) => {
+      return requestDialog(wsSend, { type: "ui:input", title, placeholder }, opts?.timeout);
+    },
+    custom: async () => undefined,
+    pasteToEditor: () => {},
+    setEditorText: () => {},
+    getEditorText: () => "",
+    editor: async () => undefined,
+    setEditorComponent: () => {},
+    get theme() { return undefined; },
+    getAllThemes: () => [],
+    getTheme: () => undefined,
+    setTheme: () => ({ success: false, error: "UI not available" }),
+    getToolsExpanded: () => false,
+    setToolsExpanded: () => {},
   };
 }
 
@@ -137,10 +118,7 @@ export async function createPoolSession(
     sessionManager = SessionManager.continueRecent(cwd);
   }
 
-  const resourceLoader = new DefaultResourceLoader({
-    cwd,
-    extensionFactories: [createUiBridge(wsSend)],
-  });
+  const resourceLoader = new DefaultResourceLoader({ cwd });
   await resourceLoader.reload();
 
   const { session } = await createAgentSession({
@@ -150,11 +128,10 @@ export async function createPoolSession(
     resourceLoader,
   });
 
-  // P1 FIX: Bind extensions so session_start fires and tools register
+  // Bind extensions with a real uiContext so commands/tools/hooks all have working UI
   await session.bindExtensions({
-    shutdownHandler: async () => {
-      // Called when session is shutting down
-    },
+    uiContext: buildUiContext(wsSend),
+    shutdownHandler: async () => {},
     onError: (err) => {
       wsSend({ type: "error", message: `Extension error: ${err?.message ?? err}` });
     },
