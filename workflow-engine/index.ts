@@ -3,7 +3,10 @@ import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { loadWorkflowDir, type WorkflowDef, type WorkflowStep } from "./rdf/workflow-graph.ts";
+import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
+import { JSONLD_CONTEXT, piId, piRef } from "../lib/jsonld/context.ts";
 
 // ─── Workflow Engine Extension ────────────────────────────────────
 // Composable workflow templates using Schema.org Action + PROV-O.
@@ -29,6 +32,16 @@ interface WorkflowState {
 export default function (pi: ExtensionAPI) {
   const workflows = new Map<string, WorkflowDef>();
   let state: WorkflowState = emptyState();
+  let sql: Sql | null = null;
+  let wfRunId: string | null = null;
+
+  async function db(): Promise<Sql> {
+    if (!sql) {
+      sql = connectXtdb();
+      if (!await ensureConnected(sql)) throw new Error("XTDB unreachable");
+    }
+    return sql;
+  }
 
   function emptyState(): WorkflowState {
     return { active: false, workflowName: "", currentStep: 0, stepStates: [], task: "" };
@@ -181,6 +194,40 @@ export default function (pi: ExtensionAPI) {
     }
 
     saveState();
+
+    // Persist workflow run to XTDB (historical record)
+    try {
+      const s = await db();
+      const t = (v: string | null) => s.typed(v as any, 25);
+      const n = (v: number | null) => s.typed(v as any, 20);
+      const projectId = (globalThis as any).__piCurrentProject?.projectId ?? null;
+      wfRunId = `wfrun:${randomUUID()}`;
+      const now = Date.now();
+
+      const jsonld = JSON.stringify({
+        "@context": JSONLD_CONTEXT,
+        "@id": piId(wfRunId),
+        "@type": ["schema:HowTo", "prov:Activity"],
+        "schema:name": name,
+        "prov:used": projectId ? piRef(projectId) : null,
+        "schema:description": task,
+        "schema:actionStatus": "ActiveActionStatus",
+        "prov:startedAtTime": { "@value": String(now), "@type": "xsd:long" },
+      });
+
+      await s`INSERT INTO workflow_runs (
+        _id, project_id, session_id, workflow_name, task_description,
+        status, current_step, total_steps, started_ts, completed_ts, ts, jsonld
+      ) VALUES (
+        ${t(wfRunId)}, ${t(projectId)}, ${t(null)},
+        ${t(name)}, ${t(task)}, ${t('running')},
+        ${n(1)}, ${n(wf.steps.length)},
+        ${n(now)}, ${n(null)}, ${n(now)}, ${t(jsonld)}
+      )`;
+    } catch (err) {
+      console.warn(`[workflow-engine] XTDB write failed: ${err}`);
+    }
+
     ctx.ui.setStatus("workflow", JSON.stringify(statusPayload()));
 
     const step = wf.steps[0];
@@ -210,6 +257,43 @@ export default function (pi: ExtensionAPI) {
       state.active = false;
       saveState();
       ctx.ui.setStatus("workflow", JSON.stringify(statusPayload()));
+
+      // Record completed step + workflow completion in XTDB
+      try {
+        if (wfRunId) {
+          const s = await db();
+          const t = (v: string | null) => s.typed(v as any, 25);
+          const n = (v: number | null) => s.typed(v as any, 20);
+          const stepId = `wfstep:${randomUUID()}`;
+          const now = Date.now();
+
+          await s`INSERT INTO workflow_step_runs (
+            _id, workflow_run_id, step_name, agent_role, position,
+            status, started_ts, completed_ts, ts, jsonld
+          ) VALUES (
+            ${t(stepId)}, ${t(wfRunId)}, ${t(wf.steps[curIdx]?.name ?? 'unknown')},
+            ${t(wf.steps[curIdx]?.agentRole ?? 'unknown')}, ${n(state.stepStates[curIdx]?.position ?? 0)},
+            ${t('done')}, ${n(state.stepStates[curIdx]?.startedAt ?? now)},
+            ${n(now)}, ${n(now)}, ${t('{}')}
+          )`;
+
+          const projectId = (globalThis as any).__piCurrentProject?.projectId ?? null;
+          await s`INSERT INTO workflow_runs (
+            _id, project_id, session_id, workflow_name, task_description,
+            status, current_step, total_steps, started_ts, completed_ts, ts, jsonld
+          ) VALUES (
+            ${t(wfRunId)}, ${t(projectId)}, ${t(null)},
+            ${t(state.workflowName)}, ${t(state.task)},
+            ${t('completed')},
+            ${n(state.currentStep)}, ${n(wf.steps.length)},
+            ${n(state.stepStates[0]?.startedAt ?? now)},
+            ${n(now)}, ${n(now)}, ${t('{}')}
+          )`;
+        }
+      } catch (err) {
+        console.warn(`[workflow-engine] XTDB step write failed: ${err}`);
+      }
+
       return `✅ Workflow "${state.workflowName}" complete — all ${wf.steps.length} steps done.`;
     }
 
@@ -219,6 +303,42 @@ export default function (pi: ExtensionAPI) {
 
     saveState();
     ctx.ui.setStatus("workflow", JSON.stringify(statusPayload()));
+
+    // Record completed step + progress in XTDB
+    try {
+      if (wfRunId) {
+        const s = await db();
+        const t = (v: string | null) => s.typed(v as any, 25);
+        const n = (v: number | null) => s.typed(v as any, 20);
+        const stepId = `wfstep:${randomUUID()}`;
+        const now = Date.now();
+
+        await s`INSERT INTO workflow_step_runs (
+          _id, workflow_run_id, step_name, agent_role, position,
+          status, started_ts, completed_ts, ts, jsonld
+        ) VALUES (
+          ${t(stepId)}, ${t(wfRunId)}, ${t(wf.steps[curIdx]?.name ?? 'unknown')},
+          ${t(wf.steps[curIdx]?.agentRole ?? 'unknown')}, ${n(state.stepStates[curIdx]?.position ?? 0)},
+          ${t('done')}, ${n(state.stepStates[curIdx]?.startedAt ?? now)},
+          ${n(now)}, ${n(now)}, ${t('{}')}
+        )`;
+
+        const projectId = (globalThis as any).__piCurrentProject?.projectId ?? null;
+        await s`INSERT INTO workflow_runs (
+          _id, project_id, session_id, workflow_name, task_description,
+          status, current_step, total_steps, started_ts, completed_ts, ts, jsonld
+        ) VALUES (
+          ${t(wfRunId)}, ${t(projectId)}, ${t(null)},
+          ${t(state.workflowName)}, ${t(state.task)},
+          ${t('running')},
+          ${n(state.currentStep)}, ${n(wf.steps.length)},
+          ${n(state.stepStates[0]?.startedAt ?? now)},
+          ${n(null)}, ${n(now)}, ${t('{}')}
+        )`;
+      }
+    } catch (err) {
+      console.warn(`[workflow-engine] XTDB step write failed: ${err}`);
+    }
 
     const step = wf.steps[nextIdx];
     const prompt = step.promptTemplate
@@ -248,7 +368,38 @@ export default function (pi: ExtensionAPI) {
   function abandonWorkflow(ctx: any): string {
     if (!state.active) return "No active workflow.";
     const name = state.workflowName;
+    const prevTask = state.task;
+    const prevWf = workflows.get(state.workflowName);
+
+    // Record abandonment in XTDB
+    try {
+      if (wfRunId) {
+        const abandon = async () => {
+          const s = await db();
+          const t = (v: string | null) => s.typed(v as any, 25);
+          const n = (v: number | null) => s.typed(v as any, 20);
+          const projectId = (globalThis as any).__piCurrentProject?.projectId ?? null;
+          const now = Date.now();
+          await s`INSERT INTO workflow_runs (
+            _id, project_id, session_id, workflow_name, task_description,
+            status, current_step, total_steps, started_ts, completed_ts, ts, jsonld
+          ) VALUES (
+            ${t(wfRunId)}, ${t(projectId)}, ${t(null)},
+            ${t(name)}, ${t(prevTask)},
+            ${t('abandoned')},
+            ${n(state.currentStep)}, ${n(prevWf?.steps.length ?? 0)},
+            ${n(state.stepStates[0]?.startedAt ?? now)},
+            ${n(now)}, ${n(now)}, ${t('{}')}
+          )`;
+        };
+        abandon().catch(err => console.warn(`[workflow-engine] XTDB abandon write failed: ${err}`));
+      }
+    } catch (err) {
+      console.warn(`[workflow-engine] XTDB abandon write failed: ${err}`);
+    }
+
     state = emptyState();
+    wfRunId = null;
     saveState();
     ctx.ui.setStatus("workflow", JSON.stringify(statusPayload()));
     return `🛑 Workflow "${name}" abandoned.`;
@@ -320,6 +471,12 @@ export default function (pi: ExtensionAPI) {
       }
       return { content: [{ type: "text" as const, text: msg }] };
     },
+  });
+
+  // ─── Clean up DB connection on shutdown ──────────────────────────
+
+  pi.on("session_shutdown", async () => {
+    if (sql) { try { await sql.end(); } catch {} sql = null; }
   });
 
   // ─── Auto-advance on agent_end if transition is "auto" ──────────
