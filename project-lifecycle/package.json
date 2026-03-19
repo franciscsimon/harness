@@ -1,0 +1,12 @@
+{
+  "name": "project-lifecycle",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Pi extension — manage project lifecycle phases, config, and status",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "postgres": "^3.4.8"
+  }
+}

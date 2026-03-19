@@ -1,0 +1,26 @@
+import { randomUUID } from "node:crypto";
+
+export const ids = {
+  project: (hash: string) => `proj:${hash}`,
+  sessionProject: () => `sp:${randomUUID()}`,
+  decision: () => `dec:${randomUUID()}`,
+  artifact: () => `art:${randomUUID()}`,
+  artifactVersion: () => `artver:${randomUUID()}`,
+  artifactRead: () => `aread:${randomUUID()}`,
+  delegation: () => `del:${randomUUID()}`,
+  postmortem: () => `pm:${randomUUID()}`,
+  requirement: () => `req:${randomUUID()}`,
+  requirementLink: () => `reqlink:${randomUUID()}`,
+  environment: () => `env:${randomUUID()}`,
+  release: () => `rel:${randomUUID()}`,
+  deployment: () => `depl:${randomUUID()}`,
+  testRun: () => `trun:${randomUUID()}`,
+  backupRecord: () => `bak:${randomUUID()}`,
+  incident: () => `inc:${randomUUID()}`,
+  workflowRun: () => `wfrun:${randomUUID()}`,
+  workflowStepRun: () => `wfstep:${randomUUID()}`,
+  decommission: () => `decom:${randomUUID()}`,
+  projectDependency: () => `pdep:${randomUUID()}`,
+  projectTag: () => `ptag:${randomUUID()}`,
+  lifecycleEvent: () => `lev:${randomUUID()}`,
+} as const;

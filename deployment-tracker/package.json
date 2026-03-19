@@ -1,0 +1,8 @@
+{
+  "name": "deployment-tracker",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Pi extension — track environments, releases, and deployments",
+  "pi": { "extensions": ["./index.ts"] },
+  "dependencies": { "postgres": "^3.4.8" }
+}

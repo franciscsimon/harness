@@ -1,0 +1,12 @@
+{
+  "name": "requirements-tracker",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Pi extension — track project requirements and link to artifacts/decisions",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "dependencies": {
+    "postgres": "^3.4.8"
+  }
+}
