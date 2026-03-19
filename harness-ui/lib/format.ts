@@ -95,8 +95,9 @@ export function formatDuration(ms: number | string | null): string {
   return `${h}h ${m}m`;
 }
 
-export function escapeHtml(s: string): string {
-  return s
+export function escapeHtml(s: string | null | undefined): string {
+  if (s == null) return "";
+  return String(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

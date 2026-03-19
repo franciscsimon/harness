@@ -50,7 +50,7 @@ export async function renderArtifacts(): Promise<string> {
     return `<div class="art-card" data-path="${escapeHtml(path)}" data-session="${escapeHtml(latest.session_id ?? "")}">
       <div class="art-card-top">
         <span class="art-op">${OP_ICONS[latest.operation] ?? "•"}</span>
-        <span class="art-filename">${escapeHtml(fileName)}</span>
+        <a href="/artifacts/versions?path=${encodeURIComponent(path)}" class="art-filename">${escapeHtml(fileName)}</a>
         <span class="art-kind-badge" style="--kind-color:${color}">${escapeHtml(kind)}</span>
         <span class="art-versions">${versions.length} version${versions.length !== 1 ? "s" : ""}</span>
         <span class="dec-ago">${relativeTime(latest.ts)}</span>
@@ -86,4 +86,40 @@ export async function renderArtifacts(): Promise<string> {
   `;
 
   return layout(content, { title: "Artifacts", activePath: "/artifacts" });
+}
+
+// ─── Artifact Versions Page ────────────────────────────────────
+
+export async function renderArtifactVersions(path: string): Promise<string> {
+  const allArtifacts = (await fetchArtifacts()) ?? [];
+  const versions = allArtifacts.filter((a: any) => a.path === path);
+  const fileName = path.split("/").pop() ?? path;
+
+  const rows = versions.map((v: any) => `
+    <div class="art-card">
+      <div class="art-card-top">
+        <span class="art-op">${OP_ICONS[v.operation] ?? "•"}</span>
+        <span class="art-filename">${escapeHtml(v.operation ?? "—")}</span>
+        <span class="art-kind-badge" style="--kind-color:${KIND_COLORS[v.kind ?? "other"] ?? "#6b7280"}">${escapeHtml(v.kind ?? "other")}</span>
+        <span class="dec-ago">${relativeTime(v.ts)}</span>
+      </div>
+      <div class="art-meta">
+        ${v.content_hash ? `<span>Hash: <code>${escapeHtml(String(v.content_hash).slice(0, 16))}</code></span>` : ""}
+        ${v.session_id ? `<span>Session: <code>${escapeHtml(v.session_id.split("/").pop())}</code></span>` : ""}
+      </div>
+    </div>
+  `).join("\n");
+
+  const content = `
+    <div class="page-header">
+      <h1><a href="/artifacts" class="back-link">← Artifacts</a> · ${escapeHtml(fileName)}</h1>
+      <span class="total-badge">${versions.length} version${versions.length !== 1 ? "s" : ""}</span>
+    </div>
+    <div class="art-path" style="margin-bottom:1rem"><code>${escapeHtml(path)}</code></div>
+    <div class="dec-list">
+      ${versions.length === 0 ? '<p class="empty-msg">No versions found for this path.</p>' : rows}
+    </div>
+  `;
+
+  return layout(content, { title: fileName + " versions", activePath: "/artifacts" });
 }
