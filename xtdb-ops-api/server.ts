@@ -248,6 +248,26 @@ app.post("/api/scheduler/stop", (c) => c.json(stopScheduler()));
 
 app.get("/api/scheduler/status", (c) => c.json(schedulerStatus()));
 
+// ── Lifecycle SSE Stream ──────────────────────────────────────────
+
+app.get("/api/lifecycle/stream", async (c) => {
+  return streamSSE(c, async (stream) => {
+    const { default: postgres } = await import("postgres");
+    const db = postgres({ host: process.env.XTDB_EVENT_HOST ?? "localhost", port: Number(process.env.XTDB_EVENT_PORT ?? "5433"), database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30 });
+    let lastTs = Date.now();
+    while (true) {
+      try {
+        const rows = await db`SELECT * FROM lifecycle_events WHERE ts > ${db.typed(lastTs as any, 20)} ORDER BY ts ASC LIMIT 20`;
+        for (const row of rows) {
+          await stream.writeSSE({ event: "lifecycle", data: JSON.stringify(row) });
+          lastTs = Math.max(lastTs, Number(row.ts));
+        }
+      } catch {}
+      await stream.sleep(2000);
+    }
+  });
+});
+
 // ── CI/CD Webhook ─────────────────────────────────────────────────
 
 app.post("/api/ci/events", async (c) => {

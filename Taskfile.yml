@@ -202,6 +202,16 @@ tasks:
         rm -rf "$TMP"
         echo "Restore complete"
 
+  'xtdb:retain':
+    desc: Apply retention policy — delete old lifecycle_events, test_runs, etc.
+    cmds:
+      - npx jiti scripts/retain.ts
+
+  'xtdb:retain:dry':
+    desc: Dry-run retention policy — show what would be deleted
+    cmds:
+      - npx jiti scripts/retain.ts --dry-run
+
   # ── Redpanda management ────────────────────────────────────────
 
   'redpanda:topics':
