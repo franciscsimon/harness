@@ -25,7 +25,7 @@ const n = (v: number | null) => db().typed(v as any, 20);
 export interface CIEvent {
   type: "build.finished" | "test.finished" | "artifact.published" | "deployment.finished" | "release.published";
   project: string;
-  source: string;
+  source?: string;
   subject: {
     id: string;
     version?: string;
@@ -43,7 +43,7 @@ export interface CIEvent {
     duration_ms?: number;
     notes?: string;
   };
-  timestamp: string;
+  timestamp?: string;
   signature?: string;
 }
 
@@ -90,6 +90,7 @@ export async function processCIEvent(event: CIEvent): Promise<{ entity_id: strin
   const projectId = await resolveProjectId(event.project);
   const now = Date.now();
   const s = event.subject;
+  const source = event.source ?? "unknown";
 
   switch (event.type) {
     case "test.finished": {
@@ -99,7 +100,7 @@ export async function processCIEvent(event: CIEvent): Promise<{ entity_id: strin
         "@id": `urn:pi:${id}`,
         "@type": ["schema:CheckAction", "prov:Activity"],
         "schema:object": projectId ? { "@id": `urn:pi:${projectId}` } : null,
-        "prov:wasAssociatedWith": { "@type": "prov:SoftwareAgent", "schema:name": event.source },
+        "prov:wasAssociatedWith": { "@type": "prov:SoftwareAgent", "schema:name": source },
         "ev:suiteName": s.suite_name ?? "unknown",
         "ev:passed": s.passed != null ? { "@value": String(s.passed), "@type": "xsd:integer" } : null,
         "ev:failed": s.failed != null ? { "@value": String(s.failed), "@type": "xsd:integer" } : null,
@@ -117,7 +118,7 @@ export async function processCIEvent(event: CIEvent): Promise<{ entity_id: strin
         duration_ms, status, error_summary, git_commit, ts, jsonld
       ) VALUES (
         ${t(id)}, ${t(projectId)}, ${t(null)}, ${t(null)}, ${t(null)},
-        ${t(s.suite_name ?? "unknown")}, ${t(event.source)},
+        ${t(s.suite_name ?? "unknown")}, ${t(source)},
         ${n(s.passed ?? null)}, ${n(s.failed ?? null)}, ${n(s.skipped ?? null)},
         ${t(s.coverage ?? null)}, ${n(s.duration_ms ?? null)},
         ${t(s.status)}, ${t(null)}, ${t(s.git_commit ?? null)},
@@ -134,7 +135,7 @@ export async function processCIEvent(event: CIEvent): Promise<{ entity_id: strin
         "@id": `urn:pi:${id}`,
         "@type": ["schema:DeployAction", "prov:Activity"],
         "schema:targetCollection": s.environment ?? null,
-        "prov:wasAssociatedWith": { "@type": "prov:SoftwareAgent", "schema:name": event.source },
+        "prov:wasAssociatedWith": { "@type": "prov:SoftwareAgent", "schema:name": source },
         "schema:actionStatus": s.status === "succeeded" ? "CompletedActionStatus" : "FailedActionStatus",
         "schema:text": s.notes ?? null,
         "schema:version": s.git_commit ?? null,
@@ -147,7 +148,7 @@ export async function processCIEvent(event: CIEvent): Promise<{ entity_id: strin
         started_ts, completed_ts, ts, jsonld
       ) VALUES (
         ${t(id)}, ${t(projectId)}, ${t(null)}, ${t(null)}, ${t(null)},
-        ${t(event.source)}, ${t(s.status)}, ${t(null)}, ${t(s.notes ?? null)},
+        ${t(source)}, ${t(s.status)}, ${t(null)}, ${t(s.notes ?? null)},
         ${n(now)}, ${n(now)}, ${n(now)}, ${t(jsonld)}
       )`;
       await emitLifecycleEvent("deployment_" + s.status, id, "deployments", projectId, `Deploy to ${s.environment ?? "unknown"}: ${s.status}`, now);
@@ -186,7 +187,7 @@ export async function processCIEvent(event: CIEvent): Promise<{ entity_id: strin
     case "artifact.published":
     default: {
       const id = `lev:${randomUUID()}`;
-      await emitLifecycleEvent(event.type.replace(".", "_"), id, "ci_event", projectId, `${event.type} from ${event.source}: ${s.status}`, now);
+      await emitLifecycleEvent(event.type.replace(".", "_"), id, "ci_event", projectId, `${event.type} from ${source}: ${s.status}`, now);
       return { entity_id: id, entity_type: "lifecycle_events" };
     }
   }
