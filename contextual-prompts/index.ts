@@ -121,8 +121,8 @@ export default function (pi: ExtensionAPI) {
       const bytes = typeof e.payload === "string" ? e.payload.length : JSON.stringify(e.payload).length;
       lastPayloadBytes = bytes;
 
-      // P: concise-in-large-context — payload > 400KB (~20% of context window)
-      if (bytes > 400_000) {
+      // P: concise-in-large-context — payload > 800KB (~20% of 1M token context window)
+      if (bytes > 800_000) {
         const p = findPrompt("concise-in-large-context");
         if (p) fire(p);
       }

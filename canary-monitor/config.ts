@@ -13,7 +13,7 @@ export interface CanaryThresholds {
 const DEFAULTS: CanaryThresholds = {
   toolFailureRate: 0.3,
   maxTurnsPerRun: 20,
-  contextBloatBytes: 400_000,
+  contextBloatBytes: 800_000,
   retryStormCount: 3,
   maxDurationMs: 600_000,
   maxToolsPerTurn: 8,
