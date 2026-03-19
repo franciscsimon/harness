@@ -410,7 +410,7 @@ $input.addEventListener("keydown", (e) => {
 });
 $send.addEventListener("click", sendPrompt);
 $abort.addEventListener("click", () => wsSend({ type: "abort" }));
-$newBtn.addEventListener("click", () => { sessionStorage.removeItem("pi-chat-sessionFile"); wsSend({ type: "new_session" }); $messages.innerHTML = ""; });
+$newBtn.addEventListener("click", () => { window.open(location.origin, "_blank"); });
 $thinking.addEventListener("change", () => wsSend({ type: "set_thinking", level: $thinking.value }));
 $cwdInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
