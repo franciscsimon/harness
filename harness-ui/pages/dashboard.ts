@@ -1,67 +1,131 @@
+// ─── Dashboard Page ────────────────────────────────────────────
+// Ported from xtdb-event-logger-ui/pages/dashboard.ts
+// Changes: data via API fetch, layout() wrapper.
+
 import { layout } from "../components/layout.ts";
-import { renderTable, type TableColumn } from "../components/table.ts";
-import { badge } from "../components/badge.ts";
 import { fetchDashboard } from "../lib/api.ts";
-import { escapeHtml, formatDuration } from "../lib/format.ts";
+import { computeHealthScore, healthColor, healthLabel } from "../lib/health.ts";
+import { relativeTime, escapeHtml } from "../lib/format.ts";
 
 export async function renderDashboard(): Promise<string> {
   const data = await fetchDashboard();
-
   if (!data) {
-    return layout(`<div class="page-header"><h1>Dashboard</h1></div><div class="empty-state">Event Logger API unavailable</div>`,
+    return layout('<p class="empty-msg">Dashboard unavailable — cannot reach event logger API.</p>',
       { title: "Dashboard", activePath: "/dashboard" });
   }
 
+  // The API pre-computes some stats, but we re-derive what we need
   const sessions: any[] = data.sessions ?? [];
-  const toolUsage: any[] = data.toolUsage ?? [];
-  const errorPatterns: any[] = data.errorPatterns ?? [];
+  const tools: any[] = data.toolUsage ?? [];
+  const errors: any[] = data.errorPatterns ?? [];
 
-  const sessionCols: TableColumn[] = [
-    { key: "sessionId", label: "Session", render: (v) => {
-      const short = String(v).replace(/.*\/sessions\//, "").replace(/\.jsonl$/, "").slice(0, 40);
-      return `<a href="/sessions/${encodeURIComponent(v)}">${escapeHtml(short)}</a>`;
-    }},
-    { key: "eventCount", label: "Events" },
-    { key: "healthScore", label: "Health", render: (v, row) => {
-      const color = row.healthColor === "green" ? "#238636" : row.healthColor === "yellow" ? "#d29922" : "#da3633";
-      return `<span style="color:${color};font-weight:bold">${v ?? "—"}</span>`;
-    }},
-    { key: "errorRate", label: "Errors", render: (v) => ((v ?? 0) * 100).toFixed(1) + "%" },
-    { key: "turnCount", label: "Turns" },
-    { key: "durationMs", label: "Duration", render: (v) => formatDuration(v) },
-  ];
+  const totalEvents = data.totalEvents ?? sessions.reduce((s: number, r: any) => s + (r.eventCount ?? 0), 0);
+  const avgEvents = data.avgEventsPerSession ?? (sessions.length > 0 ? Math.round(totalEvents / sessions.length) : 0);
+  const overallErrorRate = data.overallErrorRate != null
+    ? (data.overallErrorRate * 100).toFixed(1)
+    : "0";
+  const avgDuration = sessions.length > 0
+    ? Math.round(sessions.reduce((s: number, r: any) => s + (r.durationMs ?? 0), 0) / sessions.length)
+    : 0;
 
-  const toolCols: TableColumn[] = [
-    { key: "tool_name", label: "Tool" },
-    { key: "count", label: "Calls" },
-    { key: "error_count", label: "Errors" },
-    { key: "error_rate", label: "Error %", render: (v) => ((v ?? 0) * 100).toFixed(1) + "%" },
-  ];
+  // Rank sessions by health
+  const ranked = sessions.map((s: any) => {
+    const score = s.healthScore ?? computeHealthScore({
+      errorRate: s.errorRate ?? 0,
+      turnCount: s.turnCount ?? 0,
+      maxPayloadBytes: s.maxPayloadBytes ?? 0,
+      durationMs: s.durationMs ?? 0,
+    });
+    const color = s.healthColor ?? healthColor(score);
+    const label = healthLabel(score);
+    return { ...s, score, color, label };
+  }).sort((a: any, b: any) => a.score - b.score); // worst first
+
+  const statCards = `
+    <div class="dash-stat-card"><div class="dash-stat-label">Sessions</div><div class="dash-stat-value">${sessions.length}</div></div>
+    <div class="dash-stat-card"><div class="dash-stat-label">Total Events</div><div class="dash-stat-value">${totalEvents}</div></div>
+    <div class="dash-stat-card"><div class="dash-stat-label">Avg Events/Session</div><div class="dash-stat-value">${avgEvents}</div></div>
+    <div class="dash-stat-card"><div class="dash-stat-label">Error Rate</div><div class="dash-stat-value">${overallErrorRate}%</div></div>
+    <div class="dash-stat-card"><div class="dash-stat-label">Avg Duration</div><div class="dash-stat-value">${fmtDuration(avgDuration)}</div></div>
+  `;
+
+  const sessionRows = ranked.map((s: any) => {
+    const name = s.sessionId.split("/").pop() ?? s.sessionId;
+    return `<a class="dash-session-row" href="/sessions/${encodeURIComponent(s.sessionId)}">
+      <span class="health-score" style="color:${colorHex(s.color)}">${s.score}</span>
+      <span class="health-badge health-badge-${s.color}">${s.label}</span>
+      <span class="dash-session-name" title="${escapeHtml(s.sessionId)}">${escapeHtml(name)}</span>
+      <span class="dash-session-meta">
+        <span>${s.eventCount ?? 0} events</span>
+        <span>${s.turnCount ?? 0} turns</span>
+        <span>${Math.round((s.maxPayloadBytes ?? 0) / 1024)}KB ctx</span>
+        <span>${((s.errorRate ?? 0) * 100).toFixed(0)}% err</span>
+        <span>${relativeTime(String(s.lastTs))}</span>
+      </span>
+    </a>`;
+  }).join("\n");
+
+  // Tool usage bars — API returns {tool_name, count, error_count}
+  const maxToolCount = Math.max(...tools.map((t: any) => t.count ?? 0), 1);
+  const toolBars = tools.map((t: any) => {
+    const name = t.tool_name ?? t.tool ?? "unknown";
+    const count = t.count ?? 0;
+    const errCount = t.error_count ?? t.errors ?? 0;
+    const errRate = count > 0 ? errCount / count : 0;
+    const pct = (count / maxToolCount) * 100;
+    return `<div class="tool-bar">
+      <span class="tool-bar-name">${escapeHtml(name)}</span>
+      <div class="tool-bar-fill" style="width:${pct}%"></div>
+      <span class="tool-bar-count">${count}</span>
+      ${errCount > 0 ? `<span class="tool-bar-error">${errCount} err (${(errRate * 100).toFixed(0)}%)</span>` : ""}
+    </div>`;
+  }).join("\n");
 
   const content = `
     <div class="page-header">
-      <h1>Dashboard</h1>
-      <p>Session health overview</p>
+      <h1>📊 Dashboard</h1>
     </div>
 
-    <div class="stats-row">
-      <div class="stat-card"><div class="stat-value">${data.totalSessions ?? 0}</div><div class="stat-label">Sessions</div></div>
-      <div class="stat-card"><div class="stat-value">${data.totalEvents ?? 0}</div><div class="stat-label">Events</div></div>
-      <div class="stat-card"><div class="stat-value">${data.avgEventsPerSession ?? 0}</div><div class="stat-label">Avg/Session</div></div>
-      <div class="stat-card"><div class="stat-value">${((data.overallErrorRate ?? 0) * 100).toFixed(1)}%</div><div class="stat-label">Error Rate</div></div>
+    <div class="dash-stats">${statCards}</div>
+
+    <div class="dash-section">
+      <h2>Sessions by Health</h2>
+      ${sessionRows || '<p class="empty-msg">No sessions.</p>'}
     </div>
 
-    <h2>Sessions by Health</h2>
-    ${renderTable(sessionCols, sessions, { emptyMessage: "No sessions" })}
+    <div class="dash-section">
+      <h2>Tool Usage</h2>
+      <div class="tool-bars">${toolBars || '<p class="empty-msg">No tool data.</p>'}</div>
+    </div>
 
-    <h2>Tool Usage</h2>
-    ${renderTable(toolCols, toolUsage, { emptyMessage: "No tool data" })}
-
-    ${errorPatterns.length > 0 ? `
-    <h2>Error Patterns</h2>
-    <ul>${errorPatterns.map((e: any) => `<li><strong>${escapeHtml(e.tool_name ?? "unknown")}</strong>: ${e.count} errors — ${escapeHtml(e.sample_error ?? "")}</li>`).join("")}</ul>
-    ` : ""}
+    <div class="dash-section">
+      <h2>Error Patterns</h2>
+      ${errors.length > 0
+        ? `<table class="error-patterns-table">
+          <thead><tr><th>Tool</th><th>Errors</th><th>Sessions</th></tr></thead>
+          <tbody>${errors.map((e: any) => `<tr>
+            <td><code>${escapeHtml(e.toolName ?? e.tool_name ?? "")}</code></td>
+            <td class="error-count">${e.count ?? 0}</td>
+            <td>${e.sessionCount ?? e.session_count ?? 0} session${(e.sessionCount ?? e.session_count ?? 0) !== 1 ? "s" : ""}</td>
+          </tr>`).join("")}</tbody>
+        </table>`
+        : '<p class="empty-msg">No errors recorded.</p>'}
+    </div>
   `;
 
   return layout(content, { title: "Dashboard", activePath: "/dashboard" });
+}
+
+function fmtDuration(ms: number): string {
+  if (ms < 1000) return "<1s";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  return `${m}m`;
+}
+
+function colorHex(c: string): string {
+  if (c === "green") return "#22c55e";
+  if (c === "yellow") return "#eab308";
+  return "#ef4444";
 }
