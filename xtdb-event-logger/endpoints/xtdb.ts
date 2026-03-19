@@ -100,6 +100,13 @@ export class XtdbEndpoint implements Endpoint {
     }
   }
 
+  /** Truncate a string field to stay under Kafka message size limits */
+  private cap(v: string | null | undefined, maxBytes = 500_000): string | null {
+    if (v == null) return null;
+    if (v.length <= maxBytes) return v;
+    return v.slice(0, maxBytes) + `\n...[truncated from ${v.length} to ${maxBytes} bytes]`;
+  }
+
   private async insertRow(event: NormalizedEvent, jsonld: string): Promise<void> {
     const sql = this.sql!;
     const t = (v: string | null) => sql.typed(v as any, 25); // text
@@ -107,6 +114,14 @@ export class XtdbEndpoint implements Endpoint {
     const n = (v: number | null) => sql.typed(v as any, 20); // int8/bigint
 
     const f = event.fields;
+
+    // Cap large fields to prevent Kafka max.request.size errors
+    f.contextMessages = this.cap(f.contextMessages) ?? undefined;
+    f.providerPayload = this.cap(f.providerPayload) ?? undefined;
+    f.agentMessages = this.cap(f.agentMessages) ?? undefined;
+    f.systemPrompt = this.cap(f.systemPrompt) ?? undefined;
+    f.compactBranchEntries = this.cap(f.compactBranchEntries) ?? undefined;
+    jsonld = this.cap(jsonld, 500_000) ?? "{}";
 
     await sql`INSERT INTO events (
       _id, environment, event_name, category, can_intercept,
