@@ -238,7 +238,7 @@ export default function (pi: ExtensionAPI) {
 
   // ─── Advance to next step ───────────────────────────────────────
 
-  function advanceStep(ctx: any): string {
+  async function advanceStep(ctx: any): Promise<string> {
     if (!state.active) return "No active workflow.";
 
     const wf = workflows.get(state.workflowName);
@@ -351,7 +351,7 @@ export default function (pi: ExtensionAPI) {
 
   // ─── Skip current step ──────────────────────────────────────────
 
-  function skipStep(ctx: any): string {
+  async function skipStep(ctx: any): Promise<string> {
     if (!state.active) return "No active workflow.";
 
     const curIdx = state.stepStates.findIndex(s => s.position === state.currentStep);
@@ -424,10 +424,10 @@ export default function (pi: ExtensionAPI) {
           const task = parts.slice(2).join(" ");
           if (!name) { msg = "Usage: /workflow start <name> <task description>"; break; }
           if (!task) { msg = "Please provide a task description: /workflow start feature-build Add user authentication"; break; }
-          msg = activateWorkflow(name, task, ctx); break;
+          msg = await activateWorkflow(name, task, ctx); break;
         }
-        case "advance": msg = advanceStep(ctx); break;
-        case "skip": msg = skipStep(ctx); break;
+        case "advance": msg = await advanceStep(ctx); break;
+        case "skip": msg = await skipStep(ctx); break;
         case "abandon": msg = abandonWorkflow(ctx); break;
         case "status":
           msg = state.active
@@ -462,10 +462,10 @@ export default function (pi: ExtensionAPI) {
         }
         case "start": {
           if (!params.workflowName || !params.task) { msg = "Need workflowName and task."; break; }
-          msg = activateWorkflow(params.workflowName, params.task, ctx); break;
+          msg = await activateWorkflow(params.workflowName, params.task, ctx); break;
         }
-        case "advance": msg = advanceStep(ctx); break;
-        case "skip": msg = skipStep(ctx); break;
+        case "advance": msg = await advanceStep(ctx); break;
+        case "skip": msg = await skipStep(ctx); break;
         case "abandon": msg = abandonWorkflow(ctx); break;
         default: msg = "Unknown action.";
       }
@@ -485,7 +485,7 @@ export default function (pi: ExtensionAPI) {
     if (!state.active) return;
     const step = currentStepDef();
     if (step?.transitionMode === "auto") {
-      const msg = advanceStep(ctx);
+      const msg = await advanceStep(ctx);
       console.log(`[workflow-engine] Auto-advanced: ${msg}`);
     }
   });

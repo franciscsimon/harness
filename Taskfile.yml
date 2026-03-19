@@ -382,8 +382,21 @@ tasks:
         cp -r "{{.EXT}}" "$HOME/.pi/agent/extensions/{{.EXT}}"
         (cd "$HOME/.pi/agent/extensions/{{.EXT}}" && npm install)
 
+  'lib:deploy':
+    desc: Deploy shared lib/ (jsonld helpers, db connection) into pi's extensions directory
+    cmds:
+      - |
+        set -euo pipefail
+        mkdir -p "$HOME/.pi/agent/extensions/lib"
+        echo "→ Deploying shared lib/"
+        rm -rf "$HOME/.pi/agent/extensions/lib"
+        cp -r lib "$HOME/.pi/agent/extensions/lib"
+        (cd "$HOME/.pi/agent/extensions/lib" && npm install)
+
   'ext:deploy:all':
-    desc: Deploy every package in this repo that declares a pi extension
+    desc: Deploy shared lib + every package in this repo that declares a pi extension
+    deps:
+      - 'lib:deploy'
     cmds:
       - |
         set -euo pipefail
