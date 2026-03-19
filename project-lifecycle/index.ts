@@ -348,6 +348,83 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  // ── /project decommission ──
+  pi.registerCommand("project decommission", {
+    description: "Decommission a project (archive data, set phase, record decommission)",
+    schema: Type.Object({ confirm: Type.Optional(Type.Boolean({ default: false })), reason: Type.Optional(Type.String()) }),
+    handler: async (args, ctx) => {
+      const conn = await db();
+      if (!conn) return { content: [{ type: "text" as const, text: "XTDB not available" }] };
+
+      const projectId = getCurrentProjectId();
+      if (!projectId) return { content: [{ type: "text" as const, text: "No current project detected." }] };
+
+      const confirmed = args?.confirm === true;
+      const reason = args?.reason?.trim() || "No reason provided";
+
+      if (!confirmed) {
+        let output = `## ⚠️ Project Decommission: ${projectId}\n\n`;
+        output += `Decommissioning this project will:\n\n`;
+        output += `- 📦 Archive project data\n`;
+        output += `- 🔄 Set lifecycle_phase to **decommissioned**\n`;
+        output += `- 📝 Record decommission record\n\n`;
+        output += `Run again with **confirm=true** to proceed.`;
+        return { content: [{ type: "text" as const, text: output }] };
+      }
+
+      // Read current project
+      let rows: any[];
+      try {
+        rows = await conn`SELECT * FROM projects WHERE _id = ${t(conn, projectId)}`;
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: `Failed to query project: ${err}` }] };
+      }
+
+      if (rows.length === 0) {
+        return { content: [{ type: "text" as const, text: `Project ${projectId} not found in database.` }] };
+      }
+
+      const existing = rows[0];
+
+      // Update lifecycle_phase to 'decommissioned' (XTDB upsert)
+      try {
+        await conn`INSERT INTO projects (
+          _id, canonical_id, name, identity_type, git_remote_url, git_root_path,
+          first_seen_ts, last_seen_ts, session_count, lifecycle_phase, config_json, jsonld
+        ) VALUES (
+          ${t(conn, existing._id)}, ${t(conn, existing.canonical_id)},
+          ${t(conn, existing.name)}, ${t(conn, existing.identity_type)},
+          ${t(conn, existing.git_remote_url)}, ${t(conn, existing.git_root_path)},
+          ${n(conn, Number(existing.first_seen_ts))}, ${n(conn, Date.now())},
+          ${n(conn, Number(existing.session_count))}, ${t(conn, "decommissioned")},
+          ${t(conn, existing.config_json)}, ${t(conn, existing.jsonld)}
+        )`;
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: `Failed to update phase: ${err}` }] };
+      }
+
+      // Insert decommission record
+      const decomId = `decom:${randomUUID()}`;
+      try {
+        await conn`INSERT INTO decommission_records (_id, project_id, reason, decommissioned_by, checklist_json, ts, jsonld)
+          VALUES (${t(conn, decomId)}, ${t(conn, projectId)}, ${t(conn, reason)}, ${t(conn, "pi-agent")}, ${t(conn, "{}")}, ${n(conn, Date.now())}, ${t(conn, "{}")})`;
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: `Phase updated but failed to record decommission: ${err}` }] };
+      }
+
+      // Emit lifecycle event
+      try {
+        const levId = `lev:${randomUUID()}`;
+        await conn`INSERT INTO lifecycle_events (_id, event_type, entity_id, entity_type, project_id, summary, ts)
+          VALUES (${t(conn, levId)}, ${t(conn, "project_decommissioned")}, ${t(conn, projectId)}, ${t(conn, "projects")}, ${t(conn, projectId)}, ${t(conn, `Project decommissioned. Reason: ${reason}`)}, ${n(conn, Date.now())})`;
+      } catch (err) {
+        console.error(`[project-lifecycle] Failed to emit lifecycle event: ${err}`);
+      }
+
+      return { content: [{ type: "text" as const, text: `✅ Project **${projectId}** has been decommissioned.\n\n**Reason:** ${reason}\n**Record:** ${decomId}` }] };
+    },
+  });
+
   // Cleanup on shutdown
   pi.on("session_shutdown", async () => {
     if (sql) {
