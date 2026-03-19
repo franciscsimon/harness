@@ -194,7 +194,8 @@ export function detectBadTestPatterns(filename: string, content: string): Violat
     const ln = i + 1;
 
     // Raw SQL in test files — tests should go through the public API, not bypass it
-    if (/\bsql`\s*(INSERT|SELECT|UPDATE|DELETE)\b/i.test(line) && !/seed|setup|teardown|cleanup|before|after/i.test(line)) {
+    const prevLine = i > 0 ? lines[i - 1] : "";
+    if (/\bsql`\s*(INSERT|SELECT|UPDATE|DELETE)\b/i.test(line) && !/seed|setup|teardown|cleanup|before|after/i.test(line) && !/seed|setup|teardown|cleanup|before|after/i.test(prevLine)) {
       violations.push({
         check: "test-raw-sql",
         severity: "warn",
