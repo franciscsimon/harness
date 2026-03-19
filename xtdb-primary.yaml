@@ -6,6 +6,7 @@ log: !Kafka
   cluster: kafkaCluster
   topic: "xtdb-log"
   autoCreateTopic: true
+  epoch: 1
 
 storage: !Local
   path: "/var/lib/xtdb/buffers"

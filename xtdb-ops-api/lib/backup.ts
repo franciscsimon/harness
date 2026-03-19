@@ -1,5 +1,7 @@
 import { exec } from "./exec.ts";
 import { randomUUID } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const HARNESS_DIR = process.env.HARNESS_DIR ?? "/Users/opunix/harness";
 const BACKUP_BASE =
@@ -249,4 +251,177 @@ echo "Restore complete"`,
     success: result.exitCode === 0,
     message: result.stdout.trim() || result.stderr.trim(),
   };
+}
+
+function incrementEpoch(): number {
+  const configs = ["xtdb-primary.yaml", "xtdb-replica.yaml"];
+  let newEpoch = 1;
+
+  for (const name of configs) {
+    const path = join(HARNESS_DIR, name);
+    let content = readFileSync(path, "utf8");
+
+    // Find current epoch
+    const match = content.match(/epoch:\s*(\d+)/);
+    if (match) {
+      const current = parseInt(match[1], 10);
+      newEpoch = Math.max(newEpoch, current + 1);
+    }
+  }
+
+  // Write new epoch to both configs
+  for (const name of configs) {
+    const path = join(HARNESS_DIR, name);
+    let content = readFileSync(path, "utf8");
+
+    if (content.match(/epoch:\s*\d+/)) {
+      content = content.replace(/epoch:\s*\d+/, `epoch: ${newEpoch}`);
+    } else {
+      // Add epoch after autoCreateTopic line
+      content = content.replace(
+        /(autoCreateTopic:\s*true)/,
+        `$1\n  epoch: ${newEpoch}`,
+      );
+    }
+    writeFileSync(path, content, "utf8");
+  }
+
+  return newEpoch;
+}
+
+export function startSnapshotRestore(archivePath: string): string {
+  const jobId = randomUUID();
+  const job: BackupJob = {
+    id: jobId,
+    type: "snapshot",
+    status: "running",
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    progress: [],
+    result: null,
+  };
+  jobs.set(jobId, job);
+
+  (async () => {
+    try {
+      job.progress.push("1/8 Stopping replica...");
+      const stopR = await exec("docker", ["compose", "stop", "xtdb-replica"], {
+        cwd: HARNESS_DIR,
+        timeout: 30_000,
+      });
+      if (stopR.exitCode !== 0)
+        throw new Error(`Stop replica failed: ${stopR.stderr.trim()}`);
+
+      job.progress.push("2/8 Stopping primary...");
+      const stopP = await exec(
+        "docker",
+        ["compose", "stop", "xtdb-primary"],
+        { cwd: HARNESS_DIR, timeout: 30_000 },
+      );
+      if (stopP.exitCode !== 0)
+        throw new Error(`Stop primary failed: ${stopP.stderr.trim()}`);
+
+      job.progress.push("3/8 Clearing primary storage volume...");
+      const primaryVol = await exec("docker", [
+        "volume",
+        "ls",
+        "-q",
+        "--filter",
+        "name=xtdb-primary-data",
+      ]);
+      const pVol = primaryVol.stdout.trim().split("\n")[0];
+
+      await exec("docker", [
+        "run", "--rm",
+        "-v", `${pVol}:/var/lib/xtdb`,
+        "alpine",
+        "sh", "-c", "rm -rf /var/lib/xtdb/buffers && mkdir -p /var/lib/xtdb/buffers",
+      ], { timeout: 30_000 });
+
+      job.progress.push("4/8 Extracting snapshot into primary storage...");
+      await exec("docker", [
+        "run", "--rm",
+        "-v", `${pVol}:/var/lib/xtdb`,
+        "-v", `${archivePath}:/backup.tar.gz:ro`,
+        "alpine",
+        "sh", "-c", "tar xzf /backup.tar.gz -C /var/lib/xtdb/buffers/",
+      ], { timeout: 120_000 });
+
+      job.progress.push("5/8 Clearing replica storage volume...");
+      const replicaVol = await exec("docker", [
+        "volume",
+        "ls",
+        "-q",
+        "--filter",
+        "name=xtdb-replica-data",
+      ]);
+      const rVol = replicaVol.stdout.trim().split("\n")[0];
+
+      await exec("docker", [
+        "run", "--rm",
+        "-v", `${rVol}:/var/lib/xtdb`,
+        "alpine",
+        "sh", "-c", "rm -rf /var/lib/xtdb/buffers && mkdir -p /var/lib/xtdb/buffers",
+      ], { timeout: 30_000 });
+
+      // Also extract into replica so it doesn't need to rebuild from scratch
+      await exec("docker", [
+        "run", "--rm",
+        "-v", `${rVol}:/var/lib/xtdb`,
+        "-v", `${archivePath}:/backup.tar.gz:ro`,
+        "alpine",
+        "sh", "-c", "tar xzf /backup.tar.gz -C /var/lib/xtdb/buffers/",
+      ], { timeout: 120_000 });
+
+      job.progress.push("6/8 Clearing Kafka topic and incrementing epoch...");
+      await exec("docker", [
+        "exec", "redpanda", "rpk", "topic", "delete", "xtdb-log",
+      ], { timeout: 10_000 });
+
+      const newEpoch = incrementEpoch();
+      job.progress.push(`Epoch set to ${newEpoch} in both configs.`);
+
+      job.progress.push("7/8 Starting primary...");
+      await exec("docker", ["compose", "up", "-d", "xtdb-primary"], {
+        cwd: HARNESS_DIR,
+        timeout: 60_000,
+      });
+
+      // Wait for primary to be healthy
+      job.progress.push("Waiting for primary to become healthy...");
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const health = await fetch("http://localhost:8083/healthz/alive")
+          .then((r) => r.ok)
+          .catch(() => false);
+        if (health) break;
+      }
+
+      job.progress.push("8/8 Starting replica...");
+      await exec("docker", ["compose", "up", "-d", "xtdb-replica"], {
+        cwd: HARNESS_DIR,
+        timeout: 60_000,
+      });
+
+      job.status = "completed";
+      job.completedAt = new Date().toISOString();
+      job.result = `Restored from snapshot with epoch ${newEpoch}`;
+      job.progress.push("Restore complete.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      job.status = "failed";
+      job.completedAt = new Date().toISOString();
+      job.result = msg;
+      job.progress.push(`Error: ${msg}`);
+      // Best-effort: restart both nodes
+      await exec("docker", ["compose", "up", "-d", "xtdb-primary"], {
+        cwd: HARNESS_DIR,
+      }).catch(() => {});
+      await exec("docker", ["compose", "up", "-d", "xtdb-replica"], {
+        cwd: HARNESS_DIR,
+      }).catch(() => {});
+    }
+  })();
+
+  return jobId;
 }

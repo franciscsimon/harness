@@ -30,6 +30,20 @@ export async function listTopics(): Promise<{
   return { topics, raw };
 }
 
+export async function deleteTopic(
+  name: string,
+): Promise<{ success: boolean; message: string }> {
+  const result = await exec(
+    "docker",
+    ["exec", "redpanda", "rpk", "topic", "delete", name],
+    { timeout: 10_000 },
+  );
+  return {
+    success: result.exitCode === 0,
+    message: result.stdout.trim() || result.stderr.trim(),
+  };
+}
+
 export async function describeTopic(
   name: string,
 ): Promise<{ name: string; raw: string }> {

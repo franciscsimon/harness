@@ -218,13 +218,13 @@
             '</div>';
         }).join("");
 
-        var csvFiles = files.filter(function (f) { return f.type === "csv"; });
-        if (csvFiles.length === 0) {
-          restoreSelect.innerHTML = '<option value="">No CSV backups available (create one first)</option>';
+        if (files.length === 0) {
+          restoreSelect.innerHTML = '<option value="">No backups available</option>';
         } else {
-          restoreSelect.innerHTML = '<option value="">Select a CSV backup...</option>' +
-            csvFiles.map(function (f) {
-              return '<option value="' + esc(f.filename) + '">' + esc(f.filename) + ' (' + f.sizeHuman + ')</option>';
+          restoreSelect.innerHTML = '<option value="">Select a backup to restore...</option>' +
+            files.map(function (f) {
+              var label = "[" + f.type + "] " + f.filename + " (" + f.sizeHuman + ")";
+              return '<option value="' + esc(f.filename) + '">' + esc(label) + '</option>';
             }).join("");
         }
 
@@ -252,10 +252,15 @@
   btnRestore.addEventListener("click", function () {
     var archive = restoreSelect.value;
     if (!archive) {
-      modal.alert("No backup selected", "Select a CSV backup from the dropdown first.");
+      modal.alert("No backup selected", "Select a backup from the dropdown first.");
       return;
     }
-    modal.confirm("Restore from Backup", "Restore from " + archive + "?\nThis will import data into the primary.", "danger").then(function (ok) {
+    var isSnapshot = archive.indexOf("snapshot-") === 0;
+    var msg = isSnapshot
+      ? "Restore from " + archive + "?\n\nThis will STOP both primary and replica, replace the storage, reset the Kafka log, and restart. All nodes will be briefly offline."
+      : "Restore from " + archive + "?\nThis will import CSV data into the primary.";
+
+    modal.confirm("Restore from Backup", msg, "danger").then(function (ok) {
       if (!ok) return;
       btnRestore.disabled = true;
       btnRestore.textContent = "Restoring...";
@@ -266,13 +271,51 @@
       })
         .then(function (r) { return r.json(); })
         .then(function (data) {
-          if (data.success) {
-            modal.alert("Restore Complete", "Data has been restored successfully.", "success");
+          if (data.type === "snapshot" && data.jobId) {
+            // Snapshot restore is async — use SSE progress (reuse backup progress panel)
+            progressEl.style.display = "block";
+            logEl.innerHTML = "";
+            statusText.textContent = "Restoring from snapshot...";
+            spinner.style.display = "inline-block";
+
+            var es = new EventSource(API + "/api/backup/status/" + data.jobId);
+            es.addEventListener("progress", function (e) {
+              var m = JSON.parse(e.data);
+              var line = document.createElement("div");
+              line.className = "ops-progress-line";
+              line.textContent = m.message;
+              logEl.appendChild(line);
+              logEl.scrollTop = logEl.scrollHeight;
+              statusText.textContent = "Step " + m.step + ": " + m.message;
+            });
+            es.addEventListener("done", function (e) {
+              var m = JSON.parse(e.data);
+              es.close();
+              spinner.style.display = "none";
+              statusText.textContent = m.status === "completed" ? "Restore complete!" : "Restore failed: " + (m.result || "");
+              btnRestore.disabled = false;
+              btnRestore.textContent = "Restore";
+              refreshHealth();
+              refreshReplicaStatus();
+              refreshReplication();
+            });
+            es.addEventListener("error", function () {
+              es.close();
+              spinner.style.display = "none";
+              statusText.textContent = "Connection lost during restore";
+              btnRestore.disabled = false;
+              btnRestore.textContent = "Restore";
+            });
           } else {
-            modal.alert("Restore Failed", data.message || "Unknown error", "danger");
+            // CSV restore returned synchronously
+            if (data.success) {
+              modal.alert("Restore Complete", "Data has been restored successfully.", "success");
+            } else {
+              modal.alert("Restore Failed", data.message || "Unknown error", "danger");
+            }
+            btnRestore.disabled = false;
+            btnRestore.textContent = "Restore";
           }
-          btnRestore.disabled = false;
-          btnRestore.textContent = "Restore";
         })
         .catch(function (err) {
           modal.alert("Error", "Restore failed: " + err, "danger");

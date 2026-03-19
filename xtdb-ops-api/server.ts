@@ -9,7 +9,7 @@ import { checkAll, checkPrimary, checkReplica, checkRedpanda } from "./lib/healt
 import { stopReplica, startReplica, replicaStatus } from "./lib/replica.ts";
 import { listTopics, describeTopic } from "./lib/redpanda.ts";
 import { listBackups, getBackupPath, deleteBackup, createDownloadStream } from "./lib/files.ts";
-import { getJob, startSnapshotBackup, startCsvBackup, restoreFromArchive } from "./lib/backup.ts";
+import { getJob, startSnapshotBackup, startCsvBackup, restoreFromArchive, startSnapshotRestore } from "./lib/backup.ts";
 import { exec } from "./lib/exec.ts";
 
 const OPS_PORT = Number(process.env.OPS_PORT ?? "3335");
@@ -172,11 +172,20 @@ app.post("/api/restore", async (c) => {
   const path = getBackupPath(body.archive);
   if (!path) return c.json({ error: "Invalid archive name" }, 400);
 
+  const isSnapshot = body.archive.startsWith("snapshot-");
+
+  if (isSnapshot) {
+    // Snapshot restore is long-running — return a job ID like backup does
+    const jobId = startSnapshotRestore(path);
+    return c.json({ jobId, type: "snapshot" });
+  }
+
+  // CSV restore is synchronous
   try {
     const result = await restoreFromArchive(path);
-    return c.json(result);
+    return c.json({ ...result, type: "csv" });
   } catch (err: unknown) {
-    return c.json({ success: false, message: String(err) }, 500);
+    return c.json({ success: false, message: String(err), type: "csv" }, 500);
   }
 });
 
