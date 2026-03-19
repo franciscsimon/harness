@@ -9,6 +9,14 @@ const TYPE_COLORS: Record<string, string> = {
   path: "#f97316",
 };
 
+const PHASE_COLORS: Record<string, string> = {
+  planning: "#a855f7",
+  active: "#22c55e",
+  maintenance: "#eab308",
+  deprecated: "#f97316",
+  decommissioned: "#ef4444",
+};
+
 // ─── Project List Page ─────────────────────────────────────────────
 
 export function renderProjects(projects: ProjectRow[]): string {
@@ -16,10 +24,13 @@ export function renderProjects(projects: ProjectRow[]): string {
     .map((p) => {
       const color = TYPE_COLORS[p.identity_type] ?? "#6b7280";
       const sessions = Number(p.session_count) || 0;
+      const phase = p.lifecycle_phase ?? "active";
+      const phaseColor = PHASE_COLORS[phase] ?? "#6b7280";
       return `<a class="proj-card" href="/projects/${encodeURIComponent(p._id)}">
       <div class="proj-card-top">
         <span class="proj-card-name">${esc(p.name)}</span>
         <span class="proj-type-badge" style="--type-color:${color}">${esc(p.identity_type)}</span>
+        <span class="proj-type-badge" style="--type-color:${phaseColor}">${esc(phase)}</span>
         <span class="ses-card-count">${sessions} session${sessions !== 1 ? "s" : ""}</span>
       </div>
       <div class="proj-card-meta">
@@ -128,6 +139,7 @@ export function renderProjectDetail(project: ProjectRow, sessions: SessionProjec
         <tr><td class="proj-label">ID</td><td><code>${esc(project._id)}</code></td></tr>
         <tr><td class="proj-label">Canonical</td><td><code>${esc(project.canonical_id)}</code></td></tr>
         <tr><td class="proj-label">Type</td><td><span class="proj-type-badge" style="--type-color:${color}">${esc(project.identity_type)}</span></td></tr>
+        <tr><td class="proj-label">Phase</td><td><span class="proj-type-badge" style="--type-color:${PHASE_COLORS[project.lifecycle_phase ?? "active"] ?? "#6b7280"}">${esc(project.lifecycle_phase ?? "active")}</span></td></tr>
         ${project.git_remote_url ? `<tr><td class="proj-label">Remote</td><td><code>${esc(project.git_remote_url)}</code></td></tr>` : ""}
         ${project.git_root_path ? `<tr><td class="proj-label">Path</td><td><code>${esc(project.git_root_path)}</code></td></tr>` : ""}
         <tr><td class="proj-label">Sessions</td><td>${project.session_count}</td></tr>

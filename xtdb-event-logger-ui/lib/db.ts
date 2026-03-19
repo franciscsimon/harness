@@ -555,6 +555,7 @@ export interface ProjectRow {
   first_seen_ts: string;
   last_seen_ts: string;
   session_count: string;
+  lifecycle_phase: string | null;
   jsonld: string;
 }
 
