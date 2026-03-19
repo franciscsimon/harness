@@ -100,11 +100,60 @@ export class XtdbEndpoint implements Endpoint {
     }
   }
 
-  /** Truncate a string field to stay under Kafka message size limits */
-  private cap(v: string | null | undefined, maxBytes = 500_000): string | null {
-    if (v == null) return null;
-    if (v.length <= maxBytes) return v;
-    return v.slice(0, maxBytes) + `\n...[truncated from ${v.length} to ${maxBytes} bytes]`;
+  /** Hard row-size budget: XTDB Kafka producer has 1MB max.request.size */
+  private static readonly MAX_ROW_BYTES = 900_000; // leave headroom for protocol overhead
+
+  /** Truncate a string to maxBytes */
+  private static truncate(v: string, max: number): string {
+    if (v.length <= max) return v;
+    return v.slice(0, max) + `…[truncated ${v.length}→${max}]`;
+  }
+
+  /**
+   * Ensure total row size stays under Kafka limit.
+   * Strategy: measure all string fields, repeatedly halve the largest until under budget.
+   */
+  private enforceRowBudget(f: Record<string, any>, jsonld: { value: string }): void {
+    // All string field keys that could be large
+    const keys = Object.keys(f).filter(k => typeof f[k] === "string");
+    keys.push("__jsonld__"); // track jsonld alongside
+
+    const getSize = () => {
+      let total = 0;
+      for (const k of keys) {
+        const v = k === "__jsonld__" ? jsonld.value : f[k];
+        if (typeof v === "string") total += v.length;
+      }
+      return total;
+    };
+
+    let totalSize = getSize();
+    let iterations = 0;
+
+    while (totalSize > XtdbEndpoint.MAX_ROW_BYTES && iterations < 20) {
+      // Find largest field
+      let maxKey = "";
+      let maxLen = 0;
+      for (const k of keys) {
+        const v = k === "__jsonld__" ? jsonld.value : f[k];
+        if (typeof v === "string" && v.length > maxLen) {
+          maxLen = v.length;
+          maxKey = k;
+        }
+      }
+      if (!maxKey || maxLen < 200) break; // nothing left to trim
+
+      // Halve it (minimum 200 chars)
+      const newLen = Math.max(200, Math.floor(maxLen / 2));
+      if (maxKey === "__jsonld__") {
+        jsonld.value = XtdbEndpoint.truncate(jsonld.value, newLen);
+      } else {
+        f[maxKey] = XtdbEndpoint.truncate(f[maxKey], newLen);
+      }
+
+      totalSize = getSize();
+      iterations++;
+    }
   }
 
   private async insertRow(event: NormalizedEvent, jsonld: string): Promise<void> {
@@ -115,20 +164,10 @@ export class XtdbEndpoint implements Endpoint {
 
     const f = event.fields;
 
-    // Cap large fields to prevent Kafka max.request.size errors (total row must be < 1MB)
-    const CAP = 100_000; // 100KB per field — ~40 columns, need total < 1MB
-    f.contextMessages = this.cap(f.contextMessages, CAP) ?? undefined;
-    f.providerPayload = this.cap(f.providerPayload, CAP) ?? undefined;
-    f.agentMessages = this.cap(f.agentMessages, CAP) ?? undefined;
-    f.systemPrompt = this.cap(f.systemPrompt, CAP) ?? undefined;
-    f.compactBranchEntries = this.cap(f.compactBranchEntries, CAP) ?? undefined;
-    f.messageContent = this.cap(f.messageContent, CAP) ?? undefined;
-    f.turnMessage = this.cap(f.turnMessage, CAP) ?? undefined;
-    f.turnToolResults = this.cap(f.turnToolResults, CAP) ?? undefined;
-    f.payload = this.cap(f.payload, CAP) ?? undefined;
-    f.toolContent = this.cap(f.toolContent, CAP) ?? undefined;
-    f.toolInput = this.cap(f.toolInput, CAP) ?? undefined;
-    jsonld = this.cap(jsonld, CAP) ?? "{}";
+    // Enforce total row size < 900KB to stay under Kafka 1MB limit
+    const jsonldRef = { value: jsonld };
+    this.enforceRowBudget(f as Record<string, any>, jsonldRef);
+    jsonld = jsonldRef.value;
 
     await sql`INSERT INTO events (
       _id, environment, event_name, category, can_intercept,
