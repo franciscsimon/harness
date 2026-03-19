@@ -18,6 +18,7 @@ services:
       - --memory 1G
       - --mode dev-container
       - --default-log-level=warn
+      - --set redpanda.kafka_batch_max_bytes=10485760
     ports:
       - "19092:19092"   # Kafka API (external / host debugging)
       - "18082:18082"   # HTTP Proxy
