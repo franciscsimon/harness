@@ -71,7 +71,7 @@ export default function (pi: ExtensionAPI) {
     pendingInjections = [];
 
     // P: progress-check — many turns
-    if (turnIndex > 5) {
+    if (turnIndex > 20) {
       const p = findPrompt("progress-check");
       if (p) fire(p);
     }
@@ -121,8 +121,8 @@ export default function (pi: ExtensionAPI) {
       const bytes = typeof e.payload === "string" ? e.payload.length : JSON.stringify(e.payload).length;
       lastPayloadBytes = bytes;
 
-      // P: concise-in-large-context — payload > 100KB
-      if (bytes > 100_000) {
+      // P: concise-in-large-context — payload > 400KB (~20% of context window)
+      if (bytes > 400_000) {
         const p = findPrompt("concise-in-large-context");
         if (p) fire(p);
       }

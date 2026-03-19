@@ -13,7 +13,7 @@ const DEFAULTS: HabitThresholds = {
   commitReminderEdits: 5,
   testReminderEdits: 5,
   errorStreakCount: 3,
-  freshStartBytes: 150_000,
+  freshStartBytes: 400_000,
   scopeCreepFiles: 8,
 };
 
