@@ -43,7 +43,7 @@ function connect() {
     if (isNew) {
       sessionStorage.removeItem("pi-chat-sessionFile");
       history.replaceState(null, "", "/");
-      wsSend({ type: "init" });
+      wsSend({ type: "init", createNew: true });
     } else {
       const stored = sessionStorage.getItem("pi-chat-sessionFile");
       const sessionFile = urlSession || stored || undefined;

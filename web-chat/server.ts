@@ -141,9 +141,9 @@ function subscribeSession(ws: any, session: any) {
 
 // ─── Initialize a connection ─────────────────────────────────────
 
-async function initConnection(ws: any, wsSend: Function, connId: string, connCwd: string, sessionFile?: string) {
+async function initConnection(ws: any, wsSend: Function, connId: string, connCwd: string, sessionFile?: string, createNew?: boolean) {
   send(ws, { type: "status", state: "initializing" });
-  const session = await createPoolSession(connId, connCwd, wsSend as any, sessionFile);
+  const session = await createPoolSession(connId, connCwd, wsSend as any, sessionFile, createNew);
   const unsub = subscribeSession(ws, session);
   setUnsubscribe(connId, unsub);
   sendFullState(ws, session);
@@ -192,7 +192,7 @@ app.get("/ws", upgradeWebSocket((c) => {
 
         // ─── Explicit init ───────────────────────────────
         if (msg.type === "init" && !initialized) {
-          initialized = await initConnection(ws, wsSend, connId, connCwd, msg.sessionFile);
+          initialized = await initConnection(ws, wsSend, connId, connCwd, msg.sessionFile, msg.createNew);
           return;
         }
 

@@ -1,5 +1,5 @@
 export type ClientMessage =
-  | { type: "init"; sessionFile?: string }
+  | { type: "init"; sessionFile?: string; createNew?: boolean }
   | { type: "prompt"; text: string }
   | { type: "steer"; text: string }
   | { type: "followUp"; text: string }

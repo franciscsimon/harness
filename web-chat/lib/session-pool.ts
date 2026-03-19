@@ -120,6 +120,7 @@ export async function createPoolSession(
   cwd: string,
   wsSend: WsSend,
   sessionFile?: string,
+  createNew?: boolean,
 ): Promise<AgentSession> {
   if (pool.size >= MAX_SESSIONS) {
     const oldest = [...pool.entries()].sort((a, b) => a[1].lastActivity - b[1].lastActivity)[0];
@@ -127,7 +128,9 @@ export async function createPoolSession(
   }
 
   let sessionManager;
-  if (sessionFile) {
+  if (createNew) {
+    sessionManager = SessionManager.create(cwd);
+  } else if (sessionFile) {
     try { sessionManager = SessionManager.open(sessionFile); }
     catch { sessionManager = SessionManager.continueRecent(cwd); }
   } else {
