@@ -10,11 +10,18 @@ const KEYCLOAK_REALM = process.env.KEYCLOAK_REALM ?? "harness";
 const KEYCLOAK_CLIENT_ID = process.env.KEYCLOAK_CLIENT_ID ?? "harness-api";
 
 // Public paths that don't require auth
+// Note: harness-ui on :3336 fetches these server-side (no user token available)
 const PUBLIC_PATHS = new Set([
   "/api/health",
   "/api/health/primary",
   "/api/health/replica",
   "/api/health/redpanda",
+  "/api/incidents",
+  "/api/backups",
+  "/api/replication",
+  "/api/scheduler/status",
+  "/api/lifecycle/events",
+  "/api/ci/events",
 ]);
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
