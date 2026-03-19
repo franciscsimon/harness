@@ -179,6 +179,111 @@ async function handleReleaseCreate(args: string, ctx: any): Promise<void> {
   );
 }
 
+async function handleReleaseChangelog(args: string, ctx: any): Promise<void> {
+  const projectId = getProjectId();
+  if (!projectId) { ctx.ui.notify("No active project.", "error"); return; }
+
+  const version = args.trim() || null;
+  const s = await db();
+
+  let cutoffTs = 0;
+  let sinceLabel = "beginning";
+
+  try {
+    if (version) {
+      // Find that specific release's timestamp
+      const relRows = await s`
+        SELECT ts FROM releases
+        WHERE project_id = ${t(s, projectId)} AND version = ${t(s, version)}
+        ORDER BY ts DESC LIMIT 1
+      `;
+      if (relRows.length === 0) {
+        ctx.ui.notify(`Release **${version}** not found.`, "error");
+        return;
+      }
+      cutoffTs = typeof relRows[0].ts === "string" ? Number(relRows[0].ts) : relRows[0].ts;
+      sinceLabel = version;
+    } else {
+      // Use most recent release's ts
+      const relRows = await s`
+        SELECT version, ts FROM releases
+        WHERE project_id = ${t(s, projectId)}
+        ORDER BY ts DESC LIMIT 1
+      `;
+      if (relRows.length > 0) {
+        cutoffTs = typeof relRows[0].ts === "string" ? Number(relRows[0].ts) : relRows[0].ts;
+        sinceLabel = relRows[0].version ?? "last release";
+      }
+    }
+  } catch (err) {
+    ctx.ui.notify(`Failed to look up releases: ${err}`, "error");
+    return;
+  }
+
+  // Query decisions since cutoff
+  let decisions: any[] = [];
+  try {
+    decisions = await s`
+      SELECT * FROM decisions
+      WHERE project_id = ${t(s, projectId)} AND ts > ${n(s, cutoffTs)}
+      ORDER BY ts ASC
+    `;
+  } catch {
+    // decisions table may not exist yet — that's fine
+  }
+
+  // Query artifact_versions since cutoff (may not have project_id column)
+  let artifacts: any[] = [];
+  try {
+    artifacts = await s`
+      SELECT * FROM artifact_versions
+      WHERE project_id = ${t(s, projectId)} AND ts > ${n(s, cutoffTs)}
+      ORDER BY ts ASC
+    `;
+  } catch {
+    // artifact_versions table may not exist or lack project_id — skip
+  }
+
+  // Format markdown
+  const lines: string[] = [];
+  lines.push(`## Changelog (since ${sinceLabel})\n`);
+
+  lines.push("### Decisions");
+  if (decisions.length === 0) {
+    lines.push("_No decisions recorded._");
+  } else {
+    for (const d of decisions) {
+      const icon = d.outcome === "rejected" ? "❌" : "✅";
+      const task = d.task ?? "—";
+      const what = d.what ?? d.description ?? "—";
+      const outcome = d.outcome ?? "—";
+      lines.push(`- ${icon} ${task} — ${what} (${outcome})`);
+    }
+  }
+
+  lines.push("");
+  lines.push("### Artifacts");
+  if (artifacts.length === 0) {
+    lines.push("_No artifacts recorded._");
+  } else {
+    for (const a of artifacts) {
+      const artifactId = a.artifact_id ?? a._id ?? "—";
+      const desc = a.version ?? a.description ?? "—";
+      lines.push(`- ${artifactId}: ${desc}`);
+    }
+  }
+
+  const cutoffDate = cutoffTs > 0
+    ? new Date(cutoffTs).toISOString().slice(0, 10)
+    : "the beginning";
+
+  lines.push("");
+  lines.push("---");
+  lines.push(`${decisions.length} decisions, ${artifacts.length} artifacts since ${cutoffDate}`);
+
+  ctx.ui.notify(lines.join("\n"), "info");
+}
+
 // ── /deploy command ─────────────────────────────────────────────
 
 async function handleDeploy(args: string, ctx: any): Promise<void> {
@@ -351,9 +456,10 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  // /release create <version> [changelog]
+  // /release create <version> [changelog]  |  /release changelog [version]
   pi.registerCommand("release", {
-    description: "Manage releases — create",
+    description: "Manage releases — create or changelog",
+    schema: Type.Object({ version: Type.Optional(Type.String()) }),
     handler: async (args, ctx) => {
       const raw = (args ?? "").trim();
       const parts = raw.split(/\s+/);
@@ -361,8 +467,10 @@ export default function (pi: ExtensionAPI) {
 
       if (sub === "create") {
         await handleReleaseCreate(parts.slice(1).join(" "), ctx);
+      } else if (sub === "changelog") {
+        await handleReleaseChangelog(parts.slice(1).join(" "), ctx);
       } else {
-        ctx.ui.notify("Usage: /release create <version> [changelog]", "info");
+        ctx.ui.notify("Usage: /release create <version> [changelog]  |  /release changelog [version]", "info");
       }
     },
   });
