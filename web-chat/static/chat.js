@@ -37,11 +37,19 @@ function connect() {
   ws = new WebSocket(`${proto}//${location.host}/ws`);
   ws.onopen = () => {
     reconnectDelay = 1000;
-    const urlSession = new URLSearchParams(location.search).get("session");
-    const stored = sessionStorage.getItem("pi-chat-sessionFile");
-    const sessionFile = urlSession || stored || undefined;
-    if (urlSession) { sessionStorage.setItem("pi-chat-sessionFile", urlSession); history.replaceState(null, "", "/"); }
-    wsSend({ type: "init", sessionFile });
+    const params = new URLSearchParams(location.search);
+    const isNew = params.get("new") === "1";
+    const urlSession = params.get("session");
+    if (isNew) {
+      sessionStorage.removeItem("pi-chat-sessionFile");
+      history.replaceState(null, "", "/");
+      wsSend({ type: "init" });
+    } else {
+      const stored = sessionStorage.getItem("pi-chat-sessionFile");
+      const sessionFile = urlSession || stored || undefined;
+      if (urlSession) { sessionStorage.setItem("pi-chat-sessionFile", urlSession); history.replaceState(null, "", "/"); }
+      wsSend({ type: "init", sessionFile });
+    }
   };
   ws.onclose = () => { setState("disconnected"); setTimeout(connect, reconnectDelay); reconnectDelay = Math.min(reconnectDelay * 2, 30000); };
   ws.onerror = () => {};
@@ -410,7 +418,7 @@ $input.addEventListener("keydown", (e) => {
 });
 $send.addEventListener("click", sendPrompt);
 $abort.addEventListener("click", () => wsSend({ type: "abort" }));
-$newBtn.addEventListener("click", () => { window.open(location.origin, "_blank"); });
+$newBtn.addEventListener("click", () => { window.open(location.origin + "/?new=1", "_blank"); });
 $thinking.addEventListener("change", () => wsSend({ type: "set_thinking", level: $thinking.value }));
 $cwdInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
