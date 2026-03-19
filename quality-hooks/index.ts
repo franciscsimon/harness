@@ -16,6 +16,7 @@ export default function (pi: ExtensionAPI) {
   let snoozedChecks = new Set<string>();
   let violationCount = 0;
   let totalChecked = 0;
+  const pendingArgs = new Map<string, any>();
 
   // ── Flag: --quality to disable quality hooks ──
   pi.registerFlag("quality", {
@@ -39,14 +40,24 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setStatus("quality", "🪝 Quality hooks active");
   });
 
+  // ── Cache args from tool_execution_start (end event doesn't carry them) ──
+  pi.on("tool_execution_start", async (event, _ctx) => {
+    const e = event as any;
+    if (e.toolName === "write" || e.toolName === "edit" || e.toolName === "bash") {
+      pendingArgs.set(e.toolCallId, e.args);
+    }
+  });
+
   // ── Hook: check file quality after write/edit ──
   pi.on("tool_execution_end", async (event, ctx) => {
     if (!enabled) return;
     const e = event as any;
+    const args = pendingArgs.get(e.toolCallId);
+    pendingArgs.delete(e.toolCallId);
     if (e.toolName !== "write" && e.toolName !== "edit") return;
     if (e.isError) return;
 
-    const path = e.input?.path ?? e.args?.path;
+    const path = args?.path;
     if (!path) return;
     if (!existsSync(path)) return;
 
