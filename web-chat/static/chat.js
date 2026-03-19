@@ -220,13 +220,42 @@ function appendThinking(text) {
   scrollDown();
 }
 
+/** Extract a short hint for the tool summary line (e.g. file path, command snippet) */
+function toolSummaryHint(name, input) {
+  if (!input || typeof input !== "object") return "";
+  switch (name) {
+    case "Read": case "read": return input.path ? shortenPath(input.path) : "";
+    case "Write": case "write": return input.path ? shortenPath(input.path) : "";
+    case "Edit": case "edit": return input.path ? shortenPath(input.path) : "";
+    case "Bash": case "bash": {
+      const cmd = input.command ?? "";
+      return cmd.length > 80 ? cmd.slice(0, 77) + "…" : cmd;
+    }
+    case "delegate": return input.agent ? `→ ${input.agent}` : (input.task ? input.task.slice(0, 60) : "");
+    case "log_decision": return input.task ? input.task.slice(0, 60) : "";
+    case "plan_chunks": return input.action ?? "";
+    case "quality_check": return input.path ? shortenPath(input.path) : "";
+    default: return "";
+  }
+}
+
+function shortenPath(p) {
+  if (typeof p !== "string") return "";
+  const parts = p.split("/");
+  return parts.length > 2 ? "…/" + parts.slice(-2).join("/") : p;
+}
+
+function tryParseJson(s) {
+  try { return JSON.parse(s); } catch { return {}; }
+}
+
 function startTool(msg) {
   if (!currentBubble) startAssistantBubble();
   const details = el("details", "chat-tool");
   const inputStr = typeof msg.input === "string" ? msg.input : JSON.stringify(msg.input, null, 2);
-  const truncInput = inputStr.length > 200 ? inputStr.slice(0, 200) + "…" : inputStr;
-  details.innerHTML = `<summary><span class="chat-tool-icon">🔧</span> ${esc(msg.toolName)} <span class="chat-tool-status">⏳</span></summary>
-    <div class="chat-tool-input"><strong>Input:</strong><pre>${esc(truncInput)}</pre></div>
+  const summaryHint = toolSummaryHint(msg.toolName, msg.input);
+  details.innerHTML = `<summary><span class="chat-tool-icon">🔧</span> ${esc(msg.toolName)}${summaryHint ? ` <span class="chat-tool-hint">${esc(summaryHint)}</span>` : ""} <span class="chat-tool-status">⏳</span></summary>
+    <div class="chat-tool-input"><strong>Input:</strong><pre>${esc(inputStr)}</pre></div>
     <div class="chat-tool-output"><strong>Output:</strong><pre class="chat-tool-output-pre"></pre></div>`;
   details.dataset.toolCallId = msg.toolCallId;
   currentBubble.appendChild(details);
@@ -247,6 +276,11 @@ function endTool(msg) {
   if (!tool) return;
   const statusEl = tool.querySelector(".chat-tool-status");
   if (statusEl) { statusEl.textContent = msg.isError ? "✗" : "✓"; statusEl.className = msg.isError ? "chat-tool-status tool-error" : "chat-tool-status tool-ok"; }
+  // If server sent final output and nothing was streamed via updates, set it now
+  if (msg.output) {
+    const pre = tool.querySelector(".chat-tool-output-pre");
+    if (pre && !pre.textContent) pre.textContent = msg.output;
+  }
 }
 
 function findTool(id) {
@@ -313,8 +347,10 @@ function renderHistory(messages) {
     if (m.toolCalls) {
       for (const tc of m.toolCalls) {
         const details = el("details", "chat-tool");
-        details.innerHTML = `<summary><span class="chat-tool-icon">🔧</span> ${esc(tc.name)} <span class="chat-tool-status ${tc.isError ? "tool-error" : "tool-ok"}">${tc.isError ? "✗" : "✓"}</span></summary>
-          <div class="chat-tool-input"><strong>Input:</strong><pre>${esc(tc.input)}</pre></div>
+        const histInput = typeof tc.input === "string" ? tc.input : JSON.stringify(tc.input, null, 2);
+        const histHint = toolSummaryHint(tc.name, typeof tc.input === "string" ? tryParseJson(tc.input) : tc.input);
+        details.innerHTML = `<summary><span class="chat-tool-icon">🔧</span> ${esc(tc.name)}${histHint ? ` <span class="chat-tool-hint">${esc(histHint)}</span>` : ""} <span class="chat-tool-status ${tc.isError ? "tool-error" : "tool-ok"}">${tc.isError ? "✗" : "✓"}</span></summary>
+          <div class="chat-tool-input"><strong>Input:</strong><pre>${esc(histInput)}</pre></div>
           ${tc.output ? `<div class="chat-tool-output"><strong>Output:</strong><pre>${esc(tc.output)}</pre></div>` : ""}`;
         bubble.appendChild(details);
       }

@@ -248,6 +248,17 @@ export function extractHistory(session: AgentSession): Array<{
     toolCalls?: Array<{ name: string; input: string; output: string; isError: boolean }>;
   }> = [];
 
+  // Build a map of tool results from toolResult messages
+  // Format: { role: "toolResult", toolCallId: "...", content: [{type:"text", text:"..."}], isError: bool }
+  const toolResults = new Map<string, { output: string; isError: boolean }>();
+  for (const m of session.messages) {
+    if (m.role === "toolResult") {
+      const mr = m as any;
+      const text = (mr.content ?? []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n");
+      if (mr.toolCallId) toolResults.set(mr.toolCallId, { output: text, isError: mr.isError ?? false });
+    }
+  }
+
   for (const m of session.messages) {
     if (m.role === "user") {
       const text = m.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
@@ -255,8 +266,12 @@ export function extractHistory(session: AgentSession): Array<{
     } else if (m.role === "assistant") {
       const text = m.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
       const toolCalls = m.content
-        .filter((b: any) => b.type === "tool_use")
-        .map((b: any) => ({ name: b.name, input: JSON.stringify(b.input ?? {}, null, 2), output: "", isError: false }));
+        .filter((b: any) => b.type === "tool_use" || b.type === "toolCall")
+        .map((b: any) => {
+          const result = toolResults.get(b.id);
+          const input = b.input ?? b.arguments ?? {};
+          return { name: b.name, input: JSON.stringify(input, null, 2), output: result?.output ?? "", isError: result?.isError ?? false };
+        });
       if (text || toolCalls.length) msgs.push({ role: "assistant", text, toolCalls: toolCalls.length ? toolCalls : undefined });
     }
   }

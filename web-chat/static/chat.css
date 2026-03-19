@@ -139,13 +139,14 @@ header { flex-shrink: 0; }
 .chat-tool summary:hover { background: rgba(249, 115, 22, 0.1); }
 .chat-tool-icon { font-size: 14px; }
 .chat-tool-status { margin-left: auto; font-size: 14px; }
+.chat-tool-hint { color: var(--text-dim); font-size: 11px; font-family: var(--mono); margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 400px; display: inline-block; vertical-align: middle; }
 .tool-ok { color: #22c55e; }
 .tool-error { color: #ef4444; }
 .chat-tool-input, .chat-tool-output { padding: 6px 10px; border-top: 1px solid var(--border); }
 .chat-tool-input strong, .chat-tool-output strong { font-size: 11px; color: var(--text-dim); display: block; margin-bottom: 4px; }
 .chat-tool-input pre, .chat-tool-output pre {
   font-family: var(--mono); font-size: 11px; line-height: 1.4; margin: 0;
-  white-space: pre-wrap; word-break: break-word; max-height: 200px; overflow-y: auto;
+  white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto;
 }
 
 /* ─── Thinking ───────────────────────────────────────────────── */

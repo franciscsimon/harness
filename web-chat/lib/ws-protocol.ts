@@ -35,7 +35,7 @@ export type ServerMessage =
   | { type: "thinking_delta"; text: string }
   | { type: "tool_start"; toolName: string; toolCallId: string; input: Record<string, unknown> }
   | { type: "tool_update"; toolCallId: string; output: string }
-  | { type: "tool_end"; toolCallId: string; isError: boolean }
+  | { type: "tool_end"; toolCallId: string; isError: boolean; output?: string }
   | { type: "message_start"; role: string }
   | { type: "message_end" }
   | { type: "agent_start" }

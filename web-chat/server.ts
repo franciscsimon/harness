@@ -76,14 +76,26 @@ function subscribeSession(ws: any, session: any) {
           send(ws, { type: "thinking_delta", text: ev.assistantMessageEvent.delta });
         break;
       case "tool_execution_start":
-        send(ws, { type: "tool_start", toolName: ev.toolName, toolCallId: ev.toolCallId ?? "", input: ev.input ?? {} });
+        send(ws, { type: "tool_start", toolName: ev.toolName, toolCallId: ev.toolCallId ?? "", input: ev.args ?? {} });
         break;
-      case "tool_execution_update":
-        send(ws, { type: "tool_update", toolCallId: ev.toolCallId ?? "", output: ev.text ?? "" });
+      case "tool_execution_update": {
+        // partialResult has { content: [{type:"text", text:"..."}], details?: {...}, isError?: bool }
+        const updateText = ev.partialResult?.content
+          ?.filter((b: any) => b.type === "text")
+          .map((b: any) => b.text)
+          .join("") ?? "";
+        send(ws, { type: "tool_update", toolCallId: ev.toolCallId ?? "", output: updateText });
         break;
-      case "tool_execution_end":
-        send(ws, { type: "tool_end", toolCallId: ev.toolCallId ?? "", isError: ev.isError ?? false });
+      }
+      case "tool_execution_end": {
+        // result has { content: [{type:"text", text:"..."}], details?: {...}, isError?: bool }
+        const resultText = ev.result?.content
+          ?.filter((b: any) => b.type === "text")
+          .map((b: any) => b.text)
+          .join("") ?? "";
+        send(ws, { type: "tool_end", toolCallId: ev.toolCallId ?? "", isError: ev.isError ?? false, output: resultText });
         break;
+      }
       case "agent_start": send(ws, { type: "agent_start" }); break;
       case "agent_end": send(ws, { type: "agent_end" }); break;
       case "turn_start": send(ws, { type: "turn_start" }); break;
