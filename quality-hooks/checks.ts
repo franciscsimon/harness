@@ -181,6 +181,67 @@ export function checkDiffSize(diffStat: string, maxChangedFiles = 10, maxChanged
   return violations;
 }
 
+// ── Test Quality Check ────────────────────────────────────────────
+// Detect implementation-coupled test patterns.
+// Tests should assert on requirements via public interfaces, not internals.
+export function detectBadTestPatterns(filename: string, content: string): Violation[] {
+  if (!isTestFile(filename)) return [];
+  const violations: Violation[] = [];
+  const lines = content.split("\n");
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const ln = i + 1;
+
+    // Raw SQL in test files — tests should go through the public API, not bypass it
+    if (/\bsql`\s*(INSERT|SELECT|UPDATE|DELETE)\b/i.test(line) && !/seed|setup|teardown|cleanup|before|after/i.test(line)) {
+      violations.push({
+        check: "test-raw-sql",
+        severity: "warn",
+        message: "Test uses raw SQL instead of the public API. Test through the function that consumers actually call (e.g. tool execute, HTTP endpoint, exported query function).",
+        file: filename, line: ln,
+      });
+    }
+
+    // Exact numeric assertions on computed scores/values — fragile to formula changes
+    if (/\beq\(.*Score.*,\s*\d+\)/.test(line) || /toBe\(\d+\).*score/i.test(line) || /===\s*\d+.*score/i.test(line)) {
+      violations.push({
+        check: "test-exact-score",
+        severity: "warn",
+        message: "Test asserts an exact computed value. Assert relative behavior instead (e.g. 'healthy > unhealthy') so the test survives formula changes.",
+        file: filename, line: ln,
+      });
+    }
+
+    // Assertions on internal object shape (property names like "ev:", "prov:")
+    if (/\["(ev|prov|foaf|xsd|rdf):/.test(line) && /assert|eq\(|expect|toBe|toEqual/.test(line)) {
+      violations.push({
+        check: "test-internal-schema",
+        severity: "warn",
+        message: "Test asserts on internal schema property names (JSON-LD namespaces). Assert on the requirement (e.g. 'output contains the task value') not the encoding.",
+        file: filename, line: ln,
+      });
+    }
+
+    // Testing private/unexported function signatures directly
+    if (/\.type\s*===\s*["'](remove|add|context)["']/.test(line)) {
+      violations.push({
+        check: "test-internal-enum",
+        severity: "warn",
+        message: "Test asserts on internal enum/type values. If these are renamed, the test breaks even though behavior is unchanged. Assert on the observable outcome instead.",
+        file: filename, line: ln,
+      });
+    }
+  }
+
+  return violations;
+}
+
+function isTestFile(filename: string): boolean {
+  const f = filename.toLowerCase();
+  return f.includes("test") || f.includes("spec") || f.includes(".test.") || f.includes(".spec.");
+}
+
 // ── Run all checks on a file ─────────────────────────────────────
 export function runFileChecks(filename: string, content: string, allContent = ""): Violation[] {
   return [
@@ -188,6 +249,7 @@ export function runFileChecks(filename: string, content: string, allContent = ""
     ...detectLargeFile(filename, content),
     ...detectLargeFunctions(filename, content),
     ...detectDuplication(filename, content),
+    ...detectBadTestPatterns(filename, content),
     ...(allContent ? detectUnusedExports(filename, content, allContent) : []),
   ];
 }
