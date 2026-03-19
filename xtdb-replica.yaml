@@ -1,0 +1,19 @@
+logClusters:
+  kafkaCluster: !Kafka
+    bootstrapServers: "redpanda:9092"
+
+log: !Kafka
+  cluster: kafkaCluster
+  topic: "xtdb-log"
+  autoCreateTopic: true
+
+storage: !Local
+  path: "/var/lib/xtdb/buffers"
+
+server:
+  host: '*'
+  port: 5432
+
+healthz:
+  host: '*'
+  port: 8080

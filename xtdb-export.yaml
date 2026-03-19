@@ -1,0 +1,10 @@
+logClusters:
+  kafkaCluster: !Kafka
+    bootstrapServers: "redpanda:9092"
+
+log: !Kafka
+  cluster: kafkaCluster
+  topic: "xtdb-log"
+
+storage: !Local
+  path: "/var/lib/xtdb/buffers"

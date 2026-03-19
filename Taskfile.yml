@@ -26,33 +26,125 @@ tasks:
       - 'echo "Full setup complete. Start the UI with: task ui"'
       - 'echo "Then start pi in another terminal."'
 
+  # ── Cluster lifecycle ──────────────────────────────────────────
+
   'xtdb:up':
-    desc: Start XTDB via docker compose
+    desc: Start XTDB cluster (Redpanda + primary + replica)
     cmds:
-      - docker compose up -d xtdb
+      - docker compose up -d redpanda xtdb-primary xtdb-replica
 
   'xtdb:down':
-    desc: Stop XTDB
+    desc: Stop XTDB cluster
     cmds:
-      - docker compose stop xtdb
+      - docker compose stop xtdb-replica xtdb-primary redpanda
 
   'xtdb:reset':
-    desc: Destroy XTDB data and recreate the container (destructive)
+    desc: Destroy all XTDB + Redpanda data and recreate (destructive)
     cmds:
       - docker compose down -v
-      - docker compose up -d xtdb
+      - docker compose up -d redpanda xtdb-primary xtdb-replica
 
   'xtdb:logs':
-    desc: Tail XTDB logs
+    desc: Tail XTDB primary logs
     cmds:
-      - docker compose logs -f xtdb
+      - docker compose logs -f xtdb-primary
+
+  'xtdb:logs:replica':
+    desc: Tail XTDB replica logs
+    cmds:
+      - docker compose logs -f xtdb-replica
+
+  'xtdb:logs:redpanda':
+    desc: Tail Redpanda broker logs
+    cmds:
+      - docker compose logs -f redpanda
+
+  'xtdb:logs:all':
+    desc: Tail all XTDB cluster logs
+    cmds:
+      - docker compose logs -f redpanda xtdb-primary xtdb-replica
+
+  # ── Health checks ──────────────────────────────────────────────
+
+  'xtdb:health':
+    desc: Check health of all XTDB cluster components
+    cmds:
+      - |
+        set -euo pipefail
+        echo "=== Redpanda ==="
+        docker exec redpanda rpk cluster health 2>/dev/null && echo "  OK" || echo "  FAIL"
+        echo ""
+        echo "=== XTDB Primary (port 5433) ==="
+        curl -sf http://localhost:8083/healthz/alive && echo " OK" || echo " FAIL"
+        docker run --rm --network host postgres:16-alpine \
+          psql -h localhost -p 5433 -U xtdb -d xtdb -c "SELECT 1" > /dev/null 2>&1 && echo "  pgwire OK" || echo "  pgwire FAIL"
+        echo ""
+        echo "=== XTDB Replica (port 5434) ==="
+        curl -sf http://localhost:8084/healthz/alive && echo " OK" || echo " FAIL"
+        docker run --rm --network host postgres:16-alpine \
+          psql -h localhost -p 5434 -U xtdb -d xtdb -c "SELECT 1" > /dev/null 2>&1 && echo "  pgwire OK" || echo "  pgwire FAIL"
+
+  'xtdb:health:primary':
+    desc: Check XTDB primary health
+    cmds:
+      - curl -sf http://localhost:8083/healthz/alive
+      - docker run --rm --network host postgres:16-alpine psql -h localhost -p 5433 -U xtdb -d xtdb -c "SELECT 1"
+
+  'xtdb:health:replica':
+    desc: Check XTDB replica health
+    cmds:
+      - curl -sf http://localhost:8084/healthz/alive
+      - docker run --rm --network host postgres:16-alpine psql -h localhost -p 5434 -U xtdb -d xtdb -c "SELECT 1"
+
+  # ── Replica management ─────────────────────────────────────────
+
+  'replica:stop':
+    desc: Stop the XTDB replica (for maintenance/backup)
+    cmds:
+      - docker compose stop xtdb-replica
+
+  'replica:start':
+    desc: Start the XTDB replica
+    cmds:
+      - docker compose up -d xtdb-replica
+
+  # ── Backup via replica (primary never stops) ───────────────────
 
   'xtdb:backup':
-    desc: Hot-backup all XTDB tables to CSV via postgres wire protocol (no downtime)
+    desc: Backup via replica — flush primary block, stop replica, export-snapshot, restart
     cmds:
       - |
         set -euo pipefail
         BACKUP_DIR="$HOME/backups/xtdb/$(date +%Y%m%dT%H%M%S)"
+        mkdir -p "$BACKUP_DIR"
+
+        echo "1/4  Flushing primary block..."
+        curl -sf -X POST http://localhost:8083/system/finish-block || true
+        sleep 5
+
+        echo "2/4  Stopping replica..."
+        docker compose stop xtdb-replica
+
+        echo "3/4  Exporting snapshot from replica storage..."
+        VOLUME=$(docker volume ls -q | grep xtdb-replica-data | head -1)
+        docker run --rm \
+          --network harness_default \
+          -v "$VOLUME":/var/lib/xtdb \
+          -v "$(pwd)/xtdb-export.yaml":/usr/local/lib/xtdb/xtdb-export.yaml:ro \
+          ghcr.io/xtdb/xtdb-aws:2.1.0 \
+          export-snapshot xtdb -f xtdb-export.yaml 2>&1 || echo "  (export-snapshot returned non-zero, check output above)"
+
+        echo "4/4  Restarting replica..."
+        docker compose up -d xtdb-replica
+
+        echo "Backup complete. Snapshot written to replica storage volume."
+
+  'xtdb:backup:csv':
+    desc: Hot-backup all XTDB tables to CSV via pgwire (no downtime, legacy method)
+    cmds:
+      - |
+        set -euo pipefail
+        BACKUP_DIR="$HOME/backups/xtdb/csv-$(date +%Y%m%dT%H%M%S)"
         mkdir -p "$BACKUP_DIR"
 
         TABLES=$(docker run --rm --network host postgres:16-alpine \
@@ -60,17 +152,16 @@ tasks:
           -c "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'" 2>/dev/null)
 
         for table in $TABLES; do
-          echo "  → $table"
+          echo "  -> $table"
           docker run --rm --network host -v "$BACKUP_DIR":/out postgres:16-alpine \
             psql -h localhost -p 5433 -U xtdb -d xtdb --csv \
             -c "SELECT * FROM \"$table\"" -o "/out/${table}.csv" 2>/dev/null
         done
 
-        # Compress
         ARCHIVE="$(dirname "$BACKUP_DIR")/$(basename "$BACKUP_DIR").tar.gz"
         tar czf "$ARCHIVE" -C "$(dirname "$BACKUP_DIR")" "$(basename "$BACKUP_DIR")"
         rm -rf "$BACKUP_DIR"
-        echo "✅ Backup: $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
+        echo "Backup: $ARCHIVE ($(du -h "$ARCHIVE" | cut -f1))"
 
   'xtdb:restore':
     desc: Restore XTDB from a CSV backup archive
@@ -85,29 +176,56 @@ tasks:
 
         for csv in "$TMP/$DIR"/*.csv; do
           table=$(basename "$csv" .csv)
-          echo "  → Restoring $table"
-          # Read header to build INSERT columns
+          echo "  -> Restoring $table"
           HEADER=$(head -1 "$csv")
           COLS=$(echo "$HEADER" | sed 's/,/","/g; s/^/"/; s/$/"/')
-          # Use psql COPY FROM STDIN
           tail -n +2 "$csv" | docker run --rm -i --network host postgres:16-alpine \
             psql -h localhost -p 5433 -U xtdb -d xtdb \
             -c "COPY \"$table\" ($COLS) FROM STDIN WITH (FORMAT csv)" 2>/dev/null || \
-            echo "    ⚠ COPY failed for $table (XTDB may not support COPY FROM — manual restore needed)"
+            echo "    Warning: COPY failed for $table"
         done
         rm -rf "$TMP"
-        echo "✅ Restore complete"
+        echo "Restore complete"
 
-  'xtdb:health':
-    desc: Check XTDB HTTP health and SQL connectivity
+  # ── Redpanda management ────────────────────────────────────────
+
+  'redpanda:topics':
+    desc: List Kafka topics in Redpanda
     cmds:
-      - curl -sf http://localhost:8081/healthz/alive
-      - PGPASSWORD=xtdb psql -h localhost -p 5433 -U xtdb -d xtdb -c "SELECT 1"
+      - docker exec redpanda rpk topic list
+
+  'redpanda:describe':
+    desc: Describe the XTDB log topic
+    cmds:
+      - docker exec redpanda rpk topic describe xtdb-log
+
+  # ── Replication verification ───────────────────────────────────
+
+  'xtdb:verify-replication':
+    desc: Verify primary and replica have the same data
+    cmds:
+      - |
+        set -euo pipefail
+        echo "Primary event count:"
+        docker run --rm --network host postgres:16-alpine \
+          psql -h localhost -p 5433 -U xtdb -d xtdb -Atqc "SELECT COUNT(*) FROM events" 2>/dev/null || echo "  (no events table yet)"
+        echo "Replica event count:"
+        docker run --rm --network host postgres:16-alpine \
+          psql -h localhost -p 5434 -U xtdb -d xtdb -Atqc "SELECT COUNT(*) FROM events" 2>/dev/null || echo "  (no events table yet)"
+        echo ""
+        echo "If counts differ, the replica may still be catching up."
+
+  # ── Shell access ───────────────────────────────────────────────
 
   'xtdb:psql':
-    desc: Open a psql shell against XTDB
+    desc: Open a psql shell against XTDB primary
     cmds:
       - PGPASSWORD=xtdb psql -h localhost -p 5433 -U xtdb -d xtdb
+
+  'xtdb:psql:replica':
+    desc: Open a psql shell against XTDB replica
+    cmds:
+      - PGPASSWORD=xtdb psql -h localhost -p 5434 -U xtdb -d xtdb
 
   'ui:install':
     desc: Install UI dependencies
@@ -298,9 +416,9 @@ tasks:
       - npx jiti smoke-test.ts
 
   doctor:
-    desc: Verify XTDB, deployed logger, and current event count
+    desc: Verify XTDB cluster, deployed logger, and current event count
     deps:
-      - 'xtdb:health'
+      - 'xtdb:health:primary'
     cmds:
       - 'test -d "$HOME/.pi/agent/extensions/xtdb-event-logger" && echo "xtdb-event-logger deployed" || (echo "xtdb-event-logger missing"; exit 1)'
       - 'echo "Current XTDB event count:"'
