@@ -234,6 +234,12 @@ tasks:
     cmds:
       - PGPASSWORD=xtdb psql -h localhost -p 5433 -U xtdb -d xtdb -c "SELECT seq, event_name, session_id, ts FROM events ORDER BY seq DESC LIMIT 20"
 
+  'ext:test':
+    desc: Load-test all deployed extensions against mock ExtensionAPI
+    dir: test
+    cmds:
+      - NODE_PATH="$(pwd)/node_modules:/usr/lib/node_modules/@mariozechner/pi-coding-agent/node_modules:/usr/lib/node_modules" npx jiti ext-load-test.ts
+
   smoke:
     desc: Post-deploy smoke test — verify all extensions, agents, skills, and prompts are deployed
     dir: test

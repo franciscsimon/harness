@@ -102,6 +102,15 @@ export default function (pi: ExtensionAPI) {
         if (p) fire(p);
       }
     }
+
+    // P: test-after-extension-edit — editing extension code
+    if ((tool === "write" || tool === "edit") && e.args?.path) {
+      const path = String(e.args.path);
+      if (path.includes("/extensions/") && path.endsWith(".ts")) {
+        const p = findPrompt("test-after-extension-edit");
+        if (p) fire(p);
+      }
+    }
   });
 
   pi.on("tool_execution_end", async (event) => {

@@ -3,6 +3,7 @@ import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { readFileSync, existsSync } from "node:fs";
 import { runFileChecks, checkDiffSize, type Violation } from "./checks.ts";
+import { createMockPi } from "./mock-pi.ts";
 
 // ─── Quality Hooks Extension ──────────────────────────────────────
 // Deterministic code quality checks that fire on write/edit.
@@ -84,6 +85,26 @@ export default function (pi: ExtensionAPI) {
 
       ctx.ui.notify(`🪝 Quality check on ${path.split("/").pop()}:\n${prompt}`, "warn");
     } catch {}
+
+    // Extension load check — verify extension can load against mock API
+    if (path.includes("/extensions/") && path.endsWith("/index.ts")) {
+      try {
+        const mod = await import(path + "?t=" + Date.now());
+        const factory = mod.default;
+        if (typeof factory !== "function") {
+          ctx.ui.notify(`🪝 [ext-load] ${path.split("/").pop()}: default export is ${typeof factory}, expected function`, "warn");
+        } else {
+          const { pi: mockPi } = createMockPi();
+          await Promise.resolve(factory(mockPi));
+        }
+      } catch (err: any) {
+        const msg = err.message?.split("\n")[0] ?? String(err);
+        if (msg.includes("Unknown ExtensionAPI method") || msg.includes("is not a function") || msg.includes("is not defined")) {
+          violationCount++;
+          ctx.ui.notify(`🪝 [ext-load] 🔴 API ERROR: ${msg}`, "warn");
+        }
+      }
+    }
   });
 
   // ── Hook: check diff size before commit ──

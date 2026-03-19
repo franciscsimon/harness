@@ -45,4 +45,10 @@ export const DEFAULT_PROMPTS: ContextualPrompt[] = [
     cooldownTurns: 8,
     text: "Consider committing working changes before moving to the next task. Small commits are easier to review.",
   },
+  {
+    name: "test-after-extension-edit",
+    enabled: true,
+    cooldownTurns: 5,
+    text: "You edited an extension. Run `task ext:test` or delegate to the tester agent to verify it loads correctly against the ExtensionAPI.",
+  },
 ];
