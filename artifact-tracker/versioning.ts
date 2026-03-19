@@ -3,12 +3,7 @@ import { readFile, unlink, access } from "node:fs/promises";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { Sql } from "./db.js";
 import { typed, typedNum } from "./db.js";
-
-const JSONLD_CONTEXT = {
-  prov: "http://www.w3.org/ns/prov#",
-  ev: "https://pi.dev/events/",
-  xsd: "http://www.w3.org/2001/XMLSchema#",
-};
+import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
 
 const versionCounters = new Map<string, number>();
 

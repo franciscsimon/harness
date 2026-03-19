@@ -1,39 +1,34 @@
 /**
  * RDF namespace URIs used throughout the event logger.
  * Every triple predicate and type is built from these.
+ *
+ * Re-exported from shared lib — see lib/jsonld/context.ts
  */
+import { NS, JSONLD_CONTEXT } from "../../lib/jsonld/context.ts";
 
 /** Pi.dev events vocabulary */
-export const EV = "https://pi.dev/events/";
+export const EV = NS.ev;
 
 /** W3C RDF syntax */
-export const RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
+export const RDF = NS.rdf;
 
 /** W3C XML Schema datatypes */
-export const XSD = "http://www.w3.org/2001/XMLSchema#";
+export const XSD = NS.xsd;
 
 /** Schema.org vocabulary */
-export const SCHEMA = "https://schema.org/";
+export const SCHEMA = NS.schema;
 
 /** DOAP — Description of a Project */
-export const DOAP = "http://usefulinc.com/ns/doap#";
+export const DOAP = NS.doap;
 
 /** PROV-O — W3C Provenance Ontology */
-export const PROV = "http://www.w3.org/ns/prov#";
+export const PROV = NS.prov;
 
 /** FOAF — Friend of a Friend (agent identity) */
-export const FOAF = "http://xmlns.com/foaf/0.1/";
+export const FOAF = NS.foaf;
 
 /**
  * JSON-LD @context object for serialization.
  * Used by rdf/serialize.ts when producing JSON-LD output.
  */
-export const JSONLD_CONTEXT = {
-  ev: EV,
-  rdf: RDF,
-  xsd: XSD,
-  schema: SCHEMA,
-  doap: DOAP,
-  prov: PROV,
-  foaf: FOAF,
-};
+export { JSONLD_CONTEXT };

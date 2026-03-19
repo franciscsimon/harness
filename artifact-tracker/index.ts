@@ -5,12 +5,7 @@ import { ensureDb, typed, typedNum, closeDb } from "./db.js";
 import { captureVersion, cleanupArtifacts, clearVersionState } from "./versioning.js";
 import { cmdList, cmdRestore, cmdHistory } from "./commands.js";
 import { cmdExportProvenance } from "./provenance.js";
-
-const JSONLD_CONTEXT = {
-  prov: "http://www.w3.org/ns/prov#",
-  ev: "https://pi.dev/events/",
-  xsd: "http://www.w3.org/2001/XMLSchema#",
-};
+import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
 
 interface PendingCall {
   toolName: string;
