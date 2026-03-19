@@ -874,6 +874,86 @@ export async function getAdjacentVersions(path: string, ts: number): Promise<{
   };
 }
 
+// ─── Project Lifecycle ─────────────────────────────────────────────
+
+export interface LifecycleEventRow {
+  _id: string;
+  event_type: string;
+  entity_id: string;
+  entity_type: string;
+  project_id: string;
+  summary: string;
+  ts: string;
+}
+
+export interface ProjectDependencyRow {
+  _id: string;
+  project_id: string;
+  name: string;
+  version: string;
+  dep_type: string;
+  ts: string;
+}
+
+export interface ProjectTagRow {
+  _id: string;
+  project_id: string;
+  tag: string;
+  ts: string;
+}
+
+export interface DecommissionRow {
+  _id: string;
+  project_id: string;
+  reason: string;
+  decommissioned_by: string;
+  ts: string;
+}
+
+export async function getProjectLifecycleEvents(projectId: string): Promise<LifecycleEventRow[]> {
+  try {
+    const rows = await sql`
+      SELECT * FROM lifecycle_events
+      WHERE project_id = ${projectId}
+      ORDER BY ts DESC
+    `;
+    return rows as unknown as LifecycleEventRow[];
+  } catch { return []; }
+}
+
+export async function getProjectDependencies(projectId: string): Promise<ProjectDependencyRow[]> {
+  try {
+    const rows = await sql`
+      SELECT * FROM project_dependencies
+      WHERE project_id = ${projectId}
+      ORDER BY name
+    `;
+    return rows as unknown as ProjectDependencyRow[];
+  } catch { return []; }
+}
+
+export async function getProjectTags(projectId: string): Promise<ProjectTagRow[]> {
+  try {
+    const rows = await sql`
+      SELECT * FROM project_tags
+      WHERE project_id = ${projectId}
+      ORDER BY tag
+    `;
+    return rows as unknown as ProjectTagRow[];
+  } catch { return []; }
+}
+
+export async function getProjectDecommissions(projectId: string): Promise<DecommissionRow[]> {
+  try {
+    const rows = await sql`
+      SELECT * FROM decommission_records
+      WHERE project_id = ${projectId}
+      ORDER BY ts DESC
+    `;
+    return rows as unknown as DecommissionRow[];
+  } catch { return []; }
+}
+
 /**
  * Close the connection.
  */

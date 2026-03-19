@@ -31,6 +31,10 @@ import {
   getArtifactReadsByPath,
   getArtifactVersion,
   getAdjacentVersions,
+  getProjectLifecycleEvents,
+  getProjectDependencies,
+  getProjectTags,
+  getProjectDecommissions,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -117,9 +121,16 @@ app.get("/projects/:id{.+}", async (c) => {
   const id = decodeURIComponent(c.req.param("id"));
   const project = await getProject(id);
   if (!project) return c.html("<h1>Project not found</h1>", 404);
-  const [sessions, decisions] = await Promise.all([getProjectSessions(id), getProjectDecisions(id)]);
+  const [sessions, decisions, lifecycleEvents, dependencies, tags, decommissions] = await Promise.all([
+    getProjectSessions(id),
+    getProjectDecisions(id),
+    getProjectLifecycleEvents(id),
+    getProjectDependencies(id),
+    getProjectTags(id),
+    getProjectDecommissions(id),
+  ]);
   const decisionsHtml = renderProjectDecisionsSection(decisions);
-  return c.html(renderProjectDetail(project, sessions, decisionsHtml));
+  return c.html(renderProjectDetail(project, sessions, decisionsHtml, { lifecycleEvents, dependencies, tags, decommissions }));
 });
 
 app.get("/decisions", async (c) => {

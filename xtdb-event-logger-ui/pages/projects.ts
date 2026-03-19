@@ -1,5 +1,12 @@
-import type { ProjectRow, SessionProjectRow } from "../lib/db.ts";
+import type { ProjectRow, SessionProjectRow, LifecycleEventRow, ProjectDependencyRow, ProjectTagRow, DecommissionRow } from "../lib/db.ts";
 import { relativeTime } from "../lib/format.ts";
+
+export interface ProjectLifecycleData {
+  lifecycleEvents: LifecycleEventRow[];
+  dependencies: ProjectDependencyRow[];
+  tags: ProjectTagRow[];
+  decommissions: DecommissionRow[];
+}
 
 // ─── Identity type badge colors ────────────────────────────────────
 
@@ -87,7 +94,7 @@ export function renderProjects(projects: ProjectRow[]): string {
 
 // ─── Project Detail Page ───────────────────────────────────────────
 
-export function renderProjectDetail(project: ProjectRow, sessions: SessionProjectRow[], decisionsHtml?: string): string {
+export function renderProjectDetail(project: ProjectRow, sessions: SessionProjectRow[], decisionsHtml?: string, lifecycle?: ProjectLifecycleData): string {
   const color = TYPE_COLORS[project.identity_type] ?? "#6b7280";
 
   const sessionRows = sessions
@@ -157,6 +164,8 @@ export function renderProjectDetail(project: ProjectRow, sessions: SessionProjec
 
     ${decisionsHtml ?? ""}
 
+    ${renderLifecycleSection(lifecycle)}
+
     <section class="proj-jsonld-section">
       <h2>JSON-LD</h2>
       <pre class="proj-jsonld">${esc(jsonld)}</pre>
@@ -164,6 +173,57 @@ export function renderProjectDetail(project: ProjectRow, sessions: SessionProjec
   </main>
 </body>
 </html>`;
+}
+
+// ─── Lifecycle Section ─────────────────────────────────────────────
+
+function renderLifecycleSection(data?: ProjectLifecycleData): string {
+  if (!data) return "";
+  const { lifecycleEvents, dependencies, tags, decommissions } = data;
+  const hasAny = lifecycleEvents.length > 0 || dependencies.length > 0 || tags.length > 0 || decommissions.length > 0;
+  if (!hasAny) return "";
+
+  let html = "";
+
+  // Tags
+  if (tags.length > 0) {
+    const tagBadges = tags.map(t => `<span class="proj-type-badge" style="--type-color:#6366f1">${esc(t.tag)}</span>`).join(" ");
+    html += `<section class="proj-sessions-section"><h2>Tags</h2><div style="padding:0.5rem 0">${tagBadges}</div></section>`;
+  }
+
+  // Dependencies
+  if (dependencies.length > 0) {
+    const depRows = dependencies.map(d =>
+      `<tr><td><code>${esc(d.name)}</code></td><td>${esc(d.version)}</td><td><span class="proj-type-badge" style="--type-color:#64748b">${esc(d.dep_type)}</span></td></tr>`
+    ).join("\n");
+    html += `<section class="proj-sessions-section"><h2>Dependencies <span class="total-badge">${dependencies.length}</span></h2>
+      <table class="proj-info-table"><thead><tr><th>Name</th><th>Version</th><th>Type</th></tr></thead><tbody>${depRows}</tbody></table></section>`;
+  }
+
+  // Lifecycle events (phase transitions)
+  if (lifecycleEvents.length > 0) {
+    const evRows = lifecycleEvents.map(e => {
+      const phaseColor = PHASE_COLORS[e.event_type] ?? "#6b7280";
+      return `<tr>
+        <td><span class="proj-type-badge" style="--type-color:${phaseColor}">${esc(e.event_type)}</span></td>
+        <td>${esc(e.summary)}</td>
+        <td>${relativeTime(e.ts)}</td>
+      </tr>`;
+    }).join("\n");
+    html += `<section class="proj-sessions-section"><h2>Lifecycle Events <span class="total-badge">${lifecycleEvents.length}</span></h2>
+      <table class="proj-info-table"><thead><tr><th>Event</th><th>Summary</th><th>When</th></tr></thead><tbody>${evRows}</tbody></table></section>`;
+  }
+
+  // Decommissions
+  if (decommissions.length > 0) {
+    const decomRows = decommissions.map(d =>
+      `<tr><td>${esc(d.reason)}</td><td>${esc(d.decommissioned_by)}</td><td>${relativeTime(d.ts)}</td></tr>`
+    ).join("\n");
+    html += `<section class="proj-sessions-section"><h2>Decommission Records <span class="total-badge">${decommissions.length}</span></h2>
+      <table class="proj-info-table"><thead><tr><th>Reason</th><th>By</th><th>When</th></tr></thead><tbody>${decomRows}</tbody></table></section>`;
+  }
+
+  return html;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────
