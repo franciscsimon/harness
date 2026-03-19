@@ -5,7 +5,7 @@
 // We group by path and show version counts.
 
 import { layout } from "../components/layout.ts";
-import { fetchArtifacts } from "../lib/api.ts";
+import { fetchArtifacts, fetchArtifactVersions } from "../lib/api.ts";
 import { relativeTime, escapeHtml } from "../lib/format.ts";
 
 const KIND_COLORS: Record<string, string> = {
@@ -91,21 +91,22 @@ export async function renderArtifacts(): Promise<string> {
 // ─── Artifact Versions Page ────────────────────────────────────
 
 export async function renderArtifactVersions(path: string): Promise<string> {
-  const allArtifacts = (await fetchArtifacts()) ?? [];
-  const versions = allArtifacts.filter((a: any) => a.path === path);
+  // Use artifact_versions API (has correct IDs for content links)
+  const versions = (await fetchArtifactVersions(path)) ?? [];
   const fileName = path.split("/").pop() ?? path;
 
   const rows = versions.map((v: any) => `
     <div class="art-card">
       <div class="art-card-top">
         <span class="art-op">${OP_ICONS[v.operation] ?? "•"}</span>
-        <span class="art-filename">${escapeHtml(v.operation ?? "—")}</span>
+        <span class="art-filename">v${v.version ?? "?"} · ${escapeHtml(v.operation ?? "—")}</span>
         <span class="art-kind-badge" style="--kind-color:${KIND_COLORS[v.kind ?? "other"] ?? "#6b7280"}">${escapeHtml(v.kind ?? "other")}</span>
         <span class="dec-ago">${relativeTime(v.ts)}</span>
       </div>
       <div class="art-meta">
         ${v.content_hash ? `<span>Hash: <code>${escapeHtml(String(v.content_hash).slice(0, 16))}</code></span>` : ""}
-        ${v.session_id ? `<span>Session: <code>${escapeHtml(v.session_id.split("/").pop())}</code></span>` : ""}
+        ${v.session_id ? `<span>Session: <code>${escapeHtml(String(v.session_id).split("/").pop())}</code></span>` : ""}
+        ${v._id ? `<a href="/artifacts/content/${encodeURIComponent(v._id)}" class="sb-link" style="font-size:0.8rem">📄 View content</a>` : ""}
       </div>
     </div>
   `).join("\n");

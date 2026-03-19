@@ -321,6 +321,23 @@ app.get("/api/artifacts", async (c) => {
   return c.json(filtered);
 });
 
+app.get("/api/artifact-versions", async (c) => {
+  const path = c.req.query("path");
+  if (path) {
+    const versions = await getArtifactVersionsByPath(path);
+    return c.json(versions);
+  }
+  const summaries = await getArtifactVersionSummaries();
+  return c.json(summaries);
+});
+
+app.get("/api/artifact-versions/:id{.+}", async (c) => {
+  const id = decodeURIComponent(c.req.param("id"));
+  const version = await getArtifactVersion(id);
+  if (!version) return c.json({ error: "not found" }, 404);
+  return c.json(version);
+});
+
 app.post("/api/wipe", async (c) => {
   const deleted = await wipeAllEvents();
   return c.json({ deleted, message: `Erased ${deleted} events` });

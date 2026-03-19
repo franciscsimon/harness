@@ -22,6 +22,11 @@ const PUBLIC_PATHS = new Set([
   "/api/scheduler/status",
   "/api/lifecycle/events",
   "/api/ci/events",
+  "/api/topics",
+  "/api/replica/status",
+  "/api/replica/start",
+  "/api/replica/stop",
+  "/api/restore",
 ]);
 
 let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
@@ -63,11 +68,12 @@ export function authMiddleware(): MiddlewareHandler {
     // Skip auth if disabled
     if (!enabled) return next();
 
-    // Skip public paths
+    // Skip public paths (exact match)
     if (PUBLIC_PATHS.has(c.req.path)) return next();
 
-    // Skip dashboard for now (will add login flow)
-    if (c.req.path.startsWith("/dashboard")) return next();
+    // Skip public path prefixes (dynamic routes used by ops.js)
+    const publicPrefixes = ["/api/backup/", "/api/backups/", "/dashboard"];
+    if (publicPrefixes.some(p => c.req.path.startsWith(p))) return next();
 
     const authHeader = c.req.header("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {

@@ -24,6 +24,7 @@ export const fetchDashboard = () => get<any>(`${EVENT_API}/api/dashboard`);
 export const fetchDecisions = (limit = 50) => get<any[]>(`${EVENT_API}/api/decisions?limit=${limit}`);
 export const fetchArtifacts = () => get<any[]>(`${EVENT_API}/api/artifacts`);
 export const fetchEvent = (id: string) => get<any>(`${EVENT_API}/api/events/${encodeURIComponent(id)}`);
+export const fetchArtifactVersions = (path: string) => get<any[]>(`${EVENT_API}/api/artifact-versions?path=${encodeURIComponent(path)}`);
 
 // :3335 Ops API
 export const fetchHealth = () => get<any>(`${OPS_API}/api/health`);

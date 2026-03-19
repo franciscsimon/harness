@@ -65,12 +65,12 @@ export async function renderDashboard(): Promise<string> {
     </a>`;
   }).join("\n");
 
-  // Tool usage bars — API returns {tool_name, count, error_count}
+  // Tool usage bars — API returns {tool, count, errors, errorRate}
   const maxToolCount = Math.max(...tools.map((t: any) => t.count ?? 0), 1);
   const toolBars = tools.map((t: any) => {
-    const name = t.tool_name ?? t.tool ?? "unknown";
+    const name = t.tool ?? "unknown";
     const count = t.count ?? 0;
-    const errCount = t.error_count ?? t.errors ?? 0;
+    const errCount = t.errors ?? 0;
     const errRate = count > 0 ? errCount / count : 0;
     const pct = (count / maxToolCount) * 100;
     return `<div class="tool-bar">
@@ -104,7 +104,7 @@ export async function renderDashboard(): Promise<string> {
         ? `<table class="error-patterns-table">
           <thead><tr><th>Tool</th><th>Errors</th><th>Sessions</th></tr></thead>
           <tbody>${errors.map((e: any) => `<tr>
-            <td><code>${escapeHtml(e.toolName ?? e.tool_name ?? "")}</code></td>
+            <td><code>${escapeHtml(e.tool ?? "")}</code></td>
             <td class="error-count">${e.count ?? 0}</td>
             <td>${e.sessionCount ?? e.session_count ?? 0} session${(e.sessionCount ?? e.session_count ?? 0) !== 1 ? "s" : ""}</td>
           </tr>`).join("")}</tbody>

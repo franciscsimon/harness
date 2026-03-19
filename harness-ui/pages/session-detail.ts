@@ -162,7 +162,8 @@ export async function renderSessionDetail(sessionId: string): Promise<string> {
       data-category="${escapeHtml(ev.category)}"
       data-seq="${ev.seq}"
       data-id="${escapeHtml(ev._id)}"
-      data-ts="${ev.ts}"${ctxAttrs}
+      data-ts="${ev.ts}"
+      data-turn-index="${ev.turn_index ?? ""}"${ctxAttrs}
       style="--cat-color:${color}">
       <span class="tl-seq">#${ev.seq}</span>
       <span class="cat-dot" style="background:${color}"></span>
@@ -170,6 +171,7 @@ export async function renderSessionDetail(sessionId: string): Promise<string> {
       <span class="cat-badge" style="background:${color}">${escapeHtml(ev.category)}</span>
       ${ctxBadgeHtml}
       <span class="tl-fields">${fieldHtml}</span>
+      <a class="tl-detail-link" href="/event/${encodeURIComponent(ev._id)}">detail →</a>
       <span class="tl-time">${relativeTime(ev.ts)}</span>
     </div>`;
   }).join("\n    ");
@@ -196,7 +198,11 @@ export async function renderSessionDetail(sessionId: string): Promise<string> {
     </main>
   `;
 
-  return layout(content, { title: name, activePath: "/sessions" });
+  return layout(content, {
+    title: name,
+    activePath: "/sessions",
+    extraHead: `<script src="/static/session.js" defer></script>`,
+  });
 }
 
 function fmtDuration(ms: number): string {

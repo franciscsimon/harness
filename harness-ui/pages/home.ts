@@ -3,14 +3,14 @@
 // so the page renders even if backends are down.
 
 import { layout } from "../components/layout.ts";
-import { badge, healthDot } from "../components/badge.ts";
-import { fetchStats, fetchHealth, fetchIncidents } from "../lib/api.ts";
+import { healthDot } from "../components/badge.ts";
+import { fetchStats, fetchDashboard, fetchHealth, fetchIncidents } from "../lib/api.ts";
 import { formatNumber, relativeTime } from "../lib/format.ts";
 
 export async function renderHome(): Promise<string> {
-  // Fetch from all backends in parallel — each can fail independently
-  const [stats, health, incidents] = await Promise.all([
+  const [stats, dashboard, health, incidents] = await Promise.all([
     fetchStats().catch(() => null),
+    fetchDashboard().catch(() => null),
     fetchHealth().catch(() => null),
     fetchIncidents("open").catch(() => null),
   ]);
@@ -24,8 +24,8 @@ export async function renderHome(): Promise<string> {
     ${renderBackendStatus(stats, health)}
 
     <div class="grid grid-4" style="margin-top:1.5rem">
-      ${renderStatCard("Sessions", stats ? formatNumber(stats.totalSessions) : "—", stats ? `${stats.activeSessions} active` : "Event API unavailable", stats != null)}
-      ${renderStatCard("Events", stats ? formatNumber(stats.totalEvents) : "—", stats?.latestEvent ? relativeTime(stats.latestEvent) : "—", stats != null)}
+      ${renderStatCard("Sessions", dashboard ? formatNumber(dashboard.totalSessions) : "—", dashboard ? `avg ${formatNumber(dashboard.avgEventsPerSession)} events/session` : "Event API unavailable", dashboard != null)}
+      ${renderStatCard("Events", stats ? formatNumber(stats.total) : "—", stats?.byCategory ? `${Object.keys(stats.byCategory).length} categories` : "—", stats != null)}
       ${renderStatCard("Open Incidents", incidents ? String(incidents.length) : "—", incidents ? (incidents.length === 0 ? "All clear" : `${incidents.length} need attention`) : "Ops API unavailable", incidents != null)}
       ${renderStatCard("System Health", health ? capitalize(health.overall) : "—", health ? healthSummary(health) : "Ops API unavailable", health != null)}
     </div>
@@ -109,50 +109,59 @@ function renderHealthDetail(health: any): string {
     </div>`;
   }
 
+  const rows = (health.components || []).map((c: any) => {
+    const statusColor = c.status === "healthy" ? "#238636" : c.status === "degraded" ? "#d29922" : "#da3633";
+    const details = c.details || {};
+    let detailStr = "";
+    if (c.name === "primary" || c.name === "replica") {
+      detailStr = details.pgwire ? "pgwire ✓" : "pgwire ✗";
+      if (details.port) detailStr += ` :${details.port}`;
+    } else if (c.name === "redpanda") {
+      detailStr = details.healthy ? "cluster healthy" : "cluster unhealthy";
+    } else {
+      detailStr = JSON.stringify(details).slice(0, 80);
+    }
+    return `<tr>
+      <td>${c.name}</td>
+      <td><span style="color:${statusColor};font-weight:600">${c.status}</span></td>
+      <td style="color:var(--text-dim);font-size:0.85rem">${detailStr}</td>
+    </tr>`;
+  }).join("");
+
   return `<div class="section">
     <h2>System Health</h2>
     <div class="card">
       <table class="data-table">
-        <thead><tr><th>Component</th><th>Status</th><th>Latency</th></tr></thead>
-        <tbody>
-          <tr>
-            <td>XTDB Primary</td>
-            <td>${healthDot(health.primary?.ok ?? false)}</td>
-            <td>${health.primary?.latencyMs != null ? health.primary.latencyMs + "ms" : "—"}</td>
-          </tr>
-          <tr>
-            <td>XTDB Replica</td>
-            <td>${healthDot(health.replica?.ok ?? false)}</td>
-            <td>${health.replica?.latencyMs != null ? health.replica.latencyMs + "ms" : "—"}</td>
-          </tr>
-          <tr>
-            <td>Redpanda</td>
-            <td>${healthDot(health.redpanda?.ok ?? false)}</td>
-            <td>${health.redpanda?.topics != null ? health.redpanda.topics + " topics" : "—"}</td>
-          </tr>
-        </tbody>
+        <thead><tr><th>Component</th><th>Status</th><th>Details</th></tr></thead>
+        <tbody>${rows}</tbody>
       </table>
     </div>
   </div>`;
 }
 
 function renderCategoryBreakdown(stats: any): string {
-  if (!stats?.eventsByCategory) return "";
+  if (!stats?.byCategory) return "";
 
-  const cats = Object.entries(stats.eventsByCategory as Record<string, number>)
+  const cats = Object.entries(stats.byCategory as Record<string, number>)
     .sort((a, b) => (b[1] as number) - (a[1] as number));
 
   if (cats.length === 0) return "";
 
-  const rows = cats.map(([cat, count]) =>
-    `<tr><td>${cat}</td><td style="font-weight:600">${formatNumber(count as number)}</td></tr>`
-  ).join("");
+  const total = stats.total || 1;
+  const rows = cats.map(([cat, count]) => {
+    const pct = ((count as number) / total * 100).toFixed(1);
+    return `<tr>
+      <td>${cat}</td>
+      <td style="font-weight:600">${formatNumber(count as number)}</td>
+      <td style="color:var(--text-dim)">${pct}%</td>
+    </tr>`;
+  }).join("");
 
   return `<div class="section">
     <h2>Events by Category</h2>
     <div class="card">
       <table class="data-table">
-        <thead><tr><th>Category</th><th>Count</th></tr></thead>
+        <thead><tr><th>Category</th><th>Count</th><th>%</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -160,14 +169,10 @@ function renderCategoryBreakdown(stats: any): string {
 }
 
 function healthSummary(h: any): string {
-  const parts: string[] = [];
-  if (h.primary?.ok) parts.push("DB ✓");
-  else parts.push("DB ✗");
-  if (h.replica?.ok) parts.push("Replica ✓");
-  else parts.push("Replica ✗");
-  if (h.redpanda?.ok) parts.push("Kafka ✓");
-  else parts.push("Kafka ✗");
-  return parts.join(" · ");
+  if (!h.components) return h.overall || "unknown";
+  const ok = h.components.filter((c: any) => c.status === "healthy").length;
+  const total = h.components.length;
+  return `${ok}/${total} components healthy`;
 }
 
 function capitalize(s: string): string {

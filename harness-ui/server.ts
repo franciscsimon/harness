@@ -66,6 +66,20 @@ app.get("/artifacts/versions", async (c) => {
   return c.html(await renderArtifactVersions(path));
 });
 
+// Proxy artifact content from :3333 so users stay on :3336
+app.get("/artifacts/content/:id{.+}", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const upstream = `http://localhost:3333/artifacts/content/${encodeURIComponent(id)}`;
+    const resp = await fetch(upstream);
+    if (!resp.ok) return c.html(`<h1>Version not found</h1>`, 404);
+    const html = await resp.text();
+    return c.html(html);
+  } catch {
+    return c.html(`<h1>Event API unavailable</h1><p>Cannot reach localhost:3333</p>`, 502);
+  }
+});
+
 // ── Start ──────────────────────────────────────────────────────────
 
 serve({ fetch: app.fetch, port: UI_PORT }, () => {
