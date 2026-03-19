@@ -1,54 +1,66 @@
-# UI Fixes Remaining — 5 Specific Issues
+# UI Fixes Remaining — Precise Diagnostics
 
-## Issue 1: Session Detail Broken
-**Symptom:** Clicking a session card goes to 404
-**Root cause:** Server route is `/sessions/:id` but session IDs contain slashes (e.g. `/Users/opunix/.pi/agent/sessions/--Users-opunix-harness--/2026-03-19T16-44-37-67`)
-**Fix:** Change route in `server.ts` to `/sessions/:id{.+}` — ALREADY DONE but needs commit + restart
-**Status:** Code fixed, needs deploy
+All API shapes verified by curl on 2026-03-19.
 
-## Issue 2: Artifacts Not Clickable / No Content View
-**Symptom:** Artifact cards don't link anywhere, can't view content
-**Root cause:** No `/artifacts/versions` or `/artifacts/content/:id` routes in harness-ui. Original on :3333 has these but they query DB directly — no JSON API exists for them.
-**Fix options:**
-- A) Add API endpoints to :3333: `GET /api/artifacts/versions?path=...` and `GET /api/artifacts/content/:id` 
-- B) Link artifacts to :3333 directly: `href="http://localhost:3333/artifacts/versions?path=..."` (quick hack)
-- C) Add the routes to harness-ui that proxy to :3333's HTML pages
-**Recommended:** Option A — add 2 API endpoints on :3333, then consume in harness-ui
+## Real API Responses
 
-## Issue 3: Projects Detail Not Working
-**Symptom:** Clicking a project card goes to 404
-**Root cause:** No `/projects/:id` route in harness-ui server.ts. No `/api/projects` or `/api/projects/:id` endpoint on :3333 either.
-**Fix:**
-1. Add `GET /api/projects` and `GET /api/projects/:id` endpoints to xtdb-event-logger-ui/server.ts
-2. Add `/projects/:id{.+}` route to harness-ui/server.ts
-3. Create `pages/project-detail.ts` — port from xtdb-event-logger-ui/pages/projects.ts `renderProjectDetail()`
-**Verified API shape needed:** `{_id, name, canonical_id, identity_type, session_count, first_seen_ts, last_seen_ts, lifecycle_phase, git_remote_url, git_root_path}`
+```
+GET :3333/api/stats → {total: 17475, byCategory: {agent, compaction, input, message, resource, session, tool}}
+GET :3333/api/dashboard → {totalSessions, totalEvents, avgEventsPerSession, overallErrorRate, sessions[{sessionId, eventCount, errorRate, turnCount, maxPayloadBytes, durationMs, firstTs, lastTs, healthScore, healthColor}], toolUsage[{tool, count, errors, errorRate}], errorPatterns[]}
+GET :3333/api/sessions/list → [{sessionId, eventCount, firstTs, lastTs, lastEventName, lastSeq, byCategory, errorRate, turnCount, maxPayloadBytes, durationMs}]
+GET :3333/api/sessions/:id/events → [{_id, event_name, category, seq, ts, cwd, tool_name, provider_payload_bytes, ...}]
+GET :3333/api/decisions → [{_id, task, what, outcome, why, ts, session_id, project_id, ...}]
+GET :3333/api/artifacts → [{_id, path, kind, operation, content_hash, ts, session_id, project_id}]
+GET :3335/api/health → {overall, components[{name, status, details, checkedAt}]}
+GET :3335/api/backups → [{filename, sizeBytes, sizeHuman, modifiedAt, type}]
+GET :3335/api/replication → {primary, replica, lag, synced}
+GET :3335/api/scheduler/status → {running, intervalHours, lastRunAt, lastJobId, lastJobStatus, maxBackups}
+GET :3335/api/incidents → [{_id, severity, title, status, started_ts, ...}]
+```
 
-## Issue 4: Ops Not Complete
-**Symptom:** Backup data shows wrong fields, some sections empty
-**Root cause:** Ops page uses field names `size` and `created` but API returns `sizeBytes`/`sizeHuman` and `modifiedAt`
-**Fix:** Update `renderBackupsSection()` in `pages/ops.ts`:
-- `b.size` → `b.sizeBytes`
+## Issue 1: Home Page — undefined values
+**File:** `harness-ui/pages/home.ts`
+**Problem:** Uses `stats.totalSessions`, `stats.activeSessions`, `stats.totalEvents`, `stats.latestEvent` — none of these exist. `/api/stats` returns `{total, byCategory}`.
+**Fix:** Use `fetchDashboard()` for session count (`data.totalSessions`). Use `fetchStats()` for event count (`data.total`). Remove `activeSessions`/`latestEvent` references.
+
+## Issue 2: Home Page — system health wrong
+**File:** `harness-ui/pages/home.ts`
+**Problem:** Likely references health fields that don't match real shape.
+**Fix:** Health is `{overall, components[{name, status, details, checkedAt}]}`. Use `health.overall` and iterate `health.components`.
+
+## Issue 3: Session Detail — missing turns, filters, details
+**File:** `harness-ui/pages/session-detail.ts`  
+**Problem:** Original has client-side JS (`/static/session.js`) that does grouping, collapse/expand, and filtering. The harness-ui doesn't serve that JS file.
+**Fix:** Copy `xtdb-event-logger-ui/static/session.js` to `harness-ui/static/session.js`. Add `<script src="/static/session.js"></script>` to the session-detail page output.
+
+## Issue 4: Artifacts — no content view
+**File:** `harness-ui/pages/artifacts.ts`
+**Problem:** Original has `/artifacts/content/:id` route that reads file content from DB. No JSON API exists for artifact content.
+**Fix:** Either add `GET /api/artifacts/:id/content` to :3333, or link to `http://localhost:3333/artifacts/content/:id` directly.
+
+## Issue 5: Ops — incomplete (replication, scheduler, backups)
+**File:** `harness-ui/pages/ops.ts`
+**Problem:** Field name mismatches. Backup uses `size`/`created` but API returns `sizeBytes`/`sizeHuman`/`modifiedAt`. Scheduler uses `lastRun` but API returns `lastRunAt`.
+**Fix:** Update field references:
+- `b.size` → `b.sizeBytes` or `b.sizeHuman`
 - `b.created` → `b.modifiedAt`
-- Add `b.sizeHuman` display
-- Also: replication shows `synced: false` and `lag: -1` which may be correct data but looks alarming
+- `sched.lastRun` → `sched.lastRunAt`
+Also: original ops page on :3333 uses client-side JS (`/static/ops.js`) that polls APIs. harness-ui renders server-side but missing the interactive controls (backup buttons, replica controls, kafka topics).
 
-## Issue 5: Chat Broken
-**Symptom:** Chat page doesn't work
-**Root cause:** Need to verify — the WebSocket URL `ws://localhost:3334/ws` is correct. Possible issues:
-- :3334 (web-chat) not running
-- CORS blocking WebSocket from :3336 origin
-- Chat page JS errors in browser console
-**Debug steps:**
-1. Check if :3334 is running: `lsof -ti:3334`
-2. Open browser dev tools on :3336/chat, check console for errors
-3. Check if web-chat server has WebSocket CORS headers
+## Issue 6: Chat broken
+**File:** `harness-ui/pages/chat.ts`
+**Problem:** 361 lines — was NOT ported from original (152 lines). Was a from-scratch rewrite. Likely has client-side JS bugs.
+**Fix:** Read `web-chat/pages/chat.ts` (152 lines) and port it properly. The chat page is mostly client-side JS that connects to `ws://localhost:3334/ws`.
 
-## Quick Wins (can fix without new APIs)
-- Issue 1: Already fixed in code, just needs restart ✅
-- Issue 4: 3-line field name fix in ops.ts
-- Issue 5: Likely just needs :3334 running
+## Issue 7: Dashboard — tool field name mismatch
+**File:** `harness-ui/pages/dashboard.ts`
+**Problem:** Uses `t.tool_name` but API returns `t.tool`. Uses `t.error_count` but API returns `t.errors`.
+**Fix:** `t.tool_name` → `t.tool`, `t.error_count` → `t.errors`
 
-## Needs Backend Changes
-- Issue 2: Needs 2 new API endpoints on :3333
-- Issue 3: Needs 2 new API endpoints on :3333 + new page file
+## Execution Order
+1. Fix home.ts (undefined values) — 10 min
+2. Copy session.js + ops.js static files — 5 min  
+3. Fix ops.ts field names — 5 min
+4. Fix dashboard.ts tool field names — 2 min
+5. Port chat.ts from original — 30 min
+6. Add artifact content route — 15 min
