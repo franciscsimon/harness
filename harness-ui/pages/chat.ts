@@ -3,10 +3,10 @@
 // Ported from web-chat/pages/chat.ts — adapted for harness-ui layout.
 
 import { layout } from "../components/layout.ts";
-import { getChatWsUrl } from "../lib/api.ts";
+import { CHAT_WS_URL } from "../lib/api.ts";
 
 export async function renderChat(): Promise<string> {
-  const wsUrl = getChatWsUrl();
+  const wsUrl = CHAT_WS_URL;
 
   const chatCss = `
     <style>

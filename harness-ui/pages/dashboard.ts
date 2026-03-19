@@ -1,104 +1,66 @@
-// ─── Dashboard Page ────────────────────────────────────────────
-// Session health overview: totals, tool usage, error patterns.
-
 import { layout } from "../components/layout.ts";
 import { renderTable, type TableColumn } from "../components/table.ts";
 import { badge } from "../components/badge.ts";
 import { fetchDashboard } from "../lib/api.ts";
-import { formatNumber, escapeHtml } from "../lib/format.ts";
+import { escapeHtml, formatDuration } from "../lib/format.ts";
 
 export async function renderDashboard(): Promise<string> {
   const data = await fetchDashboard();
 
   if (!data) {
-    const content = `
-      <div class="page-header">
-        <h1>📊 Dashboard</h1>
-        <p>Session health analytics</p>
-      </div>
-      <div class="card"><div class="empty-state">Service unavailable — cannot fetch dashboard data</div></div>
-    `;
-    return layout(content, { title: "Dashboard", activePath: "/dashboard" });
+    return layout(`<div class="page-header"><h1>Dashboard</h1></div><div class="empty-state">Event Logger API unavailable</div>`,
+      { title: "Dashboard", activePath: "/dashboard" });
   }
 
-  // Extract what's available from the dashboard response
-  const totalSessions = data.totalSessions ?? data.sessions ?? 0;
-  const totalEvents = data.totalEvents ?? data.events ?? 0;
-  const activeSessions = data.activeSessions ?? 0;
+  const sessions: any[] = data.sessions ?? [];
+  const toolUsage: any[] = data.toolUsage ?? [];
+  const errorPatterns: any[] = data.errorPatterns ?? [];
 
-  // Tool usage stats (if present)
-  const toolUsage: Record<string, number> = data.toolUsage ?? data.toolCounts ?? {};
-  const toolRows = Object.entries(toolUsage)
-    .sort((a, b) => (b[1] as number) - (a[1] as number))
-    .map(([name, count]) => ({ name, count }));
-
-  const toolColumns: TableColumn[] = [
-    { key: "name", label: "Tool", render: (v) => `<code>${escapeHtml(String(v))}</code>` },
-    { key: "count", label: "Invocations", render: (v) => `<strong>${formatNumber(v)}</strong>` },
+  const sessionCols: TableColumn[] = [
+    { key: "sessionId", label: "Session", render: (v) => {
+      const short = String(v).replace(/.*\/sessions\//, "").replace(/\.jsonl$/, "").slice(0, 40);
+      return `<a href="/sessions/${encodeURIComponent(v)}">${escapeHtml(short)}</a>`;
+    }},
+    { key: "eventCount", label: "Events" },
+    { key: "healthScore", label: "Health", render: (v, row) => {
+      const color = row.healthColor === "green" ? "#238636" : row.healthColor === "yellow" ? "#d29922" : "#da3633";
+      return `<span style="color:${color};font-weight:bold">${v ?? "—"}</span>`;
+    }},
+    { key: "errorRate", label: "Errors", render: (v) => ((v ?? 0) * 100).toFixed(1) + "%" },
+    { key: "turnCount", label: "Turns" },
+    { key: "durationMs", label: "Duration", render: (v) => formatDuration(v) },
   ];
 
-  // Error patterns (if present)
-  const errorPatterns: any[] = data.errorPatterns ?? data.errors ?? [];
-  const errorColumns: TableColumn[] = [
-    { key: "pattern", label: "Error Pattern", render: (v) => escapeHtml(String(v ?? "—")) },
-    { key: "count", label: "Occurrences", render: (v) => `<strong>${v}</strong>` },
-    { key: "severity", label: "Severity", render: (v) => badge(String(v ?? "unknown")) },
-  ];
-
-  // Event category breakdown
-  const categories: Record<string, number> = data.eventsByCategory ?? data.categories ?? {};
-  const catRows = Object.entries(categories)
-    .sort((a, b) => (b[1] as number) - (a[1] as number))
-    .map(([category, count]) => ({ category, count }));
-
-  const catColumns: TableColumn[] = [
-    { key: "category", label: "Category", render: (v) => badge(String(v)) },
-    { key: "count", label: "Count", render: (v) => `<strong>${formatNumber(v)}</strong>` },
+  const toolCols: TableColumn[] = [
+    { key: "tool_name", label: "Tool" },
+    { key: "count", label: "Calls" },
+    { key: "error_count", label: "Errors" },
+    { key: "error_rate", label: "Error %", render: (v) => ((v ?? 0) * 100).toFixed(1) + "%" },
   ];
 
   const content = `
     <div class="page-header">
-      <h1>📊 Dashboard</h1>
-      <p>Session health analytics</p>
+      <h1>Dashboard</h1>
+      <p>Session health overview</p>
     </div>
 
-    <div class="grid grid-3" style="margin-bottom:1.5rem">
-      <div class="stat-card">
-        <div class="stat-value" style="color:var(--accent)">${formatNumber(totalSessions)}</div>
-        <div class="stat-label">Total Sessions</div>
-        <div class="stat-sub">${activeSessions} active</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color:var(--accent)">${formatNumber(totalEvents)}</div>
-        <div class="stat-label">Total Events</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-value" style="color:var(--accent)">${toolRows.length}</div>
-        <div class="stat-label">Distinct Tools</div>
-      </div>
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-value">${data.totalSessions ?? 0}</div><div class="stat-label">Sessions</div></div>
+      <div class="stat-card"><div class="stat-value">${data.totalEvents ?? 0}</div><div class="stat-label">Events</div></div>
+      <div class="stat-card"><div class="stat-value">${data.avgEventsPerSession ?? 0}</div><div class="stat-label">Avg/Session</div></div>
+      <div class="stat-card"><div class="stat-value">${((data.overallErrorRate ?? 0) * 100).toFixed(1)}%</div><div class="stat-label">Error Rate</div></div>
     </div>
 
-    ${toolRows.length > 0 ? `
-    <div class="section">
-      <div class="section-header"><h2>Tool Usage</h2></div>
-      ${renderTable(toolColumns, toolRows, { emptyMessage: "No tool data" })}
-    </div>` : ""}
+    <h2>Sessions by Health</h2>
+    ${renderTable(sessionCols, sessions, { emptyMessage: "No sessions" })}
 
-    ${catRows.length > 0 ? `
-    <div class="section">
-      <div class="section-header"><h2>Events by Category</h2></div>
-      ${renderTable(catColumns, catRows, { emptyMessage: "No category data" })}
-    </div>` : ""}
+    <h2>Tool Usage</h2>
+    ${renderTable(toolCols, toolUsage, { emptyMessage: "No tool data" })}
 
     ${errorPatterns.length > 0 ? `
-    <div class="section">
-      <div class="section-header"><h2>Error Patterns</h2></div>
-      ${renderTable(errorColumns, errorPatterns, { emptyMessage: "No errors — all clear!" })}
-    </div>` : `
-    <div class="section">
-      <div class="section-header"><h2>Error Patterns</h2></div>
-      <div class="empty-state">No errors detected — all clear! ✓</div>
-    </div>`}
+    <h2>Error Patterns</h2>
+    <ul>${errorPatterns.map((e: any) => `<li><strong>${escapeHtml(e.tool_name ?? "unknown")}</strong>: ${e.count} errors — ${escapeHtml(e.sample_error ?? "")}</li>`).join("")}</ul>
+    ` : ""}
   `;
 
   return layout(content, { title: "Dashboard", activePath: "/dashboard" });

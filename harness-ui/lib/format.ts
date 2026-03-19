@@ -83,6 +83,18 @@ export const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
   unknown: { bg: "#484f58", fg: "#c9d1d9" },
 };
 
+export function formatDuration(ms: number | string | null): string {
+  if (ms == null) return "—";
+  const n = typeof ms === "string" ? parseInt(ms, 10) : ms;
+  if (isNaN(n) || n <= 0) return "—";
+  if (n < 1000) return `${n}ms`;
+  if (n < 60_000) return `${(n / 1000).toFixed(1)}s`;
+  if (n < 3600_000) return `${Math.floor(n / 60_000)}m ${Math.floor((n % 60_000) / 1000)}s`;
+  const h = Math.floor(n / 3600_000);
+  const m = Math.floor((n % 3600_000) / 60_000);
+  return `${h}h ${m}m`;
+}
+
 export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")

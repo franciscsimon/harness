@@ -1,50 +1,32 @@
-// ─── Session Detail Page ───────────────────────────────────────
-// Shows event timeline for a single session.
-
 import { layout } from "../components/layout.ts";
 import { renderTable, type TableColumn } from "../components/table.ts";
 import { badge } from "../components/badge.ts";
 import { fetchSessionEvents } from "../lib/api.ts";
-import { relativeTime, escapeHtml, formatDate } from "../lib/format.ts";
+import { relativeTime, escapeHtml } from "../lib/format.ts";
 
 export async function renderSessionDetail(sessionId: string): Promise<string> {
-  let events: any[] = [];
-  let fetchError = false;
-
-  try {
-    events = await fetchSessionEvents(sessionId);
-  } catch {
-    fetchError = true;
-  }
+  const events = (await fetchSessionEvents(sessionId)) ?? [];
+  const shortId = sessionId.replace(/.*\/sessions\//, "").replace(/\.jsonl$/, "").slice(0, 50);
 
   const columns: TableColumn[] = [
-    { key: "seq", label: "#", render: (v) => `<span style="color:var(--text-dim)">${v ?? "—"}</span>` },
-    { key: "event_name", label: "Event", render: (v) => badge(String(v ?? "unknown")) },
-    { key: "timestamp", label: "Time", render: (v) => `<span title="${formatDate(v)}">${relativeTime(v)}</span>` },
-    {
-      key: "xt/id",
-      label: "Details",
-      render: (v, row) => {
-        const id = v ?? row.id ?? row._id;
-        return id ? `<a href="#" title="${escapeHtml(String(id))}">view</a>` : "—";
-      },
-    },
+    { key: "seq", label: "#" },
+    { key: "event_name", label: "Event", render: (v) => badge(v ?? "unknown") },
+    { key: "event_category", label: "Category" },
+    { key: "ts", label: "Time", render: (v) => relativeTime(v) },
   ];
 
   const content = `
     <div class="page-header">
-      <h1>Session Events</h1>
-      <p style="font-family:var(--mono);font-size:0.85rem;word-break:break-all">${escapeHtml(sessionId)}</p>
-      <p>${events.length} events</p>
+      <a href="/sessions" class="back-link">← Sessions</a>
+      <h1>Session Detail</h1>
+      <p class="mono">${escapeHtml(shortId)}</p>
     </div>
-    <div style="margin-bottom:1rem">
-      <a href="/sessions" style="color:var(--accent)">&larr; Back to sessions</a>
+    <div class="stats-row">
+      <div class="stat-card"><div class="stat-value">${events.length}</div><div class="stat-label">Events</div></div>
     </div>
-    ${fetchError
-      ? '<div class="card"><div class="empty-state">Service unavailable — cannot fetch session events</div></div>'
-      : renderTable(columns, events, { emptyMessage: "No events found for this session" })
-    }
+    ${renderTable(columns, events.slice(0, 200), { emptyMessage: "No events found" })}
+    ${events.length > 200 ? `<p class="muted">Showing first 200 of ${events.length} events</p>` : ""}
   `;
 
-  return layout(content, { title: "Session Detail", activePath: "/sessions" });
+  return layout(content, { title: `Session ${shortId}`, activePath: "/sessions" });
 }
