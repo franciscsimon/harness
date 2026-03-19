@@ -1,14 +1,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { randomUUID } from "node:crypto";
-import postgres from "postgres";
+import { ids } from "../lib/jsonld/ids.ts";
+import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
 import { buildDecisionJsonLd } from "./rdf.ts";
 import type { DecisionRecord, LogDecisionInput } from "./types.ts";
-
-const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
-const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
-
-type Sql = ReturnType<typeof postgres>;
 
 const OUTCOME_ICONS: Record<string, string> = {
   success: "✅",
@@ -16,9 +11,9 @@ const OUTCOME_ICONS: Record<string, string> = {
   deferred: "⏸️",
 };
 
-async function connectXtdb(): Promise<Sql> {
-  const sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30, connect_timeout: 10 });
-  await sql`SELECT 1 AS ok`;
+async function initXtdb(): Promise<Sql> {
+  const sql = connectXtdb();
+  if (!await ensureConnected(sql)) throw new Error("XTDB unreachable");
   // Ensure decisions table exists (XTDB is schema-on-write)
   await sql`INSERT INTO decisions (_id, project_id, session_id, ts, task, what, outcome, why, jsonld)
     VALUES ('dec:seed', '', '', 0, '', '', '', '', '')`;
@@ -66,7 +61,7 @@ export default function (pi: ExtensionAPI) {
 
     if (!sql) {
       try {
-        sql = await connectXtdb();
+        sql = await initXtdb();
       } catch {
         return;
       }
@@ -136,7 +131,7 @@ export default function (pi: ExtensionAPI) {
 
       if (!sql) {
         try {
-          sql = await connectXtdb();
+          sql = await initXtdb();
         } catch (err) {
           return {
             content: [{ type: "text", text: `XTDB connection failed: ${err}` }],
@@ -151,7 +146,7 @@ export default function (pi: ExtensionAPI) {
       const n = (v: number | null) => sql!.typed(v as any, 20);
 
       const record: DecisionRecord = {
-        _id: `dec:${randomUUID()}`,
+        _id: ids.decision(),
         project_id: current.projectId,
         session_id: sessionId,
         ts: now,

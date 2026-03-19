@@ -2,23 +2,10 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import postgres from "postgres";
+import { ids } from "../lib/jsonld/ids.ts";
+import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
+import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
 import { discoverAgents, formatAgentList } from "./agents.ts";
-
-// ─── XTDB for delegation lineage ──────────────────────────────────
-
-const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
-const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
-
-type Sql = ReturnType<typeof postgres>;
-
-const JSONLD_CONTEXT = {
-  prov: "http://www.w3.org/ns/prov#",
-  foaf: "http://xmlns.com/foaf/0.1/",
-  ev: "https://pi.dev/events/",
-  xsd: "http://www.w3.org/2001/XMLSchema#",
-};
 
 // ─── Agent Spawner Extension ──────────────────────────────────────
 // Spawn separate pi sessions for parallel/background work.
@@ -41,8 +28,8 @@ export default function (pi: ExtensionAPI) {
   async function ensureDb(): Promise<Sql | null> {
     if (sql) return sql;
     try {
-      sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30, connect_timeout: 10 });
-      await sql`SELECT 1 AS ok`;
+      sql = connectXtdb();
+      if (!await ensureConnected(sql)) { sql = null; return null; }
       // Seed delegations table
       await sql`INSERT INTO delegations (_id, parent_session_id, child_session_id, agent_name, task, status, exit_code, ts, jsonld)
         VALUES ('_seed', '', '', '', '', '', 0, 0, '')`;
@@ -66,7 +53,7 @@ export default function (pi: ExtensionAPI) {
     if (!db) return;
     const t = (v: string | null) => db.typed(v as any, 25);
     const n = (v: number | null) => db.typed(v as any, 20);
-    const id = `del:${randomUUID()}`;
+    const id = ids.delegation();
     const now = Date.now();
     const projectId = (globalThis as any).__piCurrentProject?.projectId ?? null;
     const jsonld = JSON.stringify({

@@ -1,17 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { randomUUID } from "node:crypto";
-import postgres from "postgres";
-
-const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
-const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
-
-type Sql = ReturnType<typeof postgres>;
-
-const JSONLD_CONTEXT = {
-  prov: "http://www.w3.org/ns/prov#",
-  ev: "https://pi.dev/events/",
-  xsd: "http://www.w3.org/2001/XMLSchema#",
-};
+import { ids } from "../lib/jsonld/ids.ts";
+import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
+import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
 
 // ─── In-memory state collected during session ──────────────────────
 
@@ -46,8 +36,8 @@ export default function (pi: ExtensionAPI) {
   async function connectDb(): Promise<Sql | null> {
     if (sql) return sql;
     try {
-      sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30, connect_timeout: 10 });
-      await sql`SELECT 1 AS ok`;
+      sql = connectXtdb();
+      if (!await ensureConnected(sql)) { sql = null; return null; }
       await sql`INSERT INTO session_postmortems (
         _id, project_id, session_id, goal, what_worked, what_failed,
         files_changed, error_count, turn_count, ts, jsonld
@@ -119,7 +109,7 @@ export default function (pi: ExtensionAPI) {
     const db = await connectDb();
     if (!db) return;
 
-    const id = `pm:${randomUUID()}`;
+    const id = ids.postmortem();
     const now = Date.now();
     const files = [...state.filesChanged];
 
