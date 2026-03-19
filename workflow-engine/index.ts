@@ -69,15 +69,29 @@ export default function (pi: ExtensionAPI) {
     };
   }
 
-  // ─── Load workflows on session start ────────────────────────────
-
-  pi.on("session_start", async (_event, ctx) => {
-    // Load workflow definitions from .jsonld files
+  async function ensureWorkflowsLoaded() {
+    if (workflows.size > 0) return;
     const loaded = await loadWorkflowDir(WORKFLOWS_DIR);
     for (const [name, def] of loaded) workflows.set(name, def);
     if (workflows.size > 0) {
       console.log(`[workflow-engine] Loaded ${workflows.size} workflows: ${[...workflows.keys()].join(", ")}`);
     }
+  }
+
+  function formatWorkflowList(): string {
+    if (workflows.size === 0) return "No workflows loaded. Add .jsonld files to ~/.pi/agent/workflows/";
+    const lines = [...workflows.entries()].map(([name, wf]) => {
+      const chain = wf.steps.map(s => s.agentRole).join(" → ");
+      return `  ${name}: ${wf.description}\n    ${chain}`;
+    });
+    const status = state.active ? `\nActive: ${state.workflowName} (step ${state.currentStep})` : "\nNo active workflow.";
+    return `Available workflows:\n${lines.join("\n")}${status}`;
+  }
+
+  // ─── Load workflows on session start ────────────────────────────
+
+  pi.on("session_start", async (_event, ctx) => {
+    await ensureWorkflowsLoaded();
 
     // Restore state from appendEntry
     state = emptyState();
@@ -144,7 +158,8 @@ export default function (pi: ExtensionAPI) {
 
   // ─── Activate a workflow ────────────────────────────────────────
 
-  function activateWorkflow(name: string, task: string, ctx: any): string {
+  async function activateWorkflow(name: string, task: string, ctx: any): Promise<string> {
+    await ensureWorkflowsLoaded();
     const wf = workflows.get(name);
     if (!wf) {
       const available = [...workflows.keys()].join(", ");
@@ -250,13 +265,8 @@ export default function (pi: ExtensionAPI) {
 
       switch (sub) {
         case "list": {
-          if (workflows.size === 0) { msg = "No workflows loaded. Add .jsonld files to ~/.pi/agent/workflows/"; break; }
-          const lines = [...workflows.entries()].map(([name, wf]) => {
-            const chain = wf.steps.map(s => s.agentRole).join(" → ");
-            return `  ${name}: ${chain}`;
-          });
-          const status = state.active ? `\nActive: ${state.workflowName} (step ${state.currentStep})` : "\nNo active workflow.";
-          msg = `Available workflows:\n${lines.join("\n")}${status}`; break;
+          await ensureWorkflowsLoaded();
+          msg = formatWorkflowList(); break;
         }
         case "start": {
           const name = parts[1];
@@ -295,8 +305,8 @@ export default function (pi: ExtensionAPI) {
       let msg: string;
       switch (params.action) {
         case "list": {
-          const names = [...workflows.keys()];
-          msg = names.length ? `Available: ${names.join(", ")}` : "No workflows loaded.";
+          await ensureWorkflowsLoaded();
+          msg = formatWorkflowList();
           break;
         }
         case "start": {
