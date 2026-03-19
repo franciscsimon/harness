@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
 import { JSONLD_CONTEXT, piId, piRef } from "../lib/jsonld/context.ts";
@@ -276,17 +277,152 @@ async function handleLink(parts: string[], ctx: any): Promise<void> {
   );
 }
 
+async function handleCoverage(_parts: string[], ctx: any): Promise<void> {
+  const projectId = getProjectId();
+  if (!projectId) {
+    ctx.ui.notify("No active project. Use /project first.", "error");
+    return;
+  }
+
+  const s = await db();
+  let rows: any[];
+  try {
+    rows = await s`
+      SELECT status FROM requirements
+      WHERE project_id = ${t(s, projectId)}
+    `;
+  } catch (err) {
+    ctx.ui.notify(`Query failed: ${err}`, "error");
+    return;
+  }
+
+  if (rows.length === 0) {
+    ctx.ui.notify("No requirements found for this project.", "info");
+    return;
+  }
+
+  const counts: Record<string, number> = {
+    proposed: 0, accepted: 0, implemented: 0, verified: 0, rejected: 0,
+  };
+  for (const r of rows) {
+    if (r.status in counts) counts[r.status]++;
+  }
+
+  const total = rows.length;
+  const denominator = total - counts.rejected;
+  const coverage = denominator > 0
+    ? ((counts.implemented + counts.verified) / denominator * 100).toFixed(1)
+    : "0.0";
+
+  ctx.ui.notify(
+    `📊 Requirement Coverage for ${projectId}\n` +
+    `Total: ${total} | Proposed: ${counts.proposed} | Accepted: ${counts.accepted} | ` +
+    `Implemented: ${counts.implemented} | Verified: ${counts.verified} | Rejected: ${counts.rejected}\n` +
+    `Coverage: ${coverage}% (implemented+verified / total-rejected)`,
+    "info",
+  );
+}
+
+async function handleImport(parts: string[], ctx: any): Promise<void> {
+  const projectId = getProjectId();
+  if (!projectId) {
+    ctx.ui.notify("No active project. Use /project first.", "error");
+    return;
+  }
+
+  if (parts.length === 0) {
+    ctx.ui.notify("Usage: /req import <path-to-markdown-file>", "error");
+    return;
+  }
+
+  const filePath = parts[0];
+  let content: string;
+  try {
+    content = readFileSync(filePath, "utf-8");
+  } catch (err) {
+    ctx.ui.notify(`Failed to read file "${filePath}": ${err}`, "error");
+    return;
+  }
+
+  const s = await db();
+  const lines = content.split("\n");
+  let imported = 0;
+
+  for (const line of lines) {
+    let title: string | null = null;
+    let status = "proposed";
+    let priority = "medium";
+
+    // Match ## headers as high-priority requirements
+    const headerMatch = line.match(/^##\s+(.+)/);
+    if (headerMatch) {
+      title = headerMatch[1].trim();
+      priority = "high";
+    }
+
+    // Match checkbox items
+    const uncheckedMatch = line.match(/^-\s+\[\s\]\s+(.+)/);
+    if (uncheckedMatch) {
+      title = uncheckedMatch[1].trim();
+      status = "proposed";
+      priority = "medium";
+    }
+
+    const checkedMatch = line.match(/^-\s+\[x\]\s+(.+)/i);
+    if (checkedMatch) {
+      title = checkedMatch[1].trim();
+      status = "implemented";
+      priority = "medium";
+    }
+
+    if (!title) continue;
+
+    const id = `req:${randomUUID()}`;
+    const now = Date.now();
+    const source = "import";
+
+    const jsonld = JSON.stringify({
+      "@context": JSONLD_CONTEXT,
+      "@id": piId(id),
+      "@type": ["schema:CreativeWork", "prov:Entity"],
+      "schema:name": title,
+      "schema:description": null,
+      "ev:priority": priority,
+      "ev:status": status,
+      "ev:projectId": projectId,
+    });
+
+    try {
+      await s`INSERT INTO requirements (
+        _id, project_id, title, description, priority, status,
+        source, linked_decision_id, linked_artifact_id, ts, jsonld
+      ) VALUES (
+        ${t(s, id)}, ${t(s, projectId)}, ${t(s, title)}, ${t(s, null)},
+        ${t(s, priority)}, ${t(s, status)}, ${t(s, source)},
+        ${t(s, null)}, ${t(s, null)}, ${n(s, now)}, ${t(s, jsonld)}
+      )`;
+      imported++;
+    } catch (err) {
+      ctx.ui.notify(`Failed to import "${title}": ${err}`, "error");
+    }
+  }
+
+  ctx.ui.notify(`📥 Imported ${imported} requirement(s) from ${filePath}`, "success");
+}
+
 // ── Extension entry point ───────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("req", {
-    description: "Track project requirements: add, list, status, link",
+    description: "Track project requirements: add, list, status, link, coverage, import",
     getArgumentCompletions: (prefix: string) => {
       const items = [
         { value: "add", label: "add <title> [priority] [description] — Add a requirement" },
         { value: "list", label: "list [status] — List requirements" },
         { value: "status", label: "status <id> <status> — Update requirement status" },
         { value: "link", label: "link <req_id> <entity_type> <entity_id> — Link to artifact/decision" },
+        { value: "coverage", label: "coverage — Show requirement coverage stats" },
+        { value: "import", label: "import <file> — Import requirements from markdown" },
       ];
       return items.filter((i) => i.value.startsWith(prefix));
     },
@@ -308,13 +444,21 @@ export default function (pi: ExtensionAPI) {
         case "link":
           await handleLink(rest, ctx);
           break;
+        case "coverage":
+          await handleCoverage(rest, ctx);
+          break;
+        case "import":
+          await handleImport(rest, ctx);
+          break;
         default:
           ctx.ui.notify(
-            "Usage: /req <add|list|status|link>\n" +
+            "Usage: /req <add|list|status|link|coverage|import>\n" +
             "  add <title> [priority] [description]\n" +
             "  list [status]\n" +
             "  status <id> <new_status>\n" +
-            "  link <req_id> <entity_type> <entity_id>",
+            "  link <req_id> <entity_type> <entity_id>\n" +
+            "  coverage — Show requirement coverage stats\n" +
+            "  import <file> — Import requirements from markdown",
             "info",
           );
       }
