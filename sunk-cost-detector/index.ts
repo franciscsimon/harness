@@ -52,7 +52,7 @@ export default function (pi: ExtensionAPI) {
   async function connectDb(): Promise<Sql | null> {
     if (sql) return sql;
     try {
-      sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb" });
+      sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30, connect_timeout: 10 });
       await sql`SELECT 1 AS ok`;
       // Seed table
       await sql`INSERT INTO file_metrics (_id, project_id, session_id, file_path, edit_count, error_count, ts)

@@ -17,7 +17,7 @@ const OUTCOME_ICONS: Record<string, string> = {
 };
 
 async function connectXtdb(): Promise<Sql> {
-  const sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb" });
+  const sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30, connect_timeout: 10 });
   await sql`SELECT 1 AS ok`;
   // Ensure decisions table exists (XTDB is schema-on-write)
   await sql`INSERT INTO decisions (_id, project_id, session_id, ts, task, what, outcome, why, jsonld)

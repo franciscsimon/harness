@@ -10,7 +10,7 @@ let sql: Sql | null = null;
 export async function ensureDb(): Promise<Sql | null> {
   if (sql) return sql;
   try {
-    sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb" });
+    sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30, connect_timeout: 10 });
     await sql`SELECT 1 AS ok`;
     await bootstrapTable(sql, "artifacts",
       "_id, project_id, session_id, path, content_hash, kind, operation, tool_call_id, ts, jsonld");

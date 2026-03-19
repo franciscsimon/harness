@@ -5,7 +5,7 @@ import postgres from "postgres";
 const host = process.env.XTDB_EVENT_HOST ?? "localhost";
 const port = Number(process.env.XTDB_EVENT_PORT ?? "5433");
 
-const sql = postgres({ host, port, database: "xtdb", user: "xtdb", password: "xtdb" });
+const sql = postgres({ host, port, database: "xtdb", user: "xtdb", password: "xtdb", max: 3, idle_timeout: 30, connect_timeout: 10 });
 
 const t = (v: string | null) => sql.typed(v as any, 25);
 const n = (v: number | null) => sql.typed(v as any, 20);

@@ -41,7 +41,7 @@ export default function (pi: ExtensionAPI) {
   async function ensureDb(): Promise<Sql | null> {
     if (sql) return sql;
     try {
-      sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb" });
+      sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30, connect_timeout: 10 });
       await sql`SELECT 1 AS ok`;
       // Seed delegations table
       await sql`INSERT INTO delegations (_id, parent_session_id, child_session_id, agent_name, task, status, exit_code, ts, jsonld)

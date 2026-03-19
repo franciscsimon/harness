@@ -46,7 +46,7 @@ export default function (pi: ExtensionAPI) {
   async function connectDb(): Promise<Sql | null> {
     if (sql) return sql;
     try {
-      sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb" });
+      sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30, connect_timeout: 10 });
       await sql`SELECT 1 AS ok`;
       await sql`INSERT INTO session_postmortems (
         _id, project_id, session_id, goal, what_worked, what_failed,

@@ -20,6 +20,9 @@ export default function (pi: ExtensionAPI) {
         database: "xtdb",
         user: "xtdb",
         password: "xtdb",
+        max: 1,
+        idle_timeout: 30,
+        connect_timeout: 10,
       });
     }
     return sql;

@@ -34,6 +34,9 @@ export class XtdbEndpoint implements Endpoint {
       database: "xtdb",
       user: "xtdb",
       password: "xtdb",
+      max: 2,
+      idle_timeout: 30,
+      connect_timeout: 10,
     });
 
     // Verify connectivity
