@@ -1,7 +1,43 @@
 import { exec } from "./exec.ts";
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import postgres from "postgres";
+
+let _sql: ReturnType<typeof postgres> | null = null;
+function db() {
+  if (!_sql) {
+    _sql = postgres({ host: "localhost", port: 5433, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30 });
+  }
+  return _sql;
+}
+
+async function recordBackup(job: BackupJob, archivePath: string | null) {
+  try {
+    const s = db();
+    const t = (v: string | null) => s.typed(v as any, 25);
+    const n = (v: number | null) => s.typed(v as any, 20);
+    const id = `bak:${randomUUID()}`;
+    const now = Date.now();
+    let sizeBytes: number | null = null;
+    if (archivePath) {
+      try { sizeBytes = statSync(archivePath).size; } catch {}
+    }
+    await s`INSERT INTO backup_records (
+      _id, backup_type, archive_path, size_bytes, table_count,
+      duration_ms, status, error_summary, started_ts, completed_ts, ts, jsonld
+    ) VALUES (
+      ${t(id)}, ${t(job.type)}, ${t(archivePath)}, ${n(sizeBytes)},
+      ${n(null)}, ${n(job.completedAt && job.startedAt ? new Date(job.completedAt).getTime() - new Date(job.startedAt).getTime() : null)},
+      ${t(job.status)}, ${t(job.status === "failed" ? job.result : null)},
+      ${n(new Date(job.startedAt).getTime())}, ${n(job.completedAt ? new Date(job.completedAt).getTime() : null)},
+      ${n(now)}, ${t("{}")}
+    )`;
+    console.log(`[backup] Recorded backup ${id} (${job.type}, ${job.status})`);
+  } catch (err) {
+    console.warn(`[backup] Failed to record backup: ${err}`);
+  }
+}
 
 const HARNESS_DIR = process.env.HARNESS_DIR ?? "/Users/opunix/harness";
 const BACKUP_BASE =
@@ -127,12 +163,14 @@ export function startSnapshotBackup(): string {
       job.completedAt = new Date().toISOString();
       job.result = archive;
       job.progress.push("Backup complete.");
+      await recordBackup(job, archive);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       job.status = "failed";
       job.completedAt = new Date().toISOString();
       job.result = msg;
       job.progress.push(`Error: ${msg}`);
+      await recordBackup(job, null);
       // Best-effort: restart replica
       await exec("docker", ["compose", "up", "-d", "xtdb-replica"], {
         cwd: HARNESS_DIR,
@@ -209,12 +247,14 @@ export function startCsvBackup(): string {
       job.completedAt = new Date().toISOString();
       job.result = archive;
       job.progress.push(`Backup complete: ${archive}`);
+      await recordBackup(job, archive);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       job.status = "failed";
       job.completedAt = new Date().toISOString();
       job.result = msg;
       job.progress.push(`Error: ${msg}`);
+      await recordBackup(job, null);
     }
   })();
 

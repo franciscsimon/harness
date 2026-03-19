@@ -12,6 +12,9 @@ import { listBackups, getBackupPath, deleteBackup, createDownloadStream } from "
 import { getJob, startSnapshotBackup, startCsvBackup, restoreFromArchive, startSnapshotRestore } from "./lib/backup.ts";
 import { exec } from "./lib/exec.ts";
 import { processCIEvent, verifySignature, type CIEvent } from "./lib/ci-webhook.ts";
+import { startScheduler, stopScheduler, schedulerStatus } from "./lib/scheduler.ts";
+import { verifyBackup } from "./lib/verify-backup.ts";
+import { createIncident, listIncidents, getIncident, updateIncident } from "./lib/incidents.ts";
 
 const OPS_PORT = Number(process.env.OPS_PORT ?? "3335");
 const app = new Hono();
@@ -234,6 +237,17 @@ app.get("/api/topics/:name", async (c) => {
   }
 });
 
+// ── Backup Scheduler ──────────────────────────────────────────────
+
+app.post("/api/scheduler/start", async (c) => {
+  const body = await c.req.json<{ intervalHours?: number }>().catch(() => ({}));
+  return c.json(startScheduler(body.intervalHours));
+});
+
+app.post("/api/scheduler/stop", (c) => c.json(stopScheduler()));
+
+app.get("/api/scheduler/status", (c) => c.json(schedulerStatus()));
+
 // ── CI/CD Webhook ─────────────────────────────────────────────────
 
 app.post("/api/ci/events", async (c) => {
@@ -271,6 +285,70 @@ app.get("/api/lifecycle/events", async (c) => {
     return c.json(rows);
   } catch (err: unknown) {
     return c.json([], 200);
+  }
+});
+
+// ── Backup Verification ───────────────────────────────────────────
+
+app.post("/api/backup/verify", async (c) => {
+  try {
+    const body = await c.req.json<{ archive: string }>();
+    if (!body.archive) return c.json({ error: "Missing archive" }, 400);
+
+    const archivePath = getBackupPath(body.archive);
+    if (!archivePath) return c.json({ error: "Invalid archive name" }, 400);
+
+    const result = await verifyBackup(archivePath);
+    return c.json(result);
+  } catch (err: unknown) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+// ── Incidents ─────────────────────────────────────────────────────
+
+app.post("/api/incidents", async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.severity || !body.title) {
+      return c.json({ error: "Missing required fields: severity, title" }, 400);
+    }
+    const incident = await createIncident(body);
+    return c.json(incident, 201);
+  } catch (err: unknown) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.get("/api/incidents", async (c) => {
+  try {
+    const projectId = c.req.query("project_id");
+    const status = c.req.query("status");
+    const incidents = await listIncidents(projectId, status);
+    return c.json(incidents);
+  } catch (err: unknown) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.get("/api/incidents/:id", async (c) => {
+  try {
+    const incident = await getIncident(c.req.param("id"));
+    if (!incident) return c.json({ error: "Incident not found" }, 404);
+    return c.json(incident);
+  } catch (err: unknown) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.patch("/api/incidents/:id", async (c) => {
+  try {
+    const body = await c.req.json();
+    const updated = await updateIncident(c.req.param("id"), body);
+    if (!updated) return c.json({ error: "Incident not found" }, 404);
+    return c.json(updated);
+  } catch (err: unknown) {
+    return c.json({ error: String(err) }, 500);
   }
 });
 
