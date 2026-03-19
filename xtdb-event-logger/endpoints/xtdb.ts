@@ -115,13 +115,20 @@ export class XtdbEndpoint implements Endpoint {
 
     const f = event.fields;
 
-    // Cap large fields to prevent Kafka max.request.size errors
-    f.contextMessages = this.cap(f.contextMessages) ?? undefined;
-    f.providerPayload = this.cap(f.providerPayload) ?? undefined;
-    f.agentMessages = this.cap(f.agentMessages) ?? undefined;
-    f.systemPrompt = this.cap(f.systemPrompt) ?? undefined;
-    f.compactBranchEntries = this.cap(f.compactBranchEntries) ?? undefined;
-    jsonld = this.cap(jsonld, 500_000) ?? "{}";
+    // Cap large fields to prevent Kafka max.request.size errors (total row must be < 1MB)
+    const CAP = 100_000; // 100KB per field — ~40 columns, need total < 1MB
+    f.contextMessages = this.cap(f.contextMessages, CAP) ?? undefined;
+    f.providerPayload = this.cap(f.providerPayload, CAP) ?? undefined;
+    f.agentMessages = this.cap(f.agentMessages, CAP) ?? undefined;
+    f.systemPrompt = this.cap(f.systemPrompt, CAP) ?? undefined;
+    f.compactBranchEntries = this.cap(f.compactBranchEntries, CAP) ?? undefined;
+    f.messageContent = this.cap(f.messageContent, CAP) ?? undefined;
+    f.turnMessage = this.cap(f.turnMessage, CAP) ?? undefined;
+    f.turnToolResults = this.cap(f.turnToolResults, CAP) ?? undefined;
+    f.payload = this.cap(f.payload, CAP) ?? undefined;
+    f.toolContent = this.cap(f.toolContent, CAP) ?? undefined;
+    f.toolInput = this.cap(f.toolInput, CAP) ?? undefined;
+    jsonld = this.cap(jsonld, CAP) ?? "{}";
 
     await sql`INSERT INTO events (
       _id, environment, event_name, category, can_intercept,
