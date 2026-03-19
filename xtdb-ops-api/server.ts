@@ -11,6 +11,7 @@ import { listTopics, describeTopic } from "./lib/redpanda.ts";
 import { listBackups, getBackupPath, deleteBackup, createDownloadStream } from "./lib/files.ts";
 import { getJob, startSnapshotBackup, startCsvBackup, restoreFromArchive, startSnapshotRestore } from "./lib/backup.ts";
 import { exec } from "./lib/exec.ts";
+import { processCIEvent, verifySignature, type CIEvent } from "./lib/ci-webhook.ts";
 
 const OPS_PORT = Number(process.env.OPS_PORT ?? "3335");
 const app = new Hono();
@@ -230,6 +231,46 @@ app.get("/api/topics/:name", async (c) => {
     return c.json(await describeTopic(c.req.param("name")));
   } catch (err: unknown) {
     return c.json({ error: String(err) }, 500);
+  }
+});
+
+// ── CI/CD Webhook ─────────────────────────────────────────────────
+
+app.post("/api/ci/events", async (c) => {
+  try {
+    const rawBody = await c.req.text();
+    const sig = c.req.header("X-Signature") ?? c.req.header("X-Hub-Signature-256");
+    if (!verifySignature(rawBody, sig ?? undefined)) {
+      return c.json({ error: "Invalid signature" }, 401);
+    }
+
+    const event: CIEvent = JSON.parse(rawBody);
+    if (!event.type || !event.project || !event.subject?.status) {
+      return c.json({ error: "Missing required fields: type, project, subject.status" }, 400);
+    }
+
+    const result = await processCIEvent(event);
+    return c.json({ received: true, ...result });
+  } catch (err: unknown) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
+app.get("/api/lifecycle/events", async (c) => {
+  try {
+    const limit = Number(c.req.query("limit") ?? "50");
+    const { default: postgres } = await import("postgres");
+    const db = postgres({
+      host: process.env.XTDB_EVENT_HOST ?? "localhost",
+      port: Number(process.env.XTDB_EVENT_PORT ?? "5433"),
+      database: "xtdb", user: "xtdb", password: "xtdb",
+      max: 1, idle_timeout: 10, connect_timeout: 5,
+    });
+    const rows = await db`SELECT * FROM lifecycle_events ORDER BY ts DESC LIMIT ${limit}`;
+    await db.end();
+    return c.json(rows);
+  } catch (err: unknown) {
+    return c.json([], 200);
   }
 });
 

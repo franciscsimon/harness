@@ -10,6 +10,8 @@ export interface ProjectIdentity {
 
 // ─── XTDB Row Shapes ──────────────────────────────────────────────
 
+export type LifecyclePhase = "planning" | "active" | "maintenance" | "deprecated" | "decommissioned";
+
 export interface ProjectRecord {
   _id: string;                   // "proj:<sha256-prefix>"
   canonical_id: string;
@@ -20,6 +22,8 @@ export interface ProjectRecord {
   first_seen_ts: number;         // epoch ms
   last_seen_ts: number;          // epoch ms
   session_count: number;
+  lifecycle_phase: LifecyclePhase;
+  config_json: string;           // JSON string of per-project config
   jsonld: string;
 }
 

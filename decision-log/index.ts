@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import { randomUUID } from "node:crypto";
 import { ids } from "../lib/jsonld/ids.ts";
 import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
 import { buildDecisionJsonLd } from "./rdf.ts";
@@ -180,6 +181,30 @@ export default function (pi: ExtensionAPI) {
           content: [{ type: "text", text: `Failed to persist decision: ${err}` }],
           details: {},
         };
+      }
+
+      // ── Auto-link decision to matching requirements ─────────
+      try {
+        const reqs = await sql!`
+          SELECT _id, title FROM requirements
+          WHERE project_id = ${t(current.projectId)}
+            AND status IN ('proposed', 'accepted')
+        `;
+        for (const req of reqs) {
+          const words = (req.title as string)
+            .split(/\s+/)
+            .filter((w: string) => w.length > 3)
+            .map((w: string) => w.toLowerCase());
+          const haystack = `${record.task} ${record.what}`.toLowerCase();
+          const matched = words.some((w: string) => haystack.includes(w));
+          if (matched) {
+            await sql!`INSERT INTO requirement_links (_id, requirement_id, entity_type, entity_id, ts)
+              VALUES (${t(`reqlink:${randomUUID()}`)}, ${t(req._id as string)}, ${t('decision')}, ${t(record._id)}, ${n(Date.now())})`;
+            console.log(`[decision-log] Auto-linked decision to requirement: ${req.title}`);
+          }
+        }
+      } catch (_autoLinkErr) {
+        // Never break decision logging due to auto-link failures
       }
 
       const icon = OUTCOME_ICONS[params.outcome] ?? "•";

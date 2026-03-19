@@ -1,26 +1,15 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { randomUUID } from "node:crypto";
-import postgres from "postgres";
+import { ids } from "../lib/jsonld/ids.ts";
+import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
 import { resolveProject, projectId } from "./identity.ts";
 import { buildProjectJsonLd, buildSessionProjectJsonLd } from "./rdf.ts";
 import type { ProjectRecord, SessionProjectRecord, CurrentProject, ExecFn } from "./types.ts";
-
-const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
-const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
-
-type Sql = ReturnType<typeof postgres>;
 
 function makeExecFn(pi: ExtensionAPI): ExecFn {
   return async (cmd, args, opts) => {
     const result = await pi.exec(cmd, args, opts ?? {});
     return { stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
   };
-}
-
-async function connectXtdb(): Promise<Sql> {
-  const sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30, connect_timeout: 10 });
-  await sql`SELECT 1 AS ok`;
-  return sql;
 }
 
 async function upsertProject(sql: Sql, identity: ReturnType<typeof resolveProject> extends Promise<infer T> ? T : never, now: number): Promise<{ record: ProjectRecord; isFirstSession: boolean }> {
@@ -45,19 +34,22 @@ async function upsertProject(sql: Sql, identity: ReturnType<typeof resolveProjec
     first_seen_ts: isFirstSession ? now : Number(existing.first_seen_ts),
     last_seen_ts: now,
     session_count: isFirstSession ? 1 : (Number(existing.session_count) || 0) + 1,
+    lifecycle_phase: isFirstSession ? "active" : (existing.lifecycle_phase ?? "active"),
+    config_json: isFirstSession ? "{}" : (existing.config_json ?? "{}"),
     jsonld: "",
   };
   record.jsonld = JSON.stringify(buildProjectJsonLd(record));
 
   await sql`INSERT INTO projects (
     _id, canonical_id, name, identity_type, git_remote_url, git_root_path,
-    first_seen_ts, last_seen_ts, session_count, jsonld
+    first_seen_ts, last_seen_ts, session_count, lifecycle_phase, config_json, jsonld
   ) VALUES (
     ${t(record._id)}, ${t(record.canonical_id)},
     ${t(record.name)}, ${t(record.identity_type)},
     ${t(record.git_remote_url)}, ${t(record.git_root_path)},
     ${n(record.first_seen_ts)}, ${n(record.last_seen_ts)},
-    ${n(record.session_count)}, ${t(record.jsonld)}
+    ${n(record.session_count)}, ${t(record.lifecycle_phase)},
+    ${t(record.config_json)}, ${t(record.jsonld)}
   )`;
 
   return { record, isFirstSession };
@@ -69,7 +61,7 @@ async function insertSessionLink(sql: Sql, sessionId: string, projId: string, id
   const n = (v: number | null) => sql.typed(v as any, 20);
 
   const record: SessionProjectRecord = {
-    _id: `sp:${randomUUID()}`,
+    _id: ids.sessionProject(),
     session_id: sessionId,
     project_id: projId,
     canonical_id: identity.canonicalId,
@@ -103,8 +95,11 @@ export default function (pi: ExtensionAPI) {
 
     if (!sql) {
       try {
-        sql = await connectXtdb();
+        sql = connectXtdb();
+        const ok = await ensureConnected(sql);
+        if (!ok) throw new Error("connection check failed");
       } catch (err) {
+        sql = null;
         console.error(`[project-registry] XTDB connection failed: ${err}`);
         return;
       }

@@ -236,6 +236,118 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  // ── /project deps ──
+  pi.registerCommand("project deps", {
+    description: "Manage project dependencies (usage: /project deps [add|remove|list] [name] [version])",
+    schema: Type.Object({ action: Type.Optional(Type.String()), name: Type.Optional(Type.String()), version: Type.Optional(Type.String()) }),
+    handler: async (args, ctx) => {
+      const conn = await db();
+      if (!conn) return { content: [{ type: "text" as const, text: "XTDB not available" }] };
+
+      const projectId = getCurrentProjectId();
+      if (!projectId) return { content: [{ type: "text" as const, text: "No current project detected." }] };
+
+      const action = args?.action?.trim().toLowerCase() || "list";
+      const name = args?.name?.trim() || "";
+      const version = args?.version?.trim() || "latest";
+
+      if (action === "add") {
+        if (!name) return { content: [{ type: "text" as const, text: "Missing required parameter: name" }] };
+        const depId = `pdep:${randomUUID()}`;
+        try {
+          await conn`INSERT INTO project_dependencies (_id, project_id, name, version, dep_type, ts, jsonld)
+            VALUES (${t(conn, depId)}, ${t(conn, projectId)}, ${t(conn, name)}, ${t(conn, version)}, ${t(conn, "runtime")}, ${n(conn, Date.now())}, ${t(conn, "{}")})`;
+        } catch (err) {
+          return { content: [{ type: "text" as const, text: `Failed to add dependency: ${err}` }] };
+        }
+        return { content: [{ type: "text" as const, text: `✅ Added dependency: ${name}@${version}` }] };
+      }
+
+      if (action === "remove") {
+        if (!name) return { content: [{ type: "text" as const, text: "Missing required parameter: name" }] };
+        try {
+          await conn`DELETE FROM project_dependencies WHERE project_id = ${t(conn, projectId)} AND name = ${t(conn, name)}`;
+        } catch (err) {
+          return { content: [{ type: "text" as const, text: `Failed to remove dependency: ${err}` }] };
+        }
+        return { content: [{ type: "text" as const, text: `✅ Removed dependency: ${name}` }] };
+      }
+
+      // list (default)
+      let rows: any[];
+      try {
+        rows = await conn`SELECT * FROM project_dependencies WHERE project_id = ${t(conn, projectId)} ORDER BY name`;
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: `Failed to query dependencies: ${err}` }] };
+      }
+
+      if (rows.length === 0) {
+        return { content: [{ type: "text" as const, text: "No dependencies found for this project." }] };
+      }
+
+      let output = `## Project Dependencies\n\n`;
+      output += `| Name | Version | Type | Added |\n|---|---|---|---|\n`;
+      for (const row of rows) {
+        const added = row.ts ? new Date(Number(row.ts)).toISOString() : "—";
+        output += `| ${row.name ?? "—"} | ${row.version ?? "—"} | ${row.dep_type ?? "—"} | ${added} |\n`;
+      }
+      return { content: [{ type: "text" as const, text: output }] };
+    },
+  });
+
+  // ── /project tag ──
+  pi.registerCommand("project tag", {
+    description: "Manage project tags (usage: /project tag [add|remove|list] [tag])",
+    schema: Type.Object({ action: Type.Optional(Type.String()), tag: Type.Optional(Type.String()) }),
+    handler: async (args, ctx) => {
+      const conn = await db();
+      if (!conn) return { content: [{ type: "text" as const, text: "XTDB not available" }] };
+
+      const projectId = getCurrentProjectId();
+      if (!projectId) return { content: [{ type: "text" as const, text: "No current project detected." }] };
+
+      const action = args?.action?.trim().toLowerCase() || "list";
+      const tag = args?.tag?.trim() || "";
+
+      if (action === "add") {
+        if (!tag) return { content: [{ type: "text" as const, text: "Missing required parameter: tag" }] };
+        const tagId = `ptag:${randomUUID()}`;
+        try {
+          await conn`INSERT INTO project_tags (_id, project_id, tag, ts)
+            VALUES (${t(conn, tagId)}, ${t(conn, projectId)}, ${t(conn, tag)}, ${n(conn, Date.now())})`;
+        } catch (err) {
+          return { content: [{ type: "text" as const, text: `Failed to add tag: ${err}` }] };
+        }
+        return { content: [{ type: "text" as const, text: `✅ Added tag: ${tag}` }] };
+      }
+
+      if (action === "remove") {
+        if (!tag) return { content: [{ type: "text" as const, text: "Missing required parameter: tag" }] };
+        try {
+          await conn`DELETE FROM project_tags WHERE project_id = ${t(conn, projectId)} AND tag = ${t(conn, tag)}`;
+        } catch (err) {
+          return { content: [{ type: "text" as const, text: `Failed to remove tag: ${err}` }] };
+        }
+        return { content: [{ type: "text" as const, text: `✅ Removed tag: ${tag}` }] };
+      }
+
+      // list (default)
+      let rows: any[];
+      try {
+        rows = await conn`SELECT * FROM project_tags WHERE project_id = ${t(conn, projectId)} ORDER BY tag`;
+      } catch (err) {
+        return { content: [{ type: "text" as const, text: `Failed to query tags: ${err}` }] };
+      }
+
+      if (rows.length === 0) {
+        return { content: [{ type: "text" as const, text: "No tags found for this project." }] };
+      }
+
+      const tagList = rows.map((r: any) => r.tag).join(", ");
+      return { content: [{ type: "text" as const, text: `**Tags:** ${tagList}` }] };
+    },
+  });
+
   // Cleanup on shutdown
   pi.on("session_shutdown", async () => {
     if (sql) {
