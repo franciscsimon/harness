@@ -6,7 +6,7 @@ export interface CanaryThresholds {
   maxTurnsPerRun: number;      // default 5
   contextBloatBytes: number;   // default 100_000
   retryStormCount: number;     // default 3
-  maxDurationMs: number;       // default 600_000 (10 min)
+  maxDurationMs: number;       // default 3_600_000 (60 min)
   maxToolsPerTurn: number;     // default 8
 }
 
