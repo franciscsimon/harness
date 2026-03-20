@@ -954,6 +954,83 @@ export async function getProjectDecommissions(projectId: string): Promise<Decomm
   } catch { return []; }
 }
 
+// ─── Errors ────────────────────────────────────────────────────────
+
+export interface ErrorRow {
+  _id: string;
+  component: string;
+  operation: string;
+  error_message: string;
+  error_stack: string;
+  error_type: string;
+  severity: string;
+  session_id: string;
+  project_id: string;
+  input_summary: string;
+  context_json: string;
+  ts: string;
+  flushed: boolean;
+  jsonld: string;
+}
+
+export interface ErrorSummary {
+  total: number;
+  bySeverity: Record<string, number>;
+  byComponent: Record<string, number>;
+}
+
+export async function getErrors(opts: {
+  severity?: string;
+  component?: string;
+  limit?: number;
+} = {}): Promise<ErrorRow[]> {
+  const limit = opts.limit ?? 100;
+  try {
+    if (opts.severity && opts.component) {
+      const rows = await sql`
+        SELECT * FROM errors
+        WHERE severity = ${t(opts.severity)} AND component = ${t(opts.component)}
+        ORDER BY ts DESC LIMIT ${n(limit)}
+      `;
+      return rows as unknown as ErrorRow[];
+    }
+    if (opts.severity) {
+      const rows = await sql`
+        SELECT * FROM errors
+        WHERE severity = ${t(opts.severity)}
+        ORDER BY ts DESC LIMIT ${n(limit)}
+      `;
+      return rows as unknown as ErrorRow[];
+    }
+    if (opts.component) {
+      const rows = await sql`
+        SELECT * FROM errors
+        WHERE component = ${t(opts.component)}
+        ORDER BY ts DESC LIMIT ${n(limit)}
+      `;
+      return rows as unknown as ErrorRow[];
+    }
+    const rows = await sql`
+      SELECT * FROM errors
+      ORDER BY ts DESC LIMIT ${n(limit)}
+    `;
+    return rows as unknown as ErrorRow[];
+  } catch { return []; }
+}
+
+export async function getErrorSummary(): Promise<ErrorSummary> {
+  try {
+    const bySev = await sql`SELECT severity, COUNT(*) AS cnt FROM errors GROUP BY severity`;
+    const byComp = await sql`SELECT component, COUNT(*) AS cnt FROM errors GROUP BY component`;
+    const bySeverity: Record<string, number> = {};
+    const byComponent: Record<string, number> = {};
+    let total = 0;
+    for (const r of bySev) { bySeverity[r.severity] = Number(r.cnt); total += Number(r.cnt); }
+    for (const r of byComp) { byComponent[r.component] = Number(r.cnt); }
+    return { total, bySeverity, byComponent };
+  } catch { return { total: 0, bySeverity: {}, byComponent: {} }; }
+}
+
 /**
  * Close the connection.
  */

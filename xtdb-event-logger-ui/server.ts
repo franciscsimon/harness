@@ -35,6 +35,8 @@ import {
   getProjectDependencies,
   getProjectTags,
   getProjectDecommissions,
+  getErrors,
+  getErrorSummary,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -336,6 +338,44 @@ app.get("/api/artifact-versions/:id{.+}", async (c) => {
   const version = await getArtifactVersion(id);
   if (!version) return c.json({ error: "not found" }, 404);
   return c.json(version);
+});
+
+app.get("/api/projects", async (c) => {
+  const projects = await getProjects();
+  return c.json(projects);
+});
+
+app.get("/api/projects/:id{.+}", async (c) => {
+  const id = decodeURIComponent(c.req.param("id"));
+  const project = await getProject(id);
+  if (!project) return c.json({ error: "Not found" }, 404);
+  const [sessions, dependencies, tags, decommissions, lifecycleEvents] = await Promise.all([
+    getProjectSessions(id),
+    getProjectDependencies(id),
+    getProjectTags(id),
+    getProjectDecommissions(id),
+    getProjectLifecycleEvents(id),
+  ]);
+  return c.json({ project, sessions, dependencies, tags, decommissions, lifecycleEvents });
+});
+
+app.get("/api/projections/:id{.+}", async (c) => {
+  const id = decodeURIComponent(c.req.param("id"));
+  const projections = await getProjections(id);
+  return c.json(projections);
+});
+
+app.get("/api/errors", async (c) => {
+  const severity = c.req.query("severity") || undefined;
+  const component = c.req.query("component") || undefined;
+  const limit = Number(c.req.query("limit") ?? "100");
+  const errors = await getErrors({ severity, component, limit });
+  return c.json(errors);
+});
+
+app.get("/api/errors/summary", async (c) => {
+  const summary = await getErrorSummary();
+  return c.json(summary);
 });
 
 app.post("/api/wipe", async (c) => {

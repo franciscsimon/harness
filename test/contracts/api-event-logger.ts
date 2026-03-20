@@ -96,6 +96,29 @@ async function main() {
     ? pass("GET /api/artifact-versions/__nonexistent__ → 404")
     : fail("/api/artifact-versions/missing", `expected 404, got ${missingVersion.status}`);
 
+  // ── Errors API ──
+  console.log("\nErrors API endpoints:");
+
+  const errors = await json("/api/errors");
+  errors.status === 200 && Array.isArray(errors.body)
+    ? pass("GET /api/errors → array")
+    : fail("/api/errors shape", `status=${errors.status}`);
+
+  const errorsSummary = await json("/api/errors/summary");
+  errorsSummary.status === 200 && typeof errorsSummary.body.total === "number" && typeof errorsSummary.body.bySeverity === "object" && typeof errorsSummary.body.byComponent === "object"
+    ? pass("GET /api/errors/summary → { total, bySeverity, byComponent }")
+    : fail("/api/errors/summary shape", `status=${errorsSummary.status} keys=${Object.keys(errorsSummary.body)}`);
+
+  const errorsFiltered = await json("/api/errors?severity=data_loss&limit=5");
+  errorsFiltered.status === 200 && Array.isArray(errorsFiltered.body)
+    ? pass("GET /api/errors?severity=data_loss&limit=5 → array")
+    : fail("/api/errors?severity filter", `status=${errorsFiltered.status}`);
+
+  const errorsCompFilter = await json("/api/errors?component=__nonexistent__");
+  errorsCompFilter.status === 200 && Array.isArray(errorsCompFilter.body) && errorsCompFilter.body.length === 0
+    ? pass("GET /api/errors?component=__nonexistent__ → empty array")
+    : fail("/api/errors?component filter", `status=${errorsCompFilter.status} len=${errorsCompFilter.body?.length}`);
+
   // ── Error path: path traversal ──
   const traversal = await html("/static/../../etc/passwd");
   traversal.status === 404
