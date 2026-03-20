@@ -14,27 +14,30 @@ Implements 63/63 patterns from [Augmented Coding Patterns](https://lexler.github
 |-----------|---------|---------|
 | [pi.dev](https://pi.dev) | ≥ 0.58 | Coding agent |
 | Node.js | ≥ 22 | Runtime |
-| Docker | any | XTDB container |
+| Docker | any | Infrastructure (XTDB, Redpanda, Garage, Keycloak) |
 
 ## Quick Start
 
 ```bash
-# 1. Start XTDB (postgres wire protocol on port 5433)
-docker run -d --name xtdb-events \
-  -p 5433:5432 -p 8081:8080 \
-  ghcr.io/xtdb/xtdb:latest
+# 1. Start infrastructure (XTDB primary+replica, Redpanda, Garage S3, Keycloak)
+docker compose up -d
 
-# 2. Install UI dependencies
-cd xtdb-event-logger-ui && npm install
+# 2. Seed the XTDB schema (registers all 27 tables)
+NODE_PATH=xtdb-event-logger/node_modules npx jiti scripts/seed-schema.ts
 
-# 3. Start the event stream UI
-npm start  # → http://localhost:3333
+# 3. Start the Harness UI (unified dashboard)
+cd harness-ui && npm install && npx jiti server.ts
+# → http://localhost:3336
 
-# 4. Start pi — extensions auto-load from ~/.pi/agent/extensions/
+# 4. Start the Event API (data layer for harness-ui)
+cd xtdb-event-logger-ui && npm install && npm start
+# → http://localhost:3333
+
+# 5. Start pi — extensions auto-load from ~/.pi/agent/extensions/
 pi
 ```
 
-Events flow into XTDB automatically. Open http://localhost:3333 to see them.
+See [QUICKSTART.md](QUICKSTART.md) for a hands-on walkthrough building a service with harness tools.
 
 ## Architecture
 
@@ -43,7 +46,7 @@ Events flow into XTDB automatically. Open http://localhost:3333 to see them.
 │  pi.dev agent session                               │
 │                                                     │
 │  ┌─────────────┐  ┌──────────┐  ┌───────────────┐  │
-│  │ 40 extensions│  │ 20 agents│  │ 10 skills     │  │
+│  │ 40 extensions│  │ 18 agents│  │ 10 skills     │  │
 │  │ (auto hooks) │  │ (focused │  │ (on-demand    │  │
 │  │              │  │  roles)  │  │  workflows)   │  │
 │  └──────┬───────┘  └────┬─────┘  └───────────────┘  │
@@ -56,133 +59,116 @@ Events flow into XTDB automatically. Open http://localhost:3333 to see them.
 │  │  patterns, delegate, log_decision             │  │
 │  └──────┬────────────────────────────────────────┘  │
 └─────────┼───────────────────────────────────────────┘
-          │ 30 events (full content; message_update/tool_execution_update sampled at 2s)
+          │ 30 events
           ▼
-┌─────────────────┐     ┌──────────────────────┐
-│  XTDB v2        │────▶│  Event Stream UI     │
-│  :5433 (pg wire)│     │  :3333 (Hono)        │
-│                 │     │                      │
-│  events table   │     │  • Live stream + SSE │
-│  JSON-LD / RDF  │     │  • Session timeline  │
-│  schema v2      │     │  • Dashboard         │
-└─────────────────┘     │  • Knowledge extract │
-                        └──────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  Infrastructure (docker compose)                    │
+│                                                     │
+│  Redpanda (:19092) → XTDB Primary (:5433)           │
+│                    → XTDB Replica (:5434)            │
+│  Garage S3 (:3900) — shared object store            │
+│  Keycloak (:8180) — identity provider               │
+└──────────┬──────────────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────────┐
+│  Services                                           │
+│                                                     │
+│  Harness UI    :3336 — unified dashboard            │
+│  Event API     :3333 — XTDB query layer + SSE       │
+│  Web Chat      :3334 — WebSocket chat interface      │
+│  Ops API       :3335 — infrastructure management     │
+└─────────────────────────────────────────────────────┘
 ```
+
+## Infrastructure
+
+All infrastructure runs via `docker compose up -d`:
+
+| Service | Port | Purpose |
+|---------|------|---------|
+| **Redpanda** | 19092 | Kafka-compatible message broker (XTDB transaction log) |
+| **XTDB Primary** | 5433 (pgwire), 8083 (http) | Main bitemporal database |
+| **XTDB Replica** | 5434 (pgwire), 8084 (http) | Read replica for UI queries |
+| **Garage** | 3900 | S3-compatible object store (shared storage for XTDB nodes) |
+| **Keycloak** | 8180 | Identity and auth provider |
+
+XTDB uses shared S3 storage (Garage) so both nodes read/write the same object store. Redpanda provides the Kafka-compatible transaction log.
+
+## Services
+
+| Service | Port | Start Command | Description |
+|---------|------|---------------|-------------|
+| **Harness UI** | 3336 | `cd harness-ui && npx jiti server.ts` | Unified web dashboard |
+| **Event API** | 3333 | `cd xtdb-event-logger-ui && npm start` | XTDB query layer, SSE streaming, JSON APIs |
+| **Web Chat** | 3334 | `cd web-chat && npx jiti server.ts` | WebSocket chat interface for pi agents |
+| **Ops API** | 3335 | `cd xtdb-ops-api && npx jiti server.ts` | Infrastructure health, backup, replication |
+
+### Harness UI Pages (http://localhost:3336)
+
+| Page | Path | Description |
+|------|------|-------------|
+| **Home** | `/` | Service health status, stats overview, quick links |
+| **Live Stream** | `/stream` | Real-time event stream with SSE, category filters, search |
+| **Dashboard** | `/dashboard` | Session health analytics, error patterns |
+| **Sessions** | `/sessions` | Session list with health scores |
+| **Session Detail** | `/sessions/:id` | Event timeline, context sparkline, rot detection |
+| **Flow** | `/sessions/:id/flow` | Projection-based task/reasoning/result flow |
+| **Knowledge** | `/sessions/:id/knowledge` | Extracted session knowledge (tools, files, commands) |
+| **Event Detail** | `/event/:id` | Full event fields + expandable JSON content |
+| **Projects** | `/projects` | Project portfolio with lifecycle, dependencies, tags |
+| **Decisions** | `/decisions` | Decision log with outcomes across projects |
+| **Artifacts** | `/artifacts` | Tracked files with version history and diffs |
+| **Errors** | `/errors` | Captured errors with severity, component filtering |
+| **Chat** | `/chat` | WebSocket chat interface (connects to :3334) |
+| **Ops** | `/ops` | Cluster health, replication, backup, Kafka topics |
 
 ## Extensions (40)
 
-Extensions live in `~/.pi/agent/extensions/` and activate automatically. Use `task setup:all` to deploy everything, or `task ext:deploy:all` for extensions only.
+Extensions live in `~/.pi/agent/extensions/` and activate automatically.
 
 | Category | Extensions |
 |----------|-----------|
-| **Event capture** | `xtdb-event-logger` (all 30 events → XTDB, JSON-LD, schema v2), `xtdb-projector` (task/reasoning/result/state projections) |
-| **Project history** | `project-registry` (auto-registers projects), `decision-log` (`log_decision` tool), `history-retrieval` (injects prior failures), `artifact-tracker` (file mutation tracking), `session-postmortem` (per-session summaries) |
-| **Safety** | `permission-gate` (blocks dangerous bash), `protected-paths` (prevents writes to critical files), `git-checkpoint` (stashes each turn, `/fork` restore) |
-| **Quality** | `quality-hooks` (`quality_check` + `diff_check` tools), `slop-detector` (`check_antipatterns` tool), `habit-monitor` (coding habit enforcement) |
-| **Context** | `canary-monitor` (context health alerts), `custom-compaction` (Gemini Flash structured summaries), `semantic-zoom` (`set_zoom` tool), `noise-cancellation` (filters low-signal events) |
-| **Knowledge** | `knowledge-extractor` (session knowledge → markdown sidecar), `knowledge-checkpoint` (`save_checkpoint` tool), `knowledge-composer` (assembles reference docs), `jit-docs` (`lookup_docs` tool), `reference-docs` (`load_reference` tool) |
-| **Workflow** | `chunker` (`plan_chunks` tool), `alignment-monitor` (`check_alignment` tool), `refinement-loop` (iterative improvement), `parallel-impl` (parallel task execution) |
-| **Agents** | `agent-spawner` (`delegate` tool, spawns subagents), `role-loader` (`/agent`, `/role` commands) |
-| **Session** | `handoff` (`/handoff` generates transfer prompt), `contextual-prompts` (context-aware suggestions), `reminders` (persistent reminders) |
-| **Detection** | `leap-detector` (flags assumption jumps), `yak-shave` (detects tangent chains), `sunk-cost-detector` (flags stuck approaches), `offload-detector` (catches manual work), `feedback-flip` (reversal detection) |
-| **Other** | `happy-to-delete` (encourages deletion), `mind-dump` (brain dump capture), `playgrounds` (experimental sandboxes), `orchestrator` (multi-agent coordination) |
+| **Event capture** | `xtdb-event-logger` (30 events → XTDB + JSON-LD), `xtdb-projector` (task/reasoning/result projections) |
+| **Project tracking** | `project-registry`, `decision-log`, `artifact-tracker`, `deployment-tracker`, `project-lifecycle`, `requirements-tracker`, `session-postmortem`, `history-retrieval` |
+| **Safety** | `permission-gate`, `protected-paths`, `git-checkpoint` |
+| **Quality** | `quality-hooks`, `slop-detector`, `habit-monitor`, `canary-monitor`, `noise-cancellation` |
+| **Context** | `custom-compaction`, `semantic-zoom`, `contextual-prompts` |
+| **Knowledge** | `knowledge-extractor`, `knowledge-checkpoint`, `knowledge-composer`, `jit-docs`, `reference-docs` |
+| **Workflow** | `chunker`, `workflow-engine`, `alignment-monitor`, `refinement-loop`, `parallel-impl`, `orchestrator` |
+| **Agents** | `agent-spawner`, `role-loader` |
+| **Session** | `handoff`, `reminders` |
+| **Detection** | `leap-detector`, `yak-shave`, `sunk-cost-detector`, `offload-detector`, `feedback-flip` |
+| **Other** | `happy-to-delete`, `mind-dump`, `playgrounds` |
 
-## Agents (20)
+## Agents (18)
 
-Agents are focused roles in `~/.pi/agent/agents/*.md`. Invoke with the `delegate` tool or `/agent` command. Use `task agents:deploy` (or `task setup:all`) to deploy.
+Focused roles in `~/.pi/agent/agents/*.md`. Invoke with `delegate` tool.
 
 | Category | Agents |
 |----------|--------|
 | **Build** | `worker`, `tester`, `refactorer`, `migrator`, `optimizer` |
 | **Review** | `reviewer`, `committer`, `security-auditor`, `janitor` |
-| **Design** | `architect`, `planner`, `interface-first`, `explorer`, `researcher` |
+| **Design** | `planner`, `interface-first`, `explorer`, `researcher` |
 | **Workflow** | `debugger`, `documenter`, `borrower`, `softest-prototype`, `refiner`, `fixture-tester` |
-
-Read-only agents (`reviewer`, `planner`, `architect`, `researcher`, `security-auditor`, `documenter`, `committer`) are automatically restricted to read-only tools at runtime.
 
 ## Skills (10)
 
-Skills are on-demand workflow packages in `~/.pi/agent/skills/`. The agent loads them when a task matches. Use `task skills:deploy` (or `task setup:all`) to deploy.
+On-demand workflow packages in `~/.pi/agent/skills/`.
 
-| Skill | Trigger |
-|-------|---------|
-| `architecture-review` | Onboarding to a codebase, before design changes |
-| `code-review` | Reviewing PRs, diffs, code before commit |
-| `context-management` | Long sessions, degraded context |
-| `debugging` | Tracking down bugs (log-first approach) |
-| `knowledge-extraction` | Before compacting or ending productive sessions |
-| `migration` | Upgrading dependencies, modernizing code |
-| `performance-optimization` | Profiling and optimizing bottlenecks |
-| `refactoring` | Restructuring code without behavior changes |
-| `security-audit` | Before deploying, reviewing sensitive code |
-| `test-writing` | Adding test coverage |
+`architecture-review` · `code-review` · `context-management` · `debugging` · `knowledge-extraction` · `migration` · `performance-optimization` · `refactoring` · `security-audit` · `test-writing`
 
-## Custom Tools (11)
+## Error Handling
 
-Registered by extensions, callable by the LLM during sessions.
+Errors are captured via `captureError()` from `lib/errors.ts`:
+- **Disk-first**: sync write to `~/.pi/errors/errors.jsonl` (never fails)
+- **XTDB flush**: async collector flushes to `errors` table every 10s (best-effort)
+- **Visible in UI**: errors page at `/errors` with severity/component filtering
+- Every `catch` block must re-throw, log, notify, or be documented as intentionally silent
 
-| Tool | Extension | Purpose |
-|------|-----------|---------|
-| `quality_check` | quality-hooks | Run code quality checks on a file |
-| `diff_check` | quality-hooks | Check if staged changes are commit-sized |
-| `plan_chunks` | chunker | Break complex tasks into ordered steps |
-| `check_alignment` | alignment-monitor | Verify work matches original request |
-| `save_checkpoint` | knowledge-checkpoint | Save session state checkpoint |
-| `set_zoom` | semantic-zoom | Set response detail level |
-| `lookup_docs` | jit-docs | Search and load documentation |
-| `load_reference` | reference-docs | Load a reference doc by name |
-| `check_antipatterns` | slop-detector | Scan text for AI anti-patterns |
-| `delegate` | agent-spawner | Spawn a subagent with isolated context |
-| `log_decision` | decision-log | Record a decision, failure, or deferral for the project |
+## Database
 
-## Event Stream UI
-
-Start with `cd xtdb-event-logger-ui && npm start` → http://localhost:3333
-
-| Page | URL | Description |
-|------|-----|-------------|
-| **Stream** | `/` | Live event stream with SSE, category filters, search |
-| **Sessions** | `/sessions` | Session list with health scores and badges |
-| **Session Detail** | `/sessions/:id` | Timeline with nested grouping (agent → turn → tool), context sparkline, rot zone detection |
-| **Event Detail** | `/event/:id` | All fields + expandable JSON content blocks + JSON-LD |
-| **Dashboard** | `/dashboard` | Aggregated health metrics, error patterns, tool usage |
-| **Knowledge** | `/sessions/:id/knowledge` | Extracted decisions, gotchas, patterns from a session |
-| **Projects** | `/projects` | Registered projects with identity type, session count |
-| **Project Detail** | `/projects/:id` | Project info, linked sessions, decisions, JSON-LD |
-| **Decisions** | `/decisions` | All logged decisions across projects with outcomes |
-
-### Keyboard Shortcuts (in pi)
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+Alt+Q` | Toggle quality hooks on/off |
-| `Ctrl+Alt+G` | Quick git checkpoint |
-
-### CLI Flags
-
-```bash
-pi --quality      # Enable quality hooks
-pi --checkpoints  # Enable git checkpoints
-```
-
-## Event Schema
-
-All 30 pi events are captured with full content (schema v2). Streaming events (`message_update`, `tool_execution_update`) are sampled at 2s intervals to avoid flooding XTDB.
-
-| Category | Events |
-|----------|--------|
-| **Session** (11) | `session_directory`, `session_start`, `session_before_switch`, `session_switch`, `session_before_fork`, `session_fork`, `session_before_compact`, `session_compact`, `session_before_tree`, `session_tree`, `session_shutdown` |
-| **Agent** (7) | `before_agent_start`, `agent_start`, `agent_end`, `turn_start`, `turn_end`, `context`, `before_provider_request` |
-| **Message** (3) | `message_start`, `message_update`, `message_end` |
-| **Tool** (5) | `tool_call`, `tool_result`, `tool_execution_start`, `tool_execution_update`, `tool_execution_end` |
-| **Other** (4) | `input`, `user_bash`, `model_select`, `resources_discover` |
-
-Each event is stored with:
-- Structured fields (scalar metadata)
-- Full content fields (complete JSON, no size limits)
-- JSON-LD serialization (RDF triples)
-
-## Querying XTDB
+XTDB v2 (bitemporal, schema-on-write). 27 tables documented in [docs/XTDB_SCHEMA.md](docs/XTDB_SCHEMA.md).
 
 ```bash
 # Connect via psql
@@ -191,76 +177,70 @@ psql -h localhost -p 5433 -d xtdb -U xtdb
 # Recent events
 SELECT event_name, ts, session_id FROM events ORDER BY seq DESC LIMIT 20;
 
-# Tool usage
-SELECT tool_name, COUNT(*) FROM events
-WHERE event_name = 'tool_call' GROUP BY tool_name ORDER BY count DESC;
+# Errors
+SELECT component, severity, error_message, ts FROM errors ORDER BY ts DESC LIMIT 10;
 
-# Session context growth
-SELECT seq, provider_payload_bytes FROM events
-WHERE session_id = 'your-session-id' AND provider_payload_bytes IS NOT NULL
-ORDER BY seq;
-
-# Full tool output for a specific call
-SELECT tool_content, tool_details FROM events
-WHERE tool_call_id = 'your-call-id' AND event_name = 'tool_result';
-
-# Registered projects
-SELECT _id, name, identity_type, session_count FROM projects ORDER BY last_seen_ts DESC;
-
-# Project decisions (failures, successes, deferrals)
-SELECT task, what, outcome, why FROM decisions
-WHERE project_id = 'proj:...' ORDER BY ts DESC;
-
-# Sessions linked to a project
-SELECT session_id, cwd, is_first_session FROM session_projects
-WHERE project_id = 'proj:...' ORDER BY ts DESC;
+# Seed schema after wipe
+NODE_PATH=xtdb-event-logger/node_modules npx jiti scripts/seed-schema.ts
 ```
 
 ## Testing
 
 ```bash
-# Handler unit tests (24 tests across 14 handlers)
+# Contract tests (black-box, no app imports — uses fetch/SQL/WebSocket)
+./scripts/test-contracts.sh
+
+# Handler unit tests
 cd test && npx jiti handler-tests.ts
 
-# Seed test data (12 sessions for augmented pattern tests)
-cd test && npx jiti seed-augmented-patterns.ts
-
-# Full test suite (91 automated tests across 6 categories)
-cd test && npx jiti run-tests.ts
-
-# Hello-service example tests
+# Hello-service example
 cd examples/hello-service && npm install && npx jiti test.ts
 ```
 
 ## File Layout
 
 ```
-~/harness/                          # Version-controlled copies
-├── README.md
-├── xtdb-event-logger/              # Event capture extension source
-│   ├── handlers/                   # 30 event handler files
-│   ├── endpoints/                  # xtdb.ts, jsonl.ts, console.ts
-│   ├── rdf/                        # JSON-LD serialization
-│   ├── types.ts                    # EventFields, schema v2
-│   └── index.ts                    # Extension entry point
-├── project-registry/                # Project identity + XTDB persistence
-├── decision-log/                   # Decision/failure/deferral logging
-├── xtdb-event-logger-ui/           # Web UI (Hono)
-│   ├── pages/                      # Server-rendered HTML
-│   ├── lib/                        # DB queries, formatting, health
-│   └── static/                     # CSS, JS
-├── templates/                      # Agent role templates (20)
-├── skills/                         # Skill packages (10)
-├── docs/                           # Architecture docs, audits
-├── data-examples/                  # JSON-LD event samples
-└── test/                           # Handler tests, seed data
-
-~/.pi/agent/
-├── extensions/                     # Live extensions (40)
-├── agents/                         # Agent definitions (20)
-└── skills/                         # Skill definitions (10)
+~/harness/
+├── README.md                    # This file
+├── QUICKSTART.md                # Hands-on walkthrough
+├── LICENSE                      # MIT
+├── docker-compose.yml           # Infrastructure (XTDB, Redpanda, Garage, Keycloak)
+├── Taskfile.yml                 # Task runner commands
+│
+├── harness-ui/                  # Unified web dashboard (:3336)
+│   ├── server.ts                # Hono server + routes
+│   ├── pages/                   # 14 server-rendered pages
+│   ├── components/              # Layout, nav, badge, table
+│   ├── lib/                     # API client, formatting, health
+│   └── static/                  # CSS, JS (chat, stream, ops)
+│
+├── xtdb-event-logger/           # Event capture extension
+│   ├── handlers/                # 30 event handler files
+│   ├── endpoints/               # xtdb.ts, jsonl.ts, console.ts
+│   ├── rdf/                     # JSON-LD serialization
+│   └── types.ts                 # EventFields, schema v2
+│
+├── xtdb-event-logger-ui/        # Event API service (:3333)
+│   ├── server.ts                # Hono server + JSON APIs + SSE
+│   ├── pages/                   # Legacy HTML pages
+│   └── lib/                     # DB queries, formatting
+│
+├── web-chat/                    # Chat service (:3334)
+├── xtdb-ops-api/                # Ops API service (:3335)
+├── lib/                         # Shared libraries (errors.ts, db.ts, jsonld/)
+├── agents/                      # 18 agent role definitions
+├── skills/                      # 10 skill packages
+├── templates/                   # Agent role templates
+├── scripts/                     # seed-schema.ts, test runner
+├── test/                        # Test suites + contract tests
+├── docs/                        # Architecture docs, proposals, reports
+└── data-examples/               # JSON-LD event samples
 ```
 
 ## Background
 
 Built on the [Augmented Coding Patterns](https://lexler.github.io/augmented-coding-patterns) catalog (69 items: 45 patterns + 10 anti-patterns + 14 obstacles). Coverage: 63/63 implementable items (6 excluded as N/A for single-agent CLI).
+
+## License
+
+[MIT](LICENSE)

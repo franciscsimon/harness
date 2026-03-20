@@ -1,214 +1,159 @@
-# Quickstart: Build a Hello Service Using the Harness
+# Quickstart
 
-This walks through building a REST service **using the harness tools and agents** — not by hand. You'll use `plan_chunks` to plan, `delegate` to spawn specialized agents, `quality_check` to verify code, and `check_alignment` to stay on track.
+Get the harness running and build a service using harness tools and agents.
 
-## Prerequisites
+## 1. Start Infrastructure
 
 ```bash
-# XTDB (events are captured automatically)
-cd ~/harness && docker compose up -d
+cd ~/harness
 
-# Event stream UI (optional, to watch events flow)
-cd ~/harness/xtdb-event-logger-ui && npm install && npm start
-# → http://localhost:3333
+# Start all services (XTDB primary+replica, Redpanda, Garage S3, Keycloak)
+docker compose up -d
+
+# Wait for XTDB to be ready (~10s)
+until curl -sf http://localhost:8083/status > /dev/null 2>&1; do sleep 1; done
+
+# Seed the schema (registers all 27 tables in XTDB)
+NODE_PATH=xtdb-event-logger/node_modules npx jiti scripts/seed-schema.ts
 ```
 
-## Step 1: Plan the work
+## 2. Start Services
 
-Use `plan_chunks` to break the task into steps:
+Open separate terminals for each:
+
+```bash
+# Event API (data layer — required for Harness UI)
+cd ~/harness/xtdb-event-logger-ui && npm install && npm start
+# → http://localhost:3333
+
+# Harness UI (unified dashboard)
+cd ~/harness/harness-ui && npm install && npx jiti server.ts
+# → http://localhost:3336
+
+# Web Chat (optional — WebSocket chat interface)
+cd ~/harness/web-chat && npm install && npx jiti server.ts
+# → http://localhost:3334
+
+# Ops API (optional — infrastructure management)
+cd ~/harness/xtdb-ops-api && npm install && npx jiti server.ts
+# → http://localhost:3335
+```
+
+Or use the Taskfile:
+
+```bash
+task ui:start        # Start event-logger-ui
+task harness:start   # Start harness-ui
+task chat:start      # Start web-chat
+task ops:start       # Start ops-api
+```
+
+## 3. Start pi
+
+```bash
+pi
+```
+
+Extensions auto-load from `~/.pi/agent/extensions/`. Events flow into XTDB automatically. Open http://localhost:3336 to see them.
+
+## 4. Verify Everything Works
+
+```bash
+# Run contract tests (checks infrastructure + all APIs + UI pages)
+./scripts/test-contracts.sh
+```
+
+Expected: 34 tests across 4 suites, all passing.
+
+## 5. Explore the UI
+
+Open http://localhost:3336 and explore:
+
+| Page | What you'll see |
+|------|-----------------|
+| **Home** (`/`) | Service health dots (green = up), event stats |
+| **Stream** (`/stream`) | Live events flowing in real-time via SSE |
+| **Sessions** (`/sessions`) | All agent sessions with health scores |
+| **Session Detail** | Click a session → event timeline with context sparkline |
+| **Flow** | Click "🔀 Flow" → task/reasoning/result projections |
+| **Knowledge** | Click "📝 Knowledge" → extracted session summary |
+| **Errors** (`/errors`) | Captured errors by severity and component |
+| **Chat** (`/chat`) | Chat with pi agents via WebSocket |
+
+## 6. Build Something (Example)
+
+Give pi a one-line prompt:
 
 ```
 Build a REST service called hello-service with GET / and GET /hello/:name
 ```
 
-The agent uses the `plan_chunks` tool automatically:
+The harness tools kick in automatically:
 
-```
-📦 Created 7 steps:
-  1. Wipe hello-service (keep node_modules for speed)
-  2. Delegate to architect: design the API contract
-  3. Delegate to worker: implement the service
-  4. Run quality_check on the implementation
-  5. Delegate to tester: write tests
-  6. Run tests and check_alignment
-  7. Update docs based on actual results
-```
+1. **`plan_chunks`** breaks it into ordered steps
+2. **`delegate → architect`** designs the API (isolated process, writes DESIGN.md)
+3. **`delegate → worker`** implements from the design
+4. **`quality_check`** verifies code quality on each file
+5. **`delegate → tester`** writes and runs tests
+6. **`check_alignment`** confirms no drift from goal
 
-Each step is independently completable and testable.
+Meanwhile, 40 extensions run in the background capturing events, tracking decisions, monitoring context health, and detecting anti-patterns.
 
-## Step 2: Architect designs the API
-
-The `delegate` tool spawns an **architect agent** in an isolated process:
-
-```
-delegate(agent: "architect", task: "Design a minimal REST service called
-hello-service. GET / returns service info, GET /hello/:name returns greeting.
-Use Hono. Output a DESIGN.md with endpoints, request/response shapes,
-file structure, port config.")
-```
-
-The architect reads nothing, writes one file — `DESIGN.md`:
-
-```markdown
-## Endpoints
-
-| Method | Path           | Response                                      | Status |
-|--------|----------------|-----------------------------------------------|--------|
-| GET    | `/`            | `{ "name": "hello-service", "version": "1.0.0" }` | 200    |
-| GET    | `/hello/:name` | `{ "greeting": "Hello, {name}!" }`            | 200    |
-
-## File Structure
-├── app.ts      ← Hono app + routes (importable for tests)
-├── index.ts    ← entry point (starts server)
-└── test.ts     ← smoke tests
-```
-
-The architect chose to separate `app.ts` from `index.ts` so tests can import the app without starting a server — standard Hono pattern.
-
-## Step 3: Worker implements it
-
-The `delegate` tool spawns a **worker agent**:
-
-```
-delegate(agent: "worker", task: "Implement hello-service per DESIGN.md.
-Create app.ts and index.ts. Do NOT create test.ts.")
-```
-
-The worker reads the design doc, creates 2 files:
-
-**`app.ts`** — Hono app with routes, exported for test import:
-```typescript
-import { Hono } from "hono";
-
-const app = new Hono();
-
-app.get("/", (c) => {
-  return c.json({ name: "hello-service", version: "1.0.0" });
-});
-
-app.get("/hello/:name", (c) => {
-  const name = c.req.param("name");
-  return c.json({ greeting: `Hello, ${name}!` });
-});
-
-export default app;
-```
-
-**`index.ts`** — entry point:
-```typescript
-import { serve } from "@hono/node-server";
-import app from "./app";
-
-serve({ fetch: app.fetch, port: 3111 }, () => {
-  console.log("hello-service listening on http://localhost:3111");
-});
-```
-
-## Step 4: Quality check
-
-The `quality_check` tool runs deterministic checks on each file:
-
-```
-quality_check(path: "examples/hello-service/app.ts")      → ✅ No issues
-quality_check(path: "examples/hello-service/index.ts")     → ✅ No issues
-```
-
-Checks: comment ratio, file size, function size, duplication, dead code.
-
-## Step 5: Tester writes tests
-
-The `delegate` tool spawns a **tester agent**:
-
-```
-delegate(agent: "tester", task: "Write tests for hello-service.
-Read DESIGN.md and app.ts. Test all endpoints including 404.")
-```
-
-The tester reads the design and source, writes `test.ts` with 5 tests:
-
-```
-✅ GET / returns 200
-✅ GET / returns correct body
-✅ GET /hello/World returns 200 with greeting
-✅ GET /hello/Pi returns 200 with greeting
-✅ GET /nonexistent returns 404
-
-5 tests: 5 passed, 0 failed
-```
-
-The tester imported `app` directly and used `@hono/node-server`'s `serve()` — no external test framework needed.
-
-## Step 6: Verify alignment
-
-The `check_alignment` tool compares what was done vs the original request:
-
-```
-check_alignment() → Files touched: DESIGN.md, app.ts, index.ts, test.ts — all on target
-```
-
-## What just happened
-
-You gave a one-line prompt. The harness:
-
-1. **`plan_chunks`** broke it into 7 ordered steps
-2. **`delegate → architect`** designed the API (isolated process, wrote DESIGN.md)
-3. **`delegate → worker`** implemented it from the design (read DESIGN.md, wrote app.ts + index.ts)
-4. **`quality_check`** verified code quality on each file
-5. **`delegate → tester`** wrote and ran tests (read design + source, wrote test.ts, 5/5 pass)
-6. **`check_alignment`** confirmed no drift from the goal
-
-Meanwhile, **36 extensions** ran in the background:
-- `xtdb-event-logger` captured every event into XTDB (full content, schema v2)
-- `project-registry` auto-registered the project from the git repo
-- `decision-log` injected prior decisions into context and recorded new ones
-- `permission-gate` checked bash commands for dangerous patterns
-- `canary-monitor` tracked context health
-- `slop-detector` scanned output for anti-patterns
-- `habit-monitor` enforced coding habits
-
-All of this is visible in the UI at http://localhost:3333 — every tool call, every LLM response, every file write, every project and decision.
-
-## Tools used in this example
-
-| Tool | Purpose |
-|------|---------|
-| `plan_chunks` | Break task into ordered steps |
-| `delegate` | Spawn architect, worker, tester agents |
-| `quality_check` | Verify code quality |
-| `check_alignment` | Confirm work matches request |
-
-## Agents used in this example
-
-| Agent | Role |
-|-------|------|
-| `architect` | Design API contract, write DESIGN.md |
-| `worker` | Implement from design doc |
-| `tester` | Write and run tests |
-
-## Run it yourself
+### Run the example
 
 ```bash
 cd ~/harness/examples/hello-service
-npm install
-npm start           # → http://localhost:3111
-npx jiti test.ts    # 5 tests pass
+npm install && npm start   # → http://localhost:3111
 
 curl http://localhost:3111/
 # → {"name":"hello-service","version":"1.0.0"}
 
 curl http://localhost:3111/hello/World
 # → {"greeting":"Hello, World!"}
+
+npx jiti test.ts           # 5 tests pass
 ```
 
-## See the events
+## 7. Key Tools
+
+| Tool | What it does |
+|------|-------------|
+| `plan_chunks` | Break complex tasks into ordered steps |
+| `delegate` | Spawn a focused subagent (architect, worker, tester, etc.) |
+| `quality_check` | Run code quality checks on a file |
+| `diff_check` | Check if staged changes are commit-sized |
+| `check_alignment` | Verify work matches original request |
+| `log_decision` | Record a decision, failure, or deferral |
+| `save_checkpoint` | Save session state before risky changes |
+| `set_zoom` | Control response detail level |
+| `lookup_docs` | Search and load documentation |
+
+## 8. Querying XTDB Directly
 
 ```bash
-# Open the UI
-open http://localhost:3333
+# Connect (or use any PostgreSQL client on port 5433)
+psql -h localhost -p 5433 -d xtdb -U xtdb
 
-# Or query XTDB directly
-psql -h localhost -p 5433 -d xtdb -U xtdb -c "
-  SELECT event_name, tool_name, LEFT(tool_input, 60)
-  FROM events WHERE event_name = 'tool_call'
-  ORDER BY seq DESC LIMIT 10"
+# Recent events
+SELECT event_name, ts, session_id FROM events ORDER BY seq DESC LIMIT 20;
+
+# Decisions
+SELECT task, what, outcome FROM decisions ORDER BY ts DESC LIMIT 10;
+
+# Errors
+SELECT component, severity, error_message FROM errors ORDER BY ts DESC LIMIT 10;
+
+# Tool usage
+SELECT tool_name, COUNT(*) AS cnt FROM events
+WHERE event_name = 'tool_call' GROUP BY tool_name ORDER BY cnt DESC;
 ```
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| "Column not found" warnings | Run `NODE_PATH=xtdb-event-logger/node_modules npx jiti scripts/seed-schema.ts` |
+| XTDB nodes not syncing | Both nodes must share Garage S3 storage. Check `docker compose logs xtdb-primary` |
+| Harness UI shows no data | Ensure event-logger-ui (:3333) is running — harness-ui fetches from it |
+| Chat "New Session" opens wrong page | Update to latest `harness-ui/static/chat.js` |
+| Contract tests fail | Start all 4 services first, then run `./scripts/test-contracts.sh` |
