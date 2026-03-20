@@ -13,6 +13,11 @@ import { renderArtifacts, renderArtifactVersions } from "./pages/artifacts.ts";
 import { renderProjects, renderProjectDetail } from "./pages/projects.ts";
 import { renderOps } from "./pages/ops.ts";
 import { renderChat } from "./pages/chat.ts";
+import { renderErrors } from "./pages/errors.ts";
+import { renderEventDetail } from "./pages/event-detail.ts";
+import { renderFlow } from "./pages/flow.ts";
+import { renderKnowledgePage } from "./pages/knowledge.ts";
+import { renderStream } from "./pages/stream.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -55,11 +60,31 @@ app.get("/dashboard", async (c) => c.html(await renderDashboard()));
 app.get("/decisions", async (c) => c.html(await renderDecisions()));
 app.get("/artifacts", async (c) => c.html(await renderArtifacts()));
 app.get("/projects", async (c) => c.html(await renderProjects()));
+app.get("/errors", async (c) => {
+  const severity = c.req.query("severity") || undefined;
+  const component = c.req.query("component") || undefined;
+  return c.html(await renderErrors({ severity, component }));
+});
+app.get("/stream", async (c) => c.html(await renderStream()));
 app.get("/ops", async (c) => c.html(await renderOps()));
 app.get("/chat", async (c) => c.html(await renderChat()));
 
 // Routes with path params (IDs contain slashes — need {.+} wildcard)
-app.get("/sessions/:id{.+}", async (c) => c.html(await renderSessionDetail(c.req.param("id"))));
+// Hono's {.+} is greedy — /sessions/:id{.+}/flow doesn't work because {.+} consumes /flow.
+// So we use a single catch-all and dispatch based on suffix.
+app.get("/sessions/:id{.+}", async (c) => {
+  const raw = c.req.param("id");
+  if (raw.endsWith("/flow")) {
+    const sessionId = decodeURIComponent(raw.slice(0, -5));
+    return c.html(await renderFlow(sessionId));
+  }
+  if (raw.endsWith("/knowledge")) {
+    const sessionId = decodeURIComponent(raw.slice(0, -10));
+    return c.html(await renderKnowledgePage(sessionId));
+  }
+  return c.html(await renderSessionDetail(raw));
+});
+app.get("/event/:id{.+}", async (c) => c.html(await renderEventDetail(c.req.param("id"))));
 app.get("/projects/:id{.+}", async (c) => c.html(await renderProjectDetail(c.req.param("id"))));
 app.get("/artifacts/versions", async (c) => {
   const path = c.req.query("path") ?? "";

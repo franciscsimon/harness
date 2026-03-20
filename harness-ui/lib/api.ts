@@ -26,6 +26,47 @@ export const fetchArtifacts = () => get<any[]>(`${EVENT_API}/api/artifacts`);
 export const fetchEvent = (id: string) => get<any>(`${EVENT_API}/api/events/${encodeURIComponent(id)}`);
 export const fetchArtifactVersions = (path: string) => get<any[]>(`${EVENT_API}/api/artifact-versions?path=${encodeURIComponent(path)}`);
 
+// Projects
+export const fetchProjects = () => get<any[]>(`${EVENT_API}/api/projects`);
+export const fetchProjectDetail = (id: string) => get<any>(`${EVENT_API}/api/projects/${encodeURIComponent(id)}`);
+
+// Projections (for flow page)
+export const fetchProjections = (sessionId: string) => get<any[]>(`${EVENT_API}/api/projections/${encodeURIComponent(sessionId)}`);
+// Knowledge
+export const fetchKnowledge = async (sessionId: string): Promise<string | null> => {
+  try {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 10000);
+    const r = await fetch(`${EVENT_API}/api/sessions/${encodeURIComponent(sessionId)}/knowledge`, { signal: c.signal });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    return await r.text();
+  } catch { return null; }
+};
+
+// Errors
+export const fetchErrors = (opts?: { severity?: string; component?: string; limit?: number }) => {
+  const params = new URLSearchParams();
+  if (opts?.severity) params.set("severity", opts.severity);
+  if (opts?.component) params.set("component", opts.component);
+  if (opts?.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
+  return get<any[]>(`${EVENT_API}/api/errors${qs ? "?" + qs : ""}`);
+};
+export const fetchErrorSummary = () => get<any>(`${EVENT_API}/api/errors/summary`);
+
+// :3334 Chat service
+const CHAT_HTTP = process.env.CHAT_HTTP_URL ?? "http://localhost:3334";
+export async function checkChatHealth(): Promise<boolean> {
+  try {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 3000);
+    const r = await fetch(CHAT_HTTP, { signal: c.signal });
+    clearTimeout(t);
+    return r.ok;
+  } catch { return false; }
+}
+
 // :3335 Ops API
 export const fetchHealth = () => get<any>(`${OPS_API}/api/health`);
 export const fetchBackups = () => get<any[]>(`${OPS_API}/api/backups`);

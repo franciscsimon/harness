@@ -35,6 +35,8 @@ async function main() {
   await check(`${HARNESS}/decisions`, "GET /decisions", "<!DOCTYPE html");
   await check(`${HARNESS}/artifacts`, "GET /artifacts", "<!DOCTYPE html");
   await check(`${HARNESS}/projects`, "GET /projects", "<!DOCTYPE html");
+  await check(`${HARNESS}/errors`, "GET /errors", "Errors");
+  await check(`${HARNESS}/stream`, "GET /stream", "Live");
   await check(`${HARNESS}/ops`, "GET /ops", "<!DOCTYPE html");
   await check(`${HARNESS}/chat`, "GET /chat", "<!DOCTYPE html");
 

@@ -1,163 +1,178 @@
 // ─── Projects Page ─────────────────────────────────────────────
-// Based on xtdb-event-logger-ui/pages/projects.ts
-// Note: No /api/projects endpoint exists yet on :3333.
-// We derive project info from decisions & artifacts (which have project_id).
-// TODO: Add GET /api/projects to event-logger-ui and port the full project cards.
+// Uses /api/projects from event-logger-ui for real project data.
+// Falls back to deriving from decisions/artifacts if API unavailable.
 
 import { layout } from "../components/layout.ts";
-import { fetchDecisions, fetchArtifacts, fetchDashboard, fetchIncidents } from "../lib/api.ts";
-import { relativeTime, escapeHtml } from "../lib/format.ts";
-
-const PHASE_COLORS: Record<string, string> = {
-  planning: "#a855f7",
-  active: "#22c55e",
-  maintenance: "#eab308",
-  deprecated: "#f97316",
-  decommissioned: "#ef4444",
-};
+import { fetchProjects, fetchProjectDetail, fetchDecisions, fetchArtifacts } from "../lib/api.ts";
+import { relativeTime, escapeHtml, formatDate } from "../lib/format.ts";
 
 export async function renderProjects(): Promise<string> {
-  const [decisions, artifacts, dashboard, incidents] = await Promise.all([
-    fetchDecisions(500),
-    fetchArtifacts(),
-    fetchDashboard(),
-    fetchIncidents(),
-  ]);
+  const projects = await fetchProjects();
 
-  // Derive projects from decisions + artifacts project_id fields
-  const projectMap = new Map<string, { decisions: number; artifacts: number; lastTs: number }>();
+  let cards = "";
+  let count = 0;
 
-  for (const d of (decisions ?? [])) {
-    if (!d.project_id) continue;
-    const p = projectMap.get(d.project_id) ?? { decisions: 0, artifacts: 0, lastTs: 0 };
-    p.decisions++;
-    if (Number(d.ts) > p.lastTs) p.lastTs = Number(d.ts);
-    projectMap.set(d.project_id, p);
-  }
-
-  for (const a of (artifacts ?? [])) {
-    if (!a.project_id) continue;
-    const p = projectMap.get(a.project_id) ?? { decisions: 0, artifacts: 0, lastTs: 0 };
-    p.artifacts++;
-    if (Number(a.ts) > p.lastTs) p.lastTs = Number(a.ts);
-    projectMap.set(a.project_id, p);
-  }
-
-  const projects = [...projectMap.entries()]
-    .sort((a, b) => b[1].lastTs - a[1].lastTs)
-    .map(([id, data]) => {
+  if (projects && projects.length > 0) {
+    count = projects.length;
+    cards = projects.map((p: any) => {
+      const name = p.name || p.canonical_id?.split("/").pop() || p._id;
+      const phase = p.lifecycle_phase || "active";
+      const phaseColor = phase === "active" ? "#22c55e" : phase === "maintenance" ? "#eab308" : phase === "deprecated" ? "#f97316" : "#6b7280";
+      return `<a class="proj-card" href="/projects/${encodeURIComponent(p._id)}">
+        <div class="proj-card-top">
+          <span class="proj-card-name">${escapeHtml(name)}</span>
+          <span class="proj-type-badge" style="--type-color:${phaseColor}">${escapeHtml(phase)}</span>
+          <span class="ses-card-count">${p.session_count ?? "—"} sessions</span>
+        </div>
+        <div class="proj-card-meta"><code class="proj-canonical">${escapeHtml(p.canonical_id || p._id)}</code></div>
+        <div class="proj-card-meta">
+          ${p.git_remote_url ? `<span>🔗 ${escapeHtml(p.git_remote_url)}</span>` : ""}
+          <span>Last seen: ${relativeTime(p.last_seen_ts)}</span>
+        </div>
+      </a>`;
+    }).join("\n");
+  } else {
+    // Fallback: derive from decisions
+    const decisions = await fetchDecisions(500);
+    const projectMap = new Map<string, { decisions: number; lastTs: number }>();
+    for (const d of (decisions ?? [])) {
+      if (!d.project_id) continue;
+      const p = projectMap.get(d.project_id) ?? { decisions: 0, lastTs: 0 };
+      p.decisions++;
+      if (Number(d.ts) > p.lastTs) p.lastTs = Number(d.ts);
+      projectMap.set(d.project_id, p);
+    }
+    count = projectMap.size;
+    cards = [...projectMap.entries()].sort((a, b) => b[1].lastTs - a[1].lastTs).map(([id, data]) => {
       const name = id.split("/").pop() ?? id;
       return `<a class="proj-card" href="/projects/${encodeURIComponent(id)}">
-      <div class="proj-card-top">
-        <span class="proj-card-name">${escapeHtml(name)}</span>
-        <span class="proj-type-badge" style="--type-color:#22c55e">active</span>
-        <span class="ses-card-count">${data.decisions} decisions · ${data.artifacts} artifacts</span>
-      </div>
-      <div class="proj-card-meta">
-        <code class="proj-canonical">${escapeHtml(id)}</code>
-      </div>
-      <div class="proj-card-meta">
-        <span>Last activity: ${relativeTime(String(data.lastTs))}</span>
-      </div>
-    </a>`;
+        <div class="proj-card-top">
+          <span class="proj-card-name">${escapeHtml(name)}</span>
+          <span class="ses-card-count">${data.decisions} decisions</span>
+        </div>
+        <div class="proj-card-meta"><code class="proj-canonical">${escapeHtml(id)}</code></div>
+        <div class="proj-card-meta"><span>Last: ${relativeTime(String(data.lastTs))}</span></div>
+      </a>`;
     }).join("\n");
-
-  const totalSessions = dashboard?.totalSessions ?? "—";
-  const openIncidents = (incidents ?? []).filter((i: any) => i.status === "open");
+  }
 
   const content = `
     <div class="page-header">
       <h1>📁 Projects</h1>
-      <span class="total-badge">${projectMap.size} project${projectMap.size !== 1 ? "s" : ""}</span>
+      <span class="total-badge">${count} project${count !== 1 ? "s" : ""}</span>
     </div>
-
-    <div class="dash-stats">
-      <div class="dash-stat-card"><div class="dash-stat-label">Projects</div><div class="dash-stat-value">${projectMap.size}</div></div>
-      <div class="dash-stat-card"><div class="dash-stat-label">Sessions</div><div class="dash-stat-value">${totalSessions}</div></div>
-      <div class="dash-stat-card"><div class="dash-stat-label">Open Incidents</div><div class="dash-stat-value" style="color:${openIncidents.length > 0 ? "#ef4444" : "#22c55e"}">${openIncidents.length}</div></div>
-    </div>
-
     <main class="ses-list">
-      ${projectMap.size === 0 ? '<p class="empty-msg">No projects found. Projects are derived from decisions and artifacts with project_id fields.</p>' : projects}
+      ${count === 0 ? '<p class="empty-msg">No projects found.</p>' : cards}
     </main>
   `;
-
   return layout(content, { title: "Projects", activePath: "/projects" });
 }
 
-// ─── Project Detail Page ───────────────────────────────────────
+// ─── Project Detail ────────────────────────────────────────────
 
 export async function renderProjectDetail(projectId: string): Promise<string> {
-  const [decisions, artifacts] = await Promise.all([
-    fetchDecisions(500),
-    fetchArtifacts(),
-  ]);
-
-  const projDecisions = (decisions ?? []).filter((d: any) => d.project_id === projectId);
-  const projArtifacts = (artifacts ?? []).filter((a: any) => a.project_id === projectId);
+  const detail = await fetchProjectDetail(projectId);
   const name = projectId.split("/").pop() ?? projectId;
 
-  // Decision cards (ported from xtdb-event-logger-ui/pages/decisions.ts)
-  const OUTCOME_ICONS: Record<string, string> = { success: "✅", failure: "❌", deferred: "⏸️" };
-  const OUTCOME_COLORS: Record<string, string> = { success: "#22c55e", failure: "#ef4444", deferred: "#eab308" };
+  if (!detail || !detail.project) {
+    // Fallback: show decisions/artifacts for this project
+    const [decisions, artifacts] = await Promise.all([fetchDecisions(500), fetchArtifacts()]);
+    const projDec = (decisions ?? []).filter((d: any) => d.project_id === projectId);
+    const projArt = (artifacts ?? []).filter((a: any) => a.project_id === projectId);
 
-  const decisionCards = projDecisions.map((d: any) => {
-    const icon = OUTCOME_ICONS[d.outcome] ?? "•";
-    const color = OUTCOME_COLORS[d.outcome] ?? "#6b7280";
-    const date = d.ts ? new Date(Number(d.ts)).toISOString().slice(0, 10) : "—";
-    return `<div class="dec-card">
-      <div class="dec-card-top">
-        <span class="dec-outcome-badge" style="--outcome-color:${color}">${icon} ${escapeHtml(d.outcome ?? "unknown")}</span>
-        <span class="dec-date">${date}</span>
-        <span class="dec-ago">${relativeTime(d.ts)}</span>
-      </div>
-      <div class="dec-what">${escapeHtml(d.what ?? "—")}</div>
-      <div class="dec-detail"><span class="dec-label">Task:</span> ${escapeHtml(d.task ?? "—")}</div>
-      <div class="dec-detail"><span class="dec-label">Why:</span> ${escapeHtml(d.why ?? "—")}</div>
-    </div>`;
+    const content = `
+      <div class="page-header"><h1><a href="/projects" class="back-link">← Projects</a> · 📁 ${escapeHtml(name)}</h1></div>
+      <section class="proj-info"><table class="proj-info-table">
+        <tr><td class="proj-label">ID</td><td><code>${escapeHtml(projectId)}</code></td></tr>
+        <tr><td class="proj-label">Decisions</td><td>${projDec.length}</td></tr>
+        <tr><td class="proj-label">Artifacts</td><td>${projArt.length}</td></tr>
+      </table></section>
+      <p class="empty-msg">Full project data unavailable. Showing derived data from decisions/artifacts.</p>
+    `;
+    return layout(content, { title: name, activePath: "/projects" });
+  }
+
+  const p = detail.project;
+  const sessions = detail.sessions ?? [];
+  const dependencies = detail.dependencies ?? [];
+  const tags = detail.tags ?? [];
+  const decommissions = detail.decommissions ?? [];
+  const lifecycleEvents = detail.lifecycleEvents ?? [];
+
+  // Project info table
+  const infoRows = [
+    ["ID", `<code>${escapeHtml(p._id)}</code>`],
+    ["Canonical ID", `<code>${escapeHtml(p.canonical_id || "—")}</code>`],
+    ["Name", escapeHtml(p.name || "—")],
+    ["Type", escapeHtml(p.identity_type || "—")],
+    ["Git Remote", p.git_remote_url ? `<a href="${escapeHtml(p.git_remote_url)}" target="_blank">${escapeHtml(p.git_remote_url)}</a>` : "—"],
+    ["Git Root", `<code>${escapeHtml(p.git_root_path || "—")}</code>`],
+    ["First Seen", formatDate(p.first_seen_ts)],
+    ["Last Seen", `${formatDate(p.last_seen_ts)} (${relativeTime(p.last_seen_ts)})`],
+    ["Sessions", String(p.session_count ?? sessions.length)],
+    ["Phase", escapeHtml(p.lifecycle_phase || "active")],
+  ].map(([k, v]) => `<tr><td class="proj-label">${k}</td><td>${v}</td></tr>`).join("\n");
+
+  // Sessions section
+  const sessionRows = sessions.map((s: any) => {
+    const sName = (s.session_id || "").split("/").pop() || s._id;
+    return `<tr>
+      <td><a href="/sessions/${encodeURIComponent(s.session_id || s._id)}">${escapeHtml(sName)}</a></td>
+      <td><code>${escapeHtml(s.cwd || "—")}</code></td>
+      <td>${relativeTime(s.ts)}</td>
+    </tr>`;
   }).join("\n");
 
-  // Artifact cards
-  const artifactRows = projArtifacts.map((a: any) => {
-    const fileName = (a.path ?? "").split("/").pop() ?? a.path;
-    return `<div class="art-card">
-      <div class="art-card-top">
-        <span class="art-op">${a.operation === "write" ? "📝" : "✏️"}</span>
-        <span class="art-filename">${escapeHtml(fileName)}</span>
-        <span class="art-kind-badge" style="--kind-color:#3b82f6">${escapeHtml(a.kind ?? "file")}</span>
-        <span class="dec-ago">${relativeTime(a.ts)}</span>
-      </div>
-      <div class="art-path"><code>${escapeHtml(a.path?.replace(/.*harness\//, "") ?? "—")}</code></div>
-    </div>`;
-  }).join("\n");
+  // Tags
+  const tagBadges = tags.map((t: any) => `<span class="proj-type-badge" style="--type-color:#3b82f6">${escapeHtml(t.tag)}</span>`).join(" ");
+
+  // Dependencies
+  const depRows = dependencies.map((d: any) =>
+    `<tr><td><code>${escapeHtml(d.name)}</code></td><td>${escapeHtml(d.version || "—")}</td><td>${escapeHtml(d.dep_type || "—")}</td></tr>`
+  ).join("\n");
+
+  // Lifecycle events
+  const lcRows = lifecycleEvents.map((e: any) =>
+    `<tr><td>${escapeHtml(e.event_type || e._id)}</td><td>${escapeHtml(e.summary || "—")}</td><td>${relativeTime(e.ts)}</td></tr>`
+  ).join("\n");
+
+  // Decommissions
+  const decomRows = decommissions.map((d: any) =>
+    `<tr><td>${escapeHtml(d.reason || "—")}</td><td>${escapeHtml(d.decommissioned_by || "—")}</td><td>${relativeTime(d.ts)}</td></tr>`
+  ).join("\n");
 
   const content = `
-    <div class="page-header">
-      <h1><a href="/projects" class="back-link">← Projects</a> · 📁 ${escapeHtml(name)}</h1>
-    </div>
+    <div class="page-header"><h1><a href="/projects" class="back-link">← Projects</a> · 📁 ${escapeHtml(p.name || name)}</h1></div>
 
-    <section class="proj-info">
-      <table class="proj-info-table">
-        <tr><td class="proj-label">ID</td><td><code>${escapeHtml(projectId)}</code></td></tr>
-        <tr><td class="proj-label">Decisions</td><td>${projDecisions.length}</td></tr>
-        <tr><td class="proj-label">Artifacts</td><td>${projArtifacts.length}</td></tr>
-      </table>
-    </section>
+    <section class="proj-info"><table class="proj-info-table">${infoRows}</table></section>
 
-    <section class="proj-sessions-section">
-      <h2>📋 Decisions <span class="total-badge">${projDecisions.length}</span></h2>
-      <div class="dec-list">
-        ${projDecisions.length === 0 ? '<p class="empty-msg">No decisions for this project.</p>' : decisionCards}
-      </div>
-    </section>
+    ${sessions.length > 0 ? `<section class="proj-sessions-section">
+      <h2>📂 Sessions <span class="total-badge">${sessions.length}</span></h2>
+      <table class="proj-info-table"><thead><tr><th>Session</th><th>CWD</th><th>When</th></tr></thead><tbody>${sessionRows}</tbody></table>
+    </section>` : ""}
 
-    <section class="proj-sessions-section">
-      <h2>📦 Artifacts <span class="total-badge">${projArtifacts.length}</span></h2>
-      <div class="dec-list">
-        ${projArtifacts.length === 0 ? '<p class="empty-msg">No artifacts for this project.</p>' : artifactRows}
-      </div>
-    </section>
+    ${tags.length > 0 ? `<section class="proj-sessions-section"><h2>🏷️ Tags</h2><div style="padding:0.5rem 0">${tagBadges}</div></section>` : ""}
+
+    ${dependencies.length > 0 ? `<section class="proj-sessions-section">
+      <h2>📦 Dependencies <span class="total-badge">${dependencies.length}</span></h2>
+      <table class="proj-info-table"><thead><tr><th>Name</th><th>Version</th><th>Type</th></tr></thead><tbody>${depRows}</tbody></table>
+    </section>` : ""}
+
+    ${lifecycleEvents.length > 0 ? `<section class="proj-sessions-section">
+      <h2>📅 Lifecycle Events <span class="total-badge">${lifecycleEvents.length}</span></h2>
+      <table class="proj-info-table"><thead><tr><th>Event</th><th>Summary</th><th>When</th></tr></thead><tbody>${lcRows}</tbody></table>
+    </section>` : ""}
+
+    ${decommissions.length > 0 ? `<section class="proj-sessions-section">
+      <h2>🗑️ Decommissions <span class="total-badge">${decommissions.length}</span></h2>
+      <table class="proj-info-table"><thead><tr><th>Reason</th><th>By</th><th>When</th></tr></thead><tbody>${decomRows}</tbody></table>
+    </section>` : ""}
+
+    ${p.jsonld ? `<section class="proj-sessions-section">
+      <h2>JSON-LD</h2>
+      <details class="err-details"><summary>View JSON-LD</summary><pre class="err-stack">${escapeHtml(typeof p.jsonld === "string" ? p.jsonld : JSON.stringify(p.jsonld, null, 2))}</pre></details>
+    </section>` : ""}
   `;
 
-  return layout(content, { title: name, activePath: "/projects" });
+  return layout(content, { title: p.name || name, activePath: "/projects" });
 }

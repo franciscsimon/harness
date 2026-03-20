@@ -43,12 +43,12 @@ function connect() {
     const urlSession = params.get("session");
     if (isNew) {
       sessionStorage.removeItem("pi-chat-sessionFile");
-      history.replaceState(null, "", "/");
+      history.replaceState(null, "", "/chat");
       wsSend({ type: "init", createNew: true });
     } else {
       const stored = sessionStorage.getItem("pi-chat-sessionFile");
       const sessionFile = urlSession || stored || undefined;
-      if (urlSession) { sessionStorage.setItem("pi-chat-sessionFile", urlSession); history.replaceState(null, "", "/"); }
+      if (urlSession) { sessionStorage.setItem("pi-chat-sessionFile", urlSession); history.replaceState(null, "", "/chat"); }
       wsSend({ type: "init", sessionFile });
     }
   };
@@ -419,7 +419,7 @@ $input.addEventListener("keydown", (e) => {
 });
 $send.addEventListener("click", sendPrompt);
 $abort.addEventListener("click", () => wsSend({ type: "abort" }));
-$newBtn.addEventListener("click", () => { window.open(location.origin + "/?new=1", "_blank"); });
+$newBtn.addEventListener("click", () => { window.open(location.origin + "/chat?new=1", "_blank"); });
 $thinking.addEventListener("change", () => wsSend({ type: "set_thinking", level: $thinking.value }));
 $cwdInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {

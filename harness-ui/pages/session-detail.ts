@@ -114,8 +114,25 @@ function trunc(s: string, max: number): string {
 
 // ─── Render ────────────────────────────────────────────────────
 
+/** Map compact API events (camelCase + fields) back to flat snake_case for templates */
+function flattenEvent(ev: any): any {
+  return {
+    _id: ev.id ?? ev._id,
+    event_name: ev.eventName ?? ev.event_name,
+    category: ev.category,
+    can_intercept: ev.canIntercept ?? ev.can_intercept,
+    seq: ev.seq,
+    ts: ev.ts,
+    session_id: ev.sessionId ?? ev.session_id,
+    cwd: ev.cwd,
+    // Spread the nested fields back to top level
+    ...(ev.fields ?? {}),
+  };
+}
+
 export async function renderSessionDetail(sessionId: string): Promise<string> {
-  const events = (await fetchSessionEvents(sessionId)) ?? [];
+  const rawEvents = (await fetchSessionEvents(sessionId)) ?? [];
+  const events = rawEvents.map(flattenEvent);
   const name = sessionId.split("/").pop() ?? sessionId;
   const firstTs = events.length > 0 ? events[0].ts : "0";
   const lastTs = events.length > 0 ? events[events.length - 1].ts : "0";
@@ -191,6 +208,13 @@ export async function renderSessionDetail(sessionId: string): Promise<string> {
       <span>Started: ${relativeTime(firstTs)}</span>
       <span>Duration: ${fmtDuration(durationMs)}</span>
       <span>cwd: <code>${escapeHtml(cwd)}</code></span>
+    </div>
+    <div class="ses-detail-actions">
+      <button class="btn" id="btn-expand-all">Expand All</button>
+      <button class="btn" id="btn-collapse-all">Collapse All</button>
+      <a class="btn" href="/sessions/${encodeURIComponent(sessionId)}/flow">🔀 Flow</a>
+      <a class="btn" href="/sessions/${encodeURIComponent(sessionId)}/knowledge">📝 Knowledge</a>
+      <a class="btn" href="/chat?session=${encodeURIComponent(sessionId)}" target="_blank">💬 Open in Chat</a>
     </div>
     ${sparkline}
     <main class="timeline" id="timeline">

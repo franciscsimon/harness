@@ -4,15 +4,16 @@
 
 import { layout } from "../components/layout.ts";
 import { healthDot } from "../components/badge.ts";
-import { fetchStats, fetchDashboard, fetchHealth, fetchIncidents } from "../lib/api.ts";
+import { fetchStats, fetchDashboard, fetchHealth, fetchIncidents, checkChatHealth } from "../lib/api.ts";
 import { formatNumber, relativeTime } from "../lib/format.ts";
 
 export async function renderHome(): Promise<string> {
-  const [stats, dashboard, health, incidents] = await Promise.all([
+  const [stats, dashboard, health, incidents, chatOk] = await Promise.all([
     fetchStats().catch(() => null),
     fetchDashboard().catch(() => null),
     fetchHealth().catch(() => null),
     fetchIncidents("open").catch(() => null),
+    checkChatHealth().catch(() => false),
   ]);
 
   const content = `
@@ -21,7 +22,7 @@ export async function renderHome(): Promise<string> {
       <p>Unified view across all harness services</p>
     </div>
 
-    ${renderBackendStatus(stats, health)}
+    ${renderBackendStatus(stats, health, chatOk)}
 
     <div class="grid grid-4" style="margin-top:1.5rem">
       ${renderStatCard("Sessions", dashboard ? formatNumber(dashboard.totalSessions) : "—", dashboard ? `avg ${formatNumber(dashboard.avgEventsPerSession)} events/session` : "Event API unavailable", dashboard != null)}
@@ -72,7 +73,7 @@ export async function renderHome(): Promise<string> {
 
 // ─── Sub-renderers ─────────────────────────────────────────────
 
-function renderBackendStatus(stats: any, health: any): string {
+function renderBackendStatus(stats: any, health: any, chatOk: boolean): string {
   const eventOk = stats != null;
   const opsOk = health != null;
 
@@ -86,7 +87,7 @@ function renderBackendStatus(stats: any, health: any): string {
       Ops API :3335
     </span>
     <span class="backend-status">
-      <span class="backend-dot" style="background:#484f58"></span>
+      <span class="backend-dot" style="background:${chatOk ? "#238636" : "#da3633"}"></span>
       Chat WS :3334
     </span>
   </div>`;
