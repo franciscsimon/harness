@@ -487,6 +487,7 @@ const schema: TableDef[] = [
       context_json: "text",
       ts: "bigint",
       flushed: "boolean",
+      jsonld: "text",
     },
   },
   {

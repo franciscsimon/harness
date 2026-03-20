@@ -1,5 +1,6 @@
 import postgres from "postgres";
 import type { Endpoint, NormalizedEvent, ResolvedConfig } from "../types.ts";
+import { startErrorCollector, stopErrorCollector } from "../../lib/errors.ts";
 
 /**
  * XtdbEndpoint — persists events into XTDB v2 via Postgres wire protocol.
@@ -44,6 +45,9 @@ export class XtdbEndpoint implements Endpoint {
     if (!rows?.[0]?.ok) {
       throw new Error(`XTDB health check failed on ${host}:${port}`);
     }
+
+    // Start flushing captured errors to XTDB (disk → DB)
+    startErrorCollector(this.sql);
   }
 
   emit(event: NormalizedEvent, jsonld: string): void {
@@ -62,6 +66,8 @@ export class XtdbEndpoint implements Endpoint {
 
   async close(): Promise<void> {
     this.closing = true;
+    // Final flush of captured errors before closing DB connection
+    await stopErrorCollector();
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
