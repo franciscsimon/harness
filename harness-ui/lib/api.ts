@@ -37,6 +37,31 @@ export const fetchErrors = (opts?: { severity?: string; component?: string; limi
 };
 export const fetchErrorSummary = () => get<any>(`${EVENT_API}/api/errors/summary`);
 
+// Projects
+export const fetchProjects = () => get<any[]>(`${EVENT_API}/api/projects`);
+export const fetchProjectDetail = (id: string) => get<any>(`${EVENT_API}/api/projects/${encodeURIComponent(id)}`);
+
+// Projections (for flow page)
+export const fetchProjections = (sessionId: string) => get<any[]>(`${EVENT_API}/api/projections/${encodeURIComponent(sessionId)}`);
+
+// Knowledge
+export const fetchKnowledge = async (sessionId: string): Promise<string | null> => {
+  try {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 10000);
+    const r = await fetch(`${EVENT_API}/api/sessions/${encodeURIComponent(sessionId)}/knowledge`, { signal: c.signal });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    return await r.text();
+  } catch { return null; }
+};
+
+// Test runs
+export const fetchTestRuns = (projectId?: string) => {
+  const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+  return get<any[]>(`${EVENT_API}/api/test-runs${qs}`);
+};
+
 // :3334 Chat service
 const CHAT_HTTP = process.env.CHAT_HTTP_URL ?? "http://localhost:3334";
 export async function checkChatHealth(): Promise<boolean> {

@@ -72,18 +72,17 @@
 
 ## Remaining Items
 
-| # | Item | Phase | Effort | Progress File |
-|---|------|-------|--------|---------------|
-| 1 | Test run recording extension | 3 | M | `docs/TODO_TEST_RUN_RECORDING.md` |
-| 2 | Auto-changelog for releases | 6 | M | `docs/TODO_AUTO_CHANGELOG.md` |
-| 3 | Per-project sub-pages in harness-ui | 6 | L | `docs/TODO_PROJECT_SUB_PAGES.md` |
+All items completed on 2026-03-20:
+
+| # | Item | Status | Implementation |
+|---|------|--------|----------------|
+| 1 | Test run recording | ✅ | `lib/test-recorder.ts` (shared), `scripts/test-and-record.ts` (harness tests), `quality-hooks` hook (agent tests), `/api/test-runs` endpoint |
+| 2 | Auto-changelog for releases | ✅ | `generateChangelog()` in `deployment-tracker/index.ts` — auto-generates from decisions+artifacts when no manual changelog provided |
+| 3 | Per-project data sections | ✅ | Added Decisions, Test Runs, Incidents sections to project detail page (Option A: all on one page) |
 
 ---
 
 ## Summary
 
-- **Phases 0–2**: 100% complete
-- **Phase 3**: 95% — missing test run recording
-- **Phases 4–5**: 100% complete
-- **Phase 6**: 90% — missing auto-changelog and per-project sub-pages
-- **Overall: ~95% complete**
+- **All Phases 0–6: 100% complete**
+- Project lifecycle system fully implemented

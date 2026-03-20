@@ -4,6 +4,7 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { readFileSync, existsSync } from "node:fs";
 import { runFileChecks, checkDiffSize, type Violation } from "./checks.ts";
 import { createMockPi } from "./mock-pi.ts";
+import { recordTestRun } from "../lib/test-recorder.ts";
 
 // ─── Quality Hooks Extension ──────────────────────────────────────
 // Deterministic code quality checks that fire on write/edit.
@@ -125,6 +126,44 @@ export default function (pi: ExtensionAPI) {
         }
       }
     } catch {}
+  });
+
+  // ── Hook: record test results from bash tool ──
+  // Detects test commands (npm test, npx jiti test, jest, vitest, etc.)
+  // and captures pass/fail counts to test_runs table.
+  const TEST_CMD_PATTERNS = [
+    /npm\s+test/, /npx\s+jiti\s+.*test/, /npx\s+jest/, /npx\s+vitest/,
+    /jest\b/, /vitest\b/, /mocha\b/, /node\s+.*test/,
+  ];
+
+  pi.on("tool_execution_end", async (event, _ctx) => {
+    const e = event as any;
+    if (e.toolName !== "bash" || e.isError === undefined) return;
+    const cmd = String(pendingArgs.get(e.toolCallId)?.command ?? "");
+    if (!TEST_CMD_PATTERNS.some(p => p.test(cmd))) return;
+
+    const output = String(e.content ?? "");
+    // Parse common test output patterns
+    const passMatch = output.match(/(\d+)\s+(?:passed|passing|✅)/i);
+    const failMatch = output.match(/(\d+)\s+(?:failed|failing|❌)/i);
+    const passed = passMatch ? parseInt(passMatch[1], 10) : (e.isError ? 0 : 1);
+    const failed = failMatch ? parseInt(failMatch[1], 10) : (e.isError ? 1 : 0);
+
+    const suiteName = cmd.replace(/^npx\s+jiti\s+/, "").replace(/^npm\s+test\s*/, "npm test").slice(0, 100);
+    const projectId = (globalThis as any).__piCurrentProject?.projectId ?? "";
+
+    try {
+      await recordTestRun({
+        projectId,
+        suiteName,
+        runner: "bash",
+        passed,
+        failed,
+        durationMs: 0,
+        status: failed > 0 ? "failed" : "passed",
+        errorSummary: failed > 0 ? output.split("\n").filter(l => l.includes("❌") || l.includes("FAIL")).slice(0, 5).join("; ") : undefined,
+      });
+    } catch { /* best-effort recording */ }
   });
 
   // ── Tool: quality_check — LLM can call this directly ──

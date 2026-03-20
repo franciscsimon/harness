@@ -1031,6 +1031,17 @@ export async function getErrorSummary(): Promise<ErrorSummary> {
   } catch { return { total: 0, bySeverity: {}, byComponent: {} }; }
 }
 
+// ─── Test Runs ─────────────────────────────────────────────────────
+
+export async function getTestRuns(projectId?: string, limit = 50): Promise<any[]> {
+  try {
+    if (projectId) {
+      return await sql`SELECT * FROM test_runs WHERE project_id = ${t(projectId)} ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+    }
+    return await sql`SELECT * FROM test_runs ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+  } catch { return []; }
+}
+
 /**
  * Close the connection.
  */

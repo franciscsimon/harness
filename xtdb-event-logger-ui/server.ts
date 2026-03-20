@@ -37,6 +37,7 @@ import {
   getProjectDecommissions,
   getErrors,
   getErrorSummary,
+  getTestRuns,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -357,6 +358,17 @@ app.get("/api/projects/:id{.+}", async (c) => {
     getProjectLifecycleEvents(id),
   ]);
   return c.json({ project, sessions, dependencies, tags, decommissions, lifecycleEvents });
+});
+
+app.get("/api/test-runs", async (c) => {
+  const projectId = c.req.query("project_id");
+  const limit = Number(c.req.query("limit") ?? "50");
+  try {
+    const rows = projectId
+      ? await getTestRuns(projectId, limit)
+      : await getTestRuns(undefined, limit);
+    return c.json(rows);
+  } catch { return c.json([]); }
 });
 
 app.get("/api/projections/:id{.+}", async (c) => {

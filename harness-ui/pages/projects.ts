@@ -3,7 +3,7 @@
 // Falls back to deriving from decisions/artifacts if API unavailable.
 
 import { layout } from "../components/layout.ts";
-import { fetchProjects, fetchProjectDetail, fetchDecisions, fetchArtifacts } from "../lib/api.ts";
+import { fetchProjects, fetchProjectDetail, fetchDecisions, fetchArtifacts, fetchTestRuns, fetchIncidents } from "../lib/api.ts";
 import { relativeTime, escapeHtml, formatDate } from "../lib/format.ts";
 
 export async function renderProjects(): Promise<string> {
@@ -92,12 +92,22 @@ export async function renderProjectDetail(projectId: string): Promise<string> {
     return layout(content, { title: name, activePath: "/projects" });
   }
 
+  // Fetch additional data in parallel
+  const [decisions, testRuns, incidents] = await Promise.all([
+    fetchDecisions(500),
+    fetchTestRuns(projectId),
+    fetchIncidents(),
+  ]);
+
   const p = detail.project;
   const sessions = detail.sessions ?? [];
   const dependencies = detail.dependencies ?? [];
   const tags = detail.tags ?? [];
   const decommissions = detail.decommissions ?? [];
   const lifecycleEvents = detail.lifecycleEvents ?? [];
+  const projDecisions = (decisions ?? []).filter((d: any) => d.project_id === projectId);
+  const projTestRuns = testRuns ?? [];
+  const projIncidents = (incidents ?? []).filter((i: any) => i.project_id === projectId);
 
   // Project info table
   const infoRows = [
@@ -166,6 +176,27 @@ export async function renderProjectDetail(projectId: string): Promise<string> {
     ${decommissions.length > 0 ? `<section class="proj-sessions-section">
       <h2>🗑️ Decommissions <span class="total-badge">${decommissions.length}</span></h2>
       <table class="proj-info-table"><thead><tr><th>Reason</th><th>By</th><th>When</th></tr></thead><tbody>${decomRows}</tbody></table>
+    </section>` : ""}
+
+    ${projDecisions.length > 0 ? `<section class="proj-sessions-section">
+      <h2>📋 Decisions <span class="total-badge">${projDecisions.length}</span></h2>
+      <table class="proj-info-table"><thead><tr><th>Task</th><th>What</th><th>Outcome</th><th>When</th></tr></thead><tbody>
+      ${projDecisions.slice(0, 20).map((d: any) => `<tr><td>${escapeHtml(d.task ?? "—")}</td><td>${escapeHtml((d.what ?? "—").slice(0, 80))}</td><td>${d.outcome === "success" ? "✅" : d.outcome === "failure" ? "❌" : "⏸️"} ${escapeHtml(d.outcome ?? "—")}</td><td>${relativeTime(d.ts)}</td></tr>`).join("\n")}
+      </tbody></table>
+    </section>` : ""}
+
+    ${projTestRuns.length > 0 ? `<section class="proj-sessions-section">
+      <h2>🧪 Test Runs <span class="total-badge">${projTestRuns.length}</span></h2>
+      <table class="proj-info-table"><thead><tr><th>Suite</th><th>Status</th><th>Passed</th><th>Failed</th><th>Duration</th><th>When</th></tr></thead><tbody>
+      ${projTestRuns.slice(0, 20).map((t: any) => `<tr><td>${escapeHtml(t.suite_name ?? "—")}</td><td>${t.status === "passed" ? "✅" : "❌"} ${escapeHtml(t.status ?? "—")}</td><td>${t.passed ?? 0}</td><td>${t.failed ?? 0}</td><td>${t.duration_ms ? t.duration_ms + "ms" : "—"}</td><td>${relativeTime(t.ts)}</td></tr>`).join("\n")}
+      </tbody></table>
+    </section>` : ""}
+
+    ${projIncidents.length > 0 ? `<section class="proj-sessions-section">
+      <h2>🚨 Incidents <span class="total-badge">${projIncidents.length}</span></h2>
+      <table class="proj-info-table"><thead><tr><th>Title</th><th>Severity</th><th>Status</th><th>When</th></tr></thead><tbody>
+      ${projIncidents.map((i: any) => `<tr><td>${escapeHtml(i.title ?? "—")}</td><td>${escapeHtml(i.severity ?? "—")}</td><td>${escapeHtml(i.status ?? "—")}</td><td>${relativeTime(i.ts ?? i.started_ts)}</td></tr>`).join("\n")}
+      </tbody></table>
     </section>` : ""}
 
     ${p.jsonld ? `<section class="proj-sessions-section">

@@ -132,6 +132,67 @@ async function handleEnvList(ctx: any): Promise<void> {
 
 // ── /release command ────────────────────────────────────────────
 
+async function generateChangelog(projectId: string, version: string): Promise<string | null> {
+  const s = await db();
+  let cutoffTs = 0;
+
+  try {
+    const relRows = await s`
+      SELECT version, ts FROM releases
+      WHERE project_id = ${t(s, projectId)}
+      ORDER BY ts DESC LIMIT 1
+    `;
+    if (relRows.length > 0) {
+      cutoffTs = typeof relRows[0].ts === "string" ? Number(relRows[0].ts) : relRows[0].ts;
+    }
+  } catch { /* no previous releases */ }
+
+  let decisions: any[] = [];
+  try {
+    decisions = await s`
+      SELECT task, what, outcome FROM decisions
+      WHERE project_id = ${t(s, projectId)} AND ts > ${n(s, cutoffTs)}
+      ORDER BY ts ASC
+    `;
+  } catch { /* table may not exist */ }
+
+  let artifacts: any[] = [];
+  try {
+    artifacts = await s`
+      SELECT path, operation FROM artifact_versions
+      WHERE ts > ${n(s, cutoffTs)}
+      ORDER BY ts ASC
+    `;
+  } catch { /* table may not exist */ }
+
+  if (decisions.length === 0 && artifacts.length === 0) return null;
+
+  const lines: string[] = [];
+  lines.push(`## ${version}`);
+
+  if (decisions.length > 0) {
+    lines.push("");
+    lines.push("### Decisions");
+    for (const d of decisions) {
+      const icon = d.outcome === "success" ? "✅" : d.outcome === "failure" ? "❌" : "⏸️";
+      lines.push(`- ${icon} ${d.task ?? "—"}: ${d.what ?? "—"}`);
+    }
+  }
+
+  if (artifacts.length > 0) {
+    const uniquePaths = [...new Set(artifacts.map((a: any) => a.path))];
+    lines.push("");
+    lines.push(`### Files Changed (${uniquePaths.length})`);
+    for (const p of uniquePaths.slice(0, 30)) {
+      const short = String(p).replace(/.*harness\//, "");
+      lines.push(`- ${short}`);
+    }
+    if (uniquePaths.length > 30) lines.push(`- ... and ${uniquePaths.length - 30} more`);
+  }
+
+  return lines.join("\n");
+}
+
 async function handleReleaseCreate(args: string, ctx: any): Promise<void> {
   const projectId = getProjectId();
   if (!projectId) { ctx.ui.notify("No active project.", "error"); return; }
@@ -139,7 +200,12 @@ async function handleReleaseCreate(args: string, ctx: any): Promise<void> {
   const parts = args.trim().split(/\s+/);
   const version = parts[0];
   if (!version) { ctx.ui.notify("Usage: /release create <version> [changelog]", "error"); return; }
-  const changelog = parts.slice(1).join(" ") || null;
+  let changelog = parts.slice(1).join(" ") || null;
+
+  // Auto-generate changelog from decisions + artifacts since last release
+  if (!changelog) {
+    changelog = await generateChangelog(projectId, version);
+  }
 
   const sessionId = getSessionId();
   const s = await db();
