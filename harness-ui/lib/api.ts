@@ -26,24 +26,6 @@ export const fetchArtifacts = () => get<any[]>(`${EVENT_API}/api/artifacts`);
 export const fetchEvent = (id: string) => get<any>(`${EVENT_API}/api/events/${encodeURIComponent(id)}`);
 export const fetchArtifactVersions = (path: string) => get<any[]>(`${EVENT_API}/api/artifact-versions?path=${encodeURIComponent(path)}`);
 
-// Projects
-export const fetchProjects = () => get<any[]>(`${EVENT_API}/api/projects`);
-export const fetchProjectDetail = (id: string) => get<any>(`${EVENT_API}/api/projects/${encodeURIComponent(id)}`);
-
-// Projections (for flow page)
-export const fetchProjections = (sessionId: string) => get<any[]>(`${EVENT_API}/api/projections/${encodeURIComponent(sessionId)}`);
-// Knowledge
-export const fetchKnowledge = async (sessionId: string): Promise<string | null> => {
-  try {
-    const c = new AbortController();
-    const t = setTimeout(() => c.abort(), 10000);
-    const r = await fetch(`${EVENT_API}/api/sessions/${encodeURIComponent(sessionId)}/knowledge`, { signal: c.signal });
-    clearTimeout(t);
-    if (!r.ok) return null;
-    return await r.text();
-  } catch { return null; }
-};
-
 // Errors
 export const fetchErrors = (opts?: { severity?: string; component?: string; limit?: number }) => {
   const params = new URLSearchParams();
