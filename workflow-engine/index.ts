@@ -476,7 +476,7 @@ export default function (pi: ExtensionAPI) {
   // ─── Clean up DB connection on shutdown ──────────────────────────
 
   pi.on("session_shutdown", async () => {
-    if (sql) { try { await sql.end(); } catch {} sql = null; }
+    if (sql) { try { await sql.end(); } catch { /* cleanup — safe to ignore */ } sql = null; }
   });
 
   // ─── Auto-advance on agent_end if transition is "auto" ──────────

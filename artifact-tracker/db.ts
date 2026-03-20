@@ -39,5 +39,5 @@ export function typed(db: Sql, v: string | null) { return db.typed(v as any, 25)
 export function typedNum(db: Sql, v: number | null) { return db.typed(v as any, 20); }
 
 export async function closeDb() {
-  if (sql) { try { await sql.end(); } catch {} sql = null; }
+  if (sql) { try { await sql.end(); } catch { /* cleanup — safe to ignore */ } sql = null; }
 }

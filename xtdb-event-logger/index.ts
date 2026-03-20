@@ -162,7 +162,7 @@ export default function (pi: ExtensionAPI) {
           } catch {}
           try {
             await ep.close();
-          } catch {}
+          } catch { /* cleanup — safe to ignore */ }
         }
       });
       continue;

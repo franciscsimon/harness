@@ -428,7 +428,7 @@ export default function (pi: ExtensionAPI) {
   // Cleanup on shutdown
   pi.on("session_shutdown", async () => {
     if (sql) {
-      try { await sql.end(); } catch {}
+      try { await sql.end(); } catch { /* cleanup — safe to ignore */ }
       sql = null;
     }
   });

@@ -264,7 +264,7 @@ app.get("/api/lifecycle/stream", async (c) => {
           await stream.writeSSE({ event: "lifecycle", data: JSON.stringify(row) });
           lastTs = Math.max(lastTs, Number(row.ts));
         }
-      } catch {}
+      } catch { /* parse fallback — use default */ }
       await stream.sleep(2000);
     }
   });
@@ -399,7 +399,7 @@ app.get("/dashboard", async (c) => {
     try {
       const res = await db`SELECT COUNT(*) as cnt FROM incidents WHERE status = 'open'`;
       incidentsOpen = Number(res[0]?.cnt ?? 0);
-    } catch {}
+    } catch { /* parse fallback — use default */ }
     await db.end();
 
     const active = projects.filter((p) => p.lifecycle_phase === "active").length;
@@ -421,7 +421,7 @@ app.get("/dashboard/project/:id", async (c) => {
     try {
       const rows = await db`SELECT * FROM projects WHERE _id = ${id} LIMIT 1`;
       project = rows[0] ?? null;
-    } catch {}
+    } catch { /* table may not exist */ }
 
     if (!project) {
       await db.end();
@@ -434,11 +434,11 @@ app.get("/dashboard/project/:id", async (c) => {
     let testRuns: any[] = [];
     let incidents: any[] = [];
 
-    try { requirements = await db`SELECT * FROM requirements WHERE project_id = ${id} ORDER BY _id`; } catch {}
-    try { releases = await db`SELECT * FROM releases WHERE project_id = ${id} ORDER BY _id DESC`; } catch {}
-    try { deployments = await db`SELECT * FROM deployments WHERE project_id = ${id} ORDER BY _id DESC`; } catch {}
-    try { testRuns = await db`SELECT * FROM test_runs WHERE project_id = ${id} ORDER BY _id DESC`; } catch {}
-    try { incidents = await db`SELECT * FROM incidents WHERE project_id = ${id} ORDER BY _id DESC`; } catch {}
+    try { requirements = await db`SELECT * FROM requirements WHERE project_id = ${id} ORDER BY _id`; } catch { /* table may not exist */ }
+    try { releases = await db`SELECT * FROM releases WHERE project_id = ${id} ORDER BY _id DESC`; } catch { /* table may not exist */ }
+    try { deployments = await db`SELECT * FROM deployments WHERE project_id = ${id} ORDER BY _id DESC`; } catch { /* table may not exist */ }
+    try { testRuns = await db`SELECT * FROM test_runs WHERE project_id = ${id} ORDER BY _id DESC`; } catch { /* table may not exist */ }
+    try { incidents = await db`SELECT * FROM incidents WHERE project_id = ${id} ORDER BY _id DESC`; } catch { /* table may not exist */ }
 
     await db.end();
 

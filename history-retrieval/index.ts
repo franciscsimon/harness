@@ -136,7 +136,7 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
-    if (sql) { try { await sql.end(); } catch {} sql = null; }
+    if (sql) { try { await sql.end(); } catch { /* cleanup — safe to ignore */ } sql = null; }
   });
 }
 
@@ -159,6 +159,6 @@ function truncFiles(filesJson: string): string {
   try {
     const arr = JSON.parse(filesJson);
     if (Array.isArray(arr)) return arr.map((f: string) => f.split("/").pop()).join(", ");
-  } catch {}
+  } catch { /* parse fallback — use default */ }
   return filesJson.slice(0, 60);
 }

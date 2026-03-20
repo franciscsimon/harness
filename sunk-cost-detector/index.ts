@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import postgres from "postgres";
+import { captureError } from "../lib/errors.ts";
 
 const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
 const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
@@ -220,11 +221,13 @@ export default function (pi: ExtensionAPI) {
           const id = `fm:${now}:${path.replace(/[^a-zA-Z0-9]/g, "_").slice(0, 40)}`;
           await db`INSERT INTO file_metrics (_id, project_id, session_id, file_path, edit_count, error_count, ts)
             VALUES (${t(id)}, ${t(projectId)}, ${t(sessionId)}, ${t(path)}, ${n(edits)}, ${n(fileErrors[path] ?? 0)}, ${n(now)})`;
-        } catch {}
+        } catch (err) {
+          captureError({ component: "sunk-cost-detector", operation: "INSERT file_metrics", error: err, severity: "data_loss" });
+        }
       }
     }
     if (sql) {
-      try { await sql.end(); } catch {}
+      try { await sql.end(); } catch { /* cleanup — safe to ignore */ }
       sql = null;
     }
   });

@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { captureError } from "../lib/errors.ts";
 
 // ─── Happy to Delete Extension ────────────────────────────────────
 // Tracks all files created/modified by the agent in a session.
@@ -56,7 +57,9 @@ export default function (pi: ExtensionAPI) {
       ];
 
       writeFileSync(join(outDir, "ai-files.md"), lines.join("\n"), "utf-8");
-    } catch {}
+    } catch (err) {
+      captureError({ component: "happy-to-delete", operation: "writeFileSync ai-files.md", error: err, severity: "data_loss" });
+    }
   });
 
   // ── /ai-files command ──

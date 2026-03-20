@@ -1,6 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
+import { captureError } from "../lib/errors.ts";
 import { spawn } from "node:child_process";
 import { ids } from "../lib/jsonld/ids.ts";
 import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
@@ -202,7 +203,7 @@ export default function (pi: ExtensionAPI) {
       );
     }
     if (sql) {
-      try { await sql.end(); } catch {}
+      try { await sql.end(); } catch { /* cleanup — safe to ignore */ }
       sql = null;
     }
   });
@@ -305,7 +306,9 @@ function runSubagent(task: string, agentPrompt?: string, cwd?: string): Promise<
             if (parsed.type === "session" && parsed.id) {
               childSessionId = parsed.id;
             }
-          } catch {}
+          } catch (err) {
+            captureError({ component: "agent-spawner", operation: "parse agent stdout", error: err, severity: "degraded" });
+          }
         }
         // Extract final assistant text
         for (let i = lines.length - 1; i >= 0; i--) {

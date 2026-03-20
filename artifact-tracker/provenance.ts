@@ -37,27 +37,27 @@ async function collectProvenanceGraph(db: Sql, sessionIds: string[]): Promise<an
     try {
       const avRows = await db`SELECT jsonld FROM artifact_versions WHERE session_id = ${sid} AND jsonld != '' ORDER BY ts`;
       for (const r of avRows) { if (r.jsonld) graph.push(JSON.parse(r.jsonld)); }
-    } catch {}
+    } catch { /* parse fallback — use default */ }
 
     try {
       const artRows = await db`SELECT jsonld FROM artifacts WHERE session_id = ${sid} AND jsonld != '' ORDER BY ts`;
       for (const r of artRows) { if (r.jsonld) graph.push(JSON.parse(r.jsonld)); }
-    } catch {}
+    } catch { /* parse fallback — use default */ }
 
     try {
       const decRows = await db`SELECT jsonld FROM decisions WHERE session_id = ${sid} AND jsonld != '' ORDER BY ts`;
       for (const r of decRows) { if (r.jsonld) graph.push(JSON.parse(r.jsonld)); }
-    } catch {}
+    } catch { /* parse fallback — use default */ }
 
     try {
       const delRows = await db`SELECT jsonld FROM delegations WHERE (parent_session_id = ${sid} OR child_session_id = ${sid}) AND jsonld != '' ORDER BY ts`;
       for (const r of delRows) { if (r.jsonld) graph.push(JSON.parse(r.jsonld)); }
-    } catch {}
+    } catch { /* parse fallback — use default */ }
 
     try {
       const pmRows = await db`SELECT jsonld FROM session_postmortems WHERE session_id = ${sid} AND jsonld != '' ORDER BY ts`;
       for (const r of pmRows) { if (r.jsonld) graph.push(JSON.parse(r.jsonld)); }
-    } catch {}
+    } catch { /* parse fallback — use default */ }
   }
 
   return deduplicateById(graph);

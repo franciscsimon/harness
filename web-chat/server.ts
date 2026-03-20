@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
 import { readFileSync } from "node:fs";
+import { captureError } from "../lib/errors.ts";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -219,11 +220,15 @@ app.get("/ws", upgradeWebSocket((c) => {
             break;
 
           case "steer":
-            try { await session!.steer(msg.text); } catch {}
+            try { await session!.steer(msg.text); } catch (err) {
+              captureError({ component: "web-chat", operation: "session.steer", error: err, severity: "degraded" });
+            }
             break;
 
           case "followUp":
-            try { await session!.followUp(msg.text); } catch {}
+            try { await session!.followUp(msg.text); } catch (err) {
+              captureError({ component: "web-chat", operation: "session.followUp", error: err, severity: "degraded" });
+            }
             break;
 
           case "compact":
@@ -240,7 +245,9 @@ app.get("/ws", upgradeWebSocket((c) => {
             break;
 
           case "abort":
-            try { await session!.abort(); } catch {}
+            try { await session!.abort(); } catch (err) {
+              captureError({ component: "web-chat", operation: "session.abort", error: err, severity: "degraded" });
+            }
             send(ws, { type: "status", state: "idle" });
             break;
 

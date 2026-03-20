@@ -2,6 +2,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { ids } from "../lib/jsonld/ids.ts";
 import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
 import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
+import { captureError } from "../lib/errors.ts";
 
 // ─── In-memory state collected during session ──────────────────────
 
@@ -83,7 +84,9 @@ export default function (pi: ExtensionAPI) {
       try {
         const input = e?.input ?? e?.args;
         if (input?.path) state.filesChanged.add(input.path);
-      } catch {}
+      } catch (err) {
+        captureError({ component: "session-postmortem", operation: "track file changes", error: err, severity: "degraded" });
+      }
     }
 
     // Track bash commands
@@ -91,7 +94,9 @@ export default function (pi: ExtensionAPI) {
       try {
         const input = e?.input ?? e?.args;
         if (input?.command) state.bashCommands.push(String(input.command).slice(0, 200));
-      } catch {}
+      } catch (err) {
+        captureError({ component: "session-postmortem", operation: "track bash commands", error: err, severity: "degraded" });
+      }
     }
   });
 
@@ -102,7 +107,7 @@ export default function (pi: ExtensionAPI) {
 
     // Only persist if there was meaningful activity
     if (state.turnCount === 0) {
-      if (sql) { try { await sql.end(); } catch {} sql = null; }
+      if (sql) { try { await sql.end(); } catch { /* cleanup — safe to ignore */ } sql = null; }
       return;
     }
 
@@ -126,15 +131,21 @@ export default function (pi: ExtensionAPI) {
     try {
       const [av] = await db`SELECT COUNT(*)::int AS c FROM artifact_versions WHERE session_id = ${sessionId}`;
       artifactVersionCount = av?.c ?? 0;
-    } catch {}
+    } catch (err) {
+      captureError({ component: "session-postmortem", operation: "SELECT artifact_versions count", error: err, severity: "degraded" });
+    }
     try {
       const [dc] = await db`SELECT COUNT(*)::int AS c FROM decisions WHERE session_id = ${sessionId}`;
       decisionCount = dc?.c ?? 0;
-    } catch {}
+    } catch (err) {
+      captureError({ component: "session-postmortem", operation: "SELECT decisions count", error: err, severity: "degraded" });
+    }
     try {
       const [dl] = await db`SELECT COUNT(*)::int AS c FROM delegations WHERE parent_session_id = ${sessionId}`;
       delegationCount = dl?.c ?? 0;
-    } catch {}
+    } catch (err) {
+      captureError({ component: "session-postmortem", operation: "SELECT delegations count", error: err, severity: "degraded" });
+    }
 
     const jsonld = JSON.stringify({
       "@context": JSONLD_CONTEXT,
@@ -171,6 +182,6 @@ export default function (pi: ExtensionAPI) {
       console.error(`[session-postmortem] persist failed: ${err}`);
     }
 
-    if (sql) { try { await sql.end(); } catch {} sql = null; }
+    if (sql) { try { await sql.end(); } catch { /* cleanup — safe to ignore */ } sql = null; }
   });
 }

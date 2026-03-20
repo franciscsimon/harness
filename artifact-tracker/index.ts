@@ -6,6 +6,7 @@ import { captureVersion, cleanupArtifacts, clearVersionState } from "./versionin
 import { cmdList, cmdRestore, cmdHistory } from "./commands.js";
 import { cmdExportProvenance } from "./provenance.js";
 import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
+import { captureError } from "../lib/errors.ts";
 
 interface PendingCall {
   toolName: string;
@@ -48,7 +49,9 @@ export default function (pi: ExtensionAPI) {
     try {
       await db`INSERT INTO artifact_reads (_id, session_id, path, tool_call_id, ts)
         VALUES (${t(id)}, ${t(sessionId)}, ${t(absPath)}, ${t(callId)}, ${n(Date.now())})`;
-    } catch {}
+    } catch (err) {
+      captureError({ component: "artifact-tracker", operation: "INSERT artifact_reads", error: err, severity: "data_loss" });
+    }
   }
 
   pi.on("tool_execution_end", async (event) => {
