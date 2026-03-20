@@ -32,6 +32,31 @@ services:
       retries: 10
       start_period: 10s
 
+  # ── Garage (S3-compatible shared object store for XTDB) ────────
+  garage:
+    image: dxflrs/garage:v1.1.0
+    container_name: garage
+    restart: unless-stopped
+    volumes:
+      - garage-data:/var/lib/garage
+      - ./garage.toml:/etc/garage.toml:ro
+    ports:
+      - "3900:3900"    # S3 API
+      - "3903:3903"    # Admin API
+    # Note: scratch image has no shell — healthcheck via garage-init wait loop instead
+
+  # ── Bootstrap Garage: layout + bucket + API key ────────────────
+  garage-init:
+    image: alpine:3.21
+    container_name: garage-init
+    depends_on:
+      garage:
+        condition: service_started
+    volumes:
+      - ./garage-init.sh:/garage-init.sh:ro
+    entrypoint: ["/bin/sh", "/garage-init.sh"]
+    restart: "no"
+
   # ── XTDB primary (writes + reads) ─────────────────────────────
   xtdb-primary:
     image: ghcr.io/xtdb/xtdb-aws:2.1.0
@@ -56,6 +81,8 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
+      garage-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/healthz/alive || exit 1"]
       interval: 5s
@@ -87,6 +114,8 @@ services:
     depends_on:
       redpanda:
         condition: service_healthy
+      garage-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/healthz/alive || exit 1"]
       interval: 5s
@@ -119,3 +148,4 @@ volumes:
   redpanda-data:
   xtdb-primary-data:
   xtdb-replica-data:
+  garage-data:

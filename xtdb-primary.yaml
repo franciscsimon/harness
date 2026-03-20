@@ -1,14 +1,26 @@
 logClusters:
   kafkaCluster: !Kafka
     bootstrapServers: "redpanda:9092"
+    propertiesMap:
+      max.request.size: "10485760"
 
 log: !Kafka
   cluster: kafkaCluster
   topic: "xtdb-log"
   autoCreateTopic: true
-  epoch: 1
+  epoch: 2
 
-storage: !Local
+storage: !Remote
+  objectStore: !S3
+    bucket: "xtdb"
+    endpoint: "http://garage:3900"
+    pathStyleAccessEnabled: true
+    region: "garage"
+    credentials:
+      accessKey: "GK02e8e11dbf9b0325065707e5"
+      secretKey: "9834ce4f6ac15c899f31534198c3b15b67e0f30939a8911c7939c88e7603dc56"
+
+diskCache:
   path: "/var/lib/xtdb/buffers"
 
 server:
