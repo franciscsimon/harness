@@ -555,6 +555,84 @@ Event feed for lifecycle state changes (phase changes, CI events, etc.).
 | `summary` | text | Human-readable summary |
 | `ts` | bigint | Timestamp |
 
+### `errors`
+Enriched error records. Written to disk first (errors.jsonl), then flushed to XTDB by a collector.
+Survives DB outages — disk is the source of truth, XTDB is the queryable copy.
+
+**Source:** `lib/errors.ts` (shared error capture library)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `_id` | text | Error ID (e.g. "err:artifact-tracker:1711234567890:a1b2c3") |
+| `component` | text | Which component/extension (e.g. "artifact-tracker", "xtdb-ops-api") |
+| `operation` | text | What was being attempted (e.g. "INSERT artifact_reads", "session.steer") |
+| `error_message` | text | Error message string |
+| `error_stack` | text | Stack trace (truncated to 4KB) |
+| `error_type` | text | Error class name (e.g. "PostgresError", "TypeError", "ConnectionRefused") |
+| `severity` | text | "data_loss" / "degraded" / "transient" / "cosmetic" |
+| `session_id` | text | Agent session ID (if available) |
+| `project_id` | text | Project ID (if available) |
+| `input_summary` | text | Truncated summary of input data being processed (max 1KB) |
+| `context_json` | text | Additional context as JSON (table name, endpoint, event_name, etc.) |
+| `ts` | bigint | Timestamp (epoch ms) |
+| `flushed` | boolean | Whether this error has been written to XTDB (used by collector) |
+| `jsonld` | text | JSON-LD provenance document (see below) |
+
+**JSON-LD vocabulary:**
+```json
+{
+  "@context": {
+    "ev": "https://pi.dev/events/",
+    "prov": "http://www.w3.org/ns/prov#",
+    "schema": "https://schema.org/",
+    "xsd": "http://www.w3.org/2001/XMLSchema#"
+  },
+  "@id": "urn:pi:err:artifact-tracker:1711234567890:a1b2c3",
+  "@type": "schema:Action",
+  "schema:actionStatus": "schema:FailedActionStatus",
+  "schema:name": "INSERT artifact_reads",
+  "schema:agent": {
+    "@type": "prov:SoftwareAgent",
+    "schema:name": "artifact-tracker"
+  },
+  "schema:error": {
+    "@type": "schema:Thing",
+    "schema:name": "PostgresError",
+    "schema:description": "connection refused"
+  },
+  "ev:severity": "data_loss",
+  "ev:inputSummary": "path=/Users/x/foo.ts, session=abc123",
+  "prov:wasAssociatedWith": { "@id": "urn:pi:session:abc123" },
+  "prov:atLocation": { "@id": "urn:pi:proj:harness" },
+  "prov:generatedAtTime": { "@value": "2026-03-20T06:30:00Z", "@type": "xsd:dateTime" }
+}
+```
+
+Vocabulary mapping rationale:
+- `schema:Action` + `schema:FailedActionStatus` — it's a failed action (standard Schema.org)
+- `schema:agent` → the component that failed (maps to `prov:SoftwareAgent`)
+- `schema:error` → the error itself with type + message
+- `ev:severity` — custom (no standard equivalent for data_loss/degraded/transient/cosmetic)
+- `prov:wasAssociatedWith` → links to session (existing pattern)
+- `prov:atLocation` → links to project (existing pattern)
+
+**Error flow:**
+```
+1. catch block → call captureError({ component, operation, error, severity, ... })
+2. captureError() → appendFileSync("errors.jsonl", JSON.stringify(enrichedError))
+3. Collector (interval) → read errors.jsonl → INSERT INTO errors → mark flushed
+4. XTDB replicates via Kafka → replica has full error history
+```
+
+**Why disk-first:** If XTDB is down (the most common cause of errors), writing the error
+to XTDB would also fail. The JSONL file on local disk is the safety net that never fails.
+
+**Severity levels:**
+- `data_loss` — a DB write failed silently, data is missing
+- `degraded` — a feature is broken but the agent continues
+- `transient` — temporary failure (connection timeout, retry likely to succeed)
+- `cosmetic` — non-functional issue (UI rendering, formatting)
+
 ---
 
 ## Table Count Summary
@@ -567,5 +645,5 @@ Event feed for lifecycle state changes (phase changes, CI events, etc.).
 | Artifacts | artifacts, artifact_versions, artifact_reads, artifact_cleanup | 4 |
 | Workflows & Requirements | workflow_runs, workflow_step_runs, requirements, requirement_links | 4 |
 | CI/CD | releases, deployments, test_runs, environments | 4 |
-| Operations | backup_records, incidents, lifecycle_events | 3 |
-| **Total** | | **26** |
+| Operations | backup_records, incidents, lifecycle_events, errors | 4 |
+| **Total** | | **27** |

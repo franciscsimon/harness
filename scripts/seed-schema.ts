@@ -472,6 +472,24 @@ const schema: TableDef[] = [
     },
   },
   {
+    table: "errors",
+    columns: {
+      _id: "text",
+      component: "text",
+      operation: "text",
+      error_message: "text",
+      error_stack: "text",
+      error_type: "text",
+      severity: "text",
+      session_id: "text",
+      project_id: "text",
+      input_summary: "text",
+      context_json: "text",
+      ts: "bigint",
+      flushed: "boolean",
+    },
+  },
+  {
     table: "lifecycle_events",
     columns: {
       _id: "text",
