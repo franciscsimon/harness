@@ -36,41 +36,7 @@ export async function renderHome(): Promise<string> {
 
     ${renderCategoryBreakdown(stats)}
 
-    <div class="section">
-      <div class="section-header">
-        <h2>Quick Links</h2>
-      </div>
-      <div class="grid grid-3">
-        <a href="/sessions" class="card" style="text-decoration:none">
-          <h3>📋 Sessions</h3>
-          <p style="color:var(--text-dim);font-size:0.85rem">Browse agent sessions and events</p>
-        </a>
-        <a href="/projects" class="card" style="text-decoration:none">
-          <h3>📁 Projects</h3>
-          <p style="color:var(--text-dim);font-size:0.85rem">Portfolio overview and lifecycle</p>
-        </a>
-        <a href="/ops" class="card" style="text-decoration:none">
-          <h3>🔧 Operations</h3>
-          <p style="color:var(--text-dim);font-size:0.85rem">Infrastructure health and backups</p>
-        </a>
-        <a href="/dashboard" class="card" style="text-decoration:none">
-          <h3>📊 Dashboard</h3>
-          <p style="color:var(--text-dim);font-size:0.85rem">Session health analytics</p>
-        </a>
-        <a href="/decisions" class="card" style="text-decoration:none">
-          <h3>📝 Decisions</h3>
-          <p style="color:var(--text-dim);font-size:0.85rem">Decision log browser</p>
-        </a>
-        <a href="/artifacts" class="card" style="text-decoration:none">
-          <h3>📦 Artifacts</h3>
-          <p style="color:var(--text-dim);font-size:0.85rem">Tracked files and versions</p>
-        </a>
-        <a href="/graph" class="card" style="text-decoration:none">
-          <h3>🕸️ Graph</h3>
-          <p style="color:var(--text-dim);font-size:0.85rem">Call graph & SPARQL explorer</p>
-        </a>
-      </div>
-    </div>
+
   `;
 
   return layout(content, { title: "Home", activePath: "/" });
