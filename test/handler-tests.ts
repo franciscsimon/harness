@@ -154,6 +154,87 @@ async function run() {
     test("before_provider_request.providerPayload", !!fields.providerPayload && fields.providerPayload.includes("claude-3"), `providerPayload present=${!!fields.providerPayload}`);
   }
 
+  // ── session_start ──
+  {
+    const { handler } = await import("../xtdb-event-logger/handlers/session-start.ts");
+    const fields = handler({}, { sessionId: "s1", cwd: "/tmp", seq: 15 });
+    test("session_start", typeof fields === "object", `returns object=${typeof fields === "object"}`);
+  }
+
+  // ── session_shutdown ──
+  {
+    const { handler } = await import("../xtdb-event-logger/handlers/session-shutdown.ts");
+    const fields = handler({}, { sessionId: "s1", cwd: "/tmp", seq: 16 });
+    test("session_shutdown", typeof fields === "object", `returns object=${typeof fields === "object"}`);
+  }
+
+  // ── session_compact ──
+  {
+    const { handler } = await import("../xtdb-event-logger/handlers/session-compact.ts");
+    const raw = { fromExtension: true };
+    const fields = handler(raw, { sessionId: "s1", cwd: "/tmp", seq: 17 });
+    test("session_compact.compactFromExt", fields.compactFromExt === true, `compactFromExt=${fields.compactFromExt}`);
+    const fields2 = handler({}, { sessionId: "s1", cwd: "/tmp", seq: 18 });
+    test("session_compact.null_default", fields2.compactFromExt === null, `compactFromExt=${fields2.compactFromExt}`);
+  }
+
+  // ── session_directory ──
+  {
+    const { handler } = await import("../xtdb-event-logger/handlers/session-directory.ts");
+    const raw = { cwd: "/home/user/project" };
+    const fields = handler(raw, { sessionId: "s1", cwd: "/tmp", seq: 19 });
+    test("session_directory.eventCwd", fields.eventCwd === "/home/user/project", `eventCwd=${fields.eventCwd}`);
+    const fields2 = handler({}, { sessionId: "s1", cwd: "/tmp", seq: 20 });
+    test("session_directory.null_default", fields2.eventCwd === null, `eventCwd=${fields2.eventCwd}`);
+  }
+
+  // ── session_fork ──
+  {
+    const { handler } = await import("../xtdb-event-logger/handlers/session-fork.ts");
+    const raw = { previousSessionFile: "/tmp/old-session.json" };
+    const fields = handler(raw, { sessionId: "s1", cwd: "/tmp", seq: 21 });
+    test("session_fork.forkPrevious", fields.forkPrevious === "/tmp/old-session.json", `forkPrevious=${fields.forkPrevious}`);
+  }
+
+  // ── session_switch ──
+  {
+    const { handler } = await import("../xtdb-event-logger/handlers/session-switch.ts");
+    const raw = { reason: "user_request", previousSessionFile: "/tmp/prev.json" };
+    const fields = handler(raw, { sessionId: "s1", cwd: "/tmp", seq: 22 });
+    test("session_switch.switchReason", fields.switchReason === "user_request", `switchReason=${fields.switchReason}`);
+    test("session_switch.switchPrevious", fields.switchPrevious === "/tmp/prev.json", `switchPrevious=${fields.switchPrevious}`);
+  }
+
+  // ── session_tree ──
+  {
+    const { handler } = await import("../xtdb-event-logger/handlers/session-tree.ts");
+    const raw = { newLeafId: "leaf-new", oldLeafId: "leaf-old", fromExtension: false };
+    const fields = handler(raw, { sessionId: "s1", cwd: "/tmp", seq: 23 });
+    test("session_tree.treeNewLeaf", fields.treeNewLeaf === "leaf-new", `treeNewLeaf=${fields.treeNewLeaf}`);
+    test("session_tree.treeOldLeaf", fields.treeOldLeaf === "leaf-old", `treeOldLeaf=${fields.treeOldLeaf}`);
+    test("session_tree.treeFromExt", fields.treeFromExt === false, `treeFromExt=${fields.treeFromExt}`);
+  }
+
+  // ── turn_start ──
+  {
+    const { handler } = await import("../xtdb-event-logger/handlers/turn-start.ts");
+    const raw = { turnIndex: 3, timestamp: 1700000000000 };
+    const fields = handler(raw, { sessionId: "s1", cwd: "/tmp", seq: 24 });
+    test("turn_start.turnIndex", fields.turnIndex === 3, `turnIndex=${fields.turnIndex}`);
+    test("turn_start.turnTimestamp", fields.turnTimestamp === 1700000000000, `turnTimestamp=${fields.turnTimestamp}`);
+  }
+
+  // ── user_bash ──
+  {
+    const { handler } = await import("../xtdb-event-logger/handlers/user-bash.ts");
+    const raw = { command: "npm test", excludeFromContext: true };
+    const fields = handler(raw, { sessionId: "s1", cwd: "/tmp", seq: 25 });
+    test("user_bash.bashCommand", !!fields.bashCommand && fields.bashCommand.includes("npm test"), `bashCommand=${fields.bashCommand}`);
+    test("user_bash.bashExclude", fields.bashExclude === true, `bashExclude=${fields.bashExclude}`);
+    const fields2 = handler({}, { sessionId: "s1", cwd: "/tmp", seq: 26 });
+    test("user_bash.null_default", fields2.bashCommand === null, `bashCommand=${fields2.bashCommand}`);
+  }
+
   // ── Summary ──
   console.log("\n═══ Summary ═══");
   const passed = results.filter((r) => r.pass).length;

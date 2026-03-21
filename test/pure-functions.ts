@@ -28,6 +28,20 @@ import { shouldCapture, setSamplingInterval, flushSampler } from "../xtdb-event-
 import { routeEvent, ALL_EVENT_NAMES } from "../xtdb-event-logger/router.ts";
 import { buildDecisionJsonLd } from "../decision-log/rdf.ts";
 
+// Batch 1.1 — Utilities & Formatters
+import { escapeHtml, formatDate, formatDuration, formatNumber, healthColor as uiHealthColor, relativeTime as uiRelativeTime, truncate } from "../harness-ui/lib/format.ts";
+import { computeHealthScore as uiComputeHealthScore, healthColor as uiHealthColor2, healthLabel as uiHealthLabel } from "../harness-ui/lib/health.ts";
+import { badge, healthDot } from "../harness-ui/components/badge.ts";
+import { renderTable } from "../harness-ui/components/table.ts";
+import { b, n, t } from "../lib/db.ts";
+import { personAgent, piId, piRef, xsdLong, xsdBool, softwareAgent } from "../lib/jsonld/context.ts";
+
+// Batch 1.2 — Domain Logic
+import { compactEvent, getDisplayFields, getPopulatedFields } from "../xtdb-event-logger-ui/lib/format.ts";
+import { renderDiffHtml } from "../xtdb-event-logger-ui/lib/diff.ts";
+import { generateKnowledgeMarkdown } from "../xtdb-event-logger-ui/lib/knowledge.ts";
+import { send } from "../web-chat/lib/ws-protocol.ts";
+
 // ─── Health Score ─────────────────────────────────────────────
 
 console.log("\n── Health Score ──");
@@ -207,6 +221,226 @@ assert("null files excluded from output", !ld2Str.includes("src/a.ts"));
 assert("null alternatives excluded from output", !ld2Str.includes("rewrite from scratch"));
 assert("null tags excluded from output", !ld2Str.includes("architecture"));
 assert("default agent used when null", ld2Str.includes("pi-agent"));
+
+// ─── harness-ui Format Helpers ─────────────────────────────────
+
+console.log("\n── harness-ui Format Helpers ──");
+
+// escapeHtml
+eq("escapeHtml basic", escapeHtml("<b>hi</b>"), "&lt;b&gt;hi&lt;/b&gt;");
+eq("escapeHtml ampersand", escapeHtml("a & b"), "a &amp; b");
+eq("escapeHtml quotes", escapeHtml('"hello"'), "&quot;hello&quot;");
+eq("escapeHtml null", escapeHtml(null), "");
+eq("escapeHtml undefined", escapeHtml(undefined), "");
+
+// formatDate
+assert("formatDate valid timestamp", formatDate(1700000000000) !== "—");
+eq("formatDate invalid", formatDate("garbage"), "—");
+eq("formatDate zero", formatDate(0), "—");
+
+// formatDuration
+assert("formatDuration ms", formatDuration(500).includes("ms"));
+assert("formatDuration seconds", formatDuration(5000).includes("s"));
+assert("formatDuration minutes", formatDuration(120000).includes("m"));
+assert("formatDuration hours", formatDuration(7200000).includes("h"));
+eq("formatDuration null", formatDuration(null), "—");
+eq("formatDuration negative", formatDuration(-100), "—");
+eq("formatDuration string", formatDuration("5000").includes("s"), true);
+
+// formatNumber
+assert("formatNumber millions", formatNumber(1500000).includes("M"));
+assert("formatNumber thousands", formatNumber(5000).includes("K"));
+eq("formatNumber small", formatNumber(42), "42");
+
+// healthColor (harness-ui version — boolean)
+eq("uiHealthColor ok", uiHealthColor(true), "#238636");
+eq("uiHealthColor down", uiHealthColor(false), "#da3633");
+
+// relativeTime (harness-ui version)
+const nowTs = Date.now();
+assert("uiRelativeTime recent", uiRelativeTime(nowTs - 5000).includes("s ago") || uiRelativeTime(nowTs - 5000).includes("just now"));
+eq("uiRelativeTime invalid", uiRelativeTime("garbage"), "—");
+
+// truncate
+eq("truncate short", truncate("hello", 80), "hello");
+assert("truncate long", truncate("a".repeat(100), 50).endsWith("..."));
+assert("truncate long length", truncate("a".repeat(100), 50).length <= 50);
+
+// ─── harness-ui Health ────────────────────────────────────────
+
+console.log("\n── harness-ui Health ──");
+
+const uiPerfect = uiComputeHealthScore({ errorRate: 0, turnCount: 1, maxPayloadBytes: 0, durationMs: 0 });
+const uiWorst = uiComputeHealthScore({ errorRate: 1, turnCount: 50, maxPayloadBytes: 1_000_000, durationMs: 5_000_000 });
+assert("ui health perfect > worst", uiPerfect > uiWorst);
+assert("ui health range 0-100", uiPerfect >= 0 && uiPerfect <= 100);
+eq("ui healthColor2 high", uiHealthColor2(85), "green");
+eq("ui healthColor2 mid", uiHealthColor2(50), "yellow");
+eq("ui healthColor2 low", uiHealthColor2(30), "red");
+eq("ui healthLabel high", uiHealthLabel(90), "Healthy");
+eq("ui healthLabel mid", uiHealthLabel(50), "Fair");
+eq("ui healthLabel low", uiHealthLabel(20), "Struggling");
+
+// ─── Badge Component ──────────────────────────────────────────
+
+console.log("\n── Badge Component ──");
+
+assert("badge contains status text", badge("active").includes("active"));
+assert("badge has span", badge("active").includes("<span"));
+assert("badge unknown status has fallback", badge("xyz_unknown").includes("xyz_unknown"));
+assert("badge escapes html", badge("<script>").includes("&lt;script&gt;"));
+
+assert("healthDot ok green", healthDot(true).includes("#238636"));
+assert("healthDot down red", healthDot(false).includes("#da3633"));
+assert("healthDot custom label", healthDot(true, "UP").includes("UP"));
+assert("healthDot default label ok", healthDot(true).includes("healthy"));
+assert("healthDot default label down", healthDot(false).includes("down"));
+
+// ─── Table Component ─────────────────────────────────────────
+
+console.log("\n── Table Component ──");
+
+const cols = [{ key: "name", label: "Name" }, { key: "val", label: "Value" }];
+const tableOut = renderTable(cols, [{ name: "Alice", val: 42 }]);
+assert("table has thead", tableOut.includes("<thead>"));
+assert("table has tbody", tableOut.includes("<tbody>"));
+assert("table contains data", tableOut.includes("Alice"));
+assert("table contains header", tableOut.includes("Name"));
+
+const emptyTable = renderTable(cols, []);
+assert("empty table shows message", emptyTable.includes("No data"));
+
+const customEmpty = renderTable(cols, [], { emptyMessage: "Nothing here" });
+assert("custom empty message", customEmpty.includes("Nothing here"));
+
+const withRender = renderTable(
+  [{ key: "x", label: "X", render: (v: any) => `<b>${v}</b>` }],
+  [{ x: "bold" }]
+);
+assert("custom render function", withRender.includes("<b>bold</b>"));
+
+// ─── SQL Helpers (existence) ──────────────────────────────────
+
+console.log("\n── SQL Helpers ──");
+
+assert("t is a function", typeof t === "function");
+assert("n is a function", typeof n === "function");
+assert("b is a function", typeof b === "function");
+
+// ─── JSON-LD Context ─────────────────────────────────────────
+
+console.log("\n── JSON-LD Context ──");
+
+const pa = personAgent("Alice");
+assert("personAgent has @type", "@type" in pa);
+assert("personAgent has foaf:name", "foaf:name" in pa);
+eq("personAgent name value", pa["foaf:name"], "Alice");
+
+const sa = softwareAgent("bot");
+assert("softwareAgent has @type", "@type" in sa);
+
+assert("piId returns urn", piId("test:123").startsWith("urn:pi:"));
+assert("piRef returns @id object", piRef("test:123")["@id"].startsWith("urn:pi:"));
+assert("xsdLong has @value", xsdLong(42)["@value"] === "42");
+assert("xsdBool has @value", xsdBool(true)["@value"] === "true");
+
+// ─── Event Logger Format ─────────────────────────────────────
+
+console.log("\n── Event Logger Format ──");
+
+const fakeRow: any = {
+  _id: "ev:test-1",
+  event_name: "tool_call",
+  category: "tool",
+  can_intercept: false,
+  seq: "5",
+  ts: "1700000000000",
+  session_id: "sess:abc",
+  cwd: "/tmp",
+  tool_name: "read",
+  tool_input: '{"path":"/tmp/foo.ts"}',
+};
+
+const compact = compactEvent(fakeRow);
+assert("compactEvent has eventName", "eventName" in compact);
+assert("compactEvent has fields", "fields" in compact);
+
+const displayFields = getDisplayFields(fakeRow);
+assert("getDisplayFields returns object", typeof displayFields === "object");
+// tool_call should have tool_name in display
+assert("getDisplayFields tool_call has tool_name", Object.keys(displayFields).some(k => k.includes("tool") || k.includes("name") || displayFields[k]?.includes("read")));
+
+const populated = getPopulatedFields(fakeRow);
+assert("getPopulatedFields excludes core keys", !("_id" in populated));
+assert("getPopulatedFields excludes event_name", !("event_name" in populated));
+assert("getPopulatedFields includes custom fields", "tool_name" in populated);
+
+const emptyRow: any = { _id: "ev:x", event_name: "unknown_event", category: "misc", can_intercept: false, seq: "1", ts: "0", session_id: null, cwd: null };
+const emptyFields = getDisplayFields(emptyRow);
+assert("getDisplayFields unknown event returns empty", Object.keys(emptyFields).length === 0);
+
+const popEmpty = getPopulatedFields({ _id: "ev:x", event_name: "x", category: "a", can_intercept: false, seq: "1", ts: "0", session_id: null, cwd: null } as any);
+assert("getPopulatedFields all-null returns empty", Object.keys(popEmpty).length === 0);
+
+// ─── Diff Rendering ──────────────────────────────────────────
+
+console.log("\n── Diff Rendering ──");
+
+const diffLines = computeLineDiff("a\nb", "a\nB");
+const diffHtml = renderDiffHtml(diffLines);
+assert("renderDiffHtml has summary", diffHtml.includes("diff-summary"));
+assert("renderDiffHtml has add class", diffHtml.includes("diff-add") || diffHtml.includes("diff-remove"));
+assert("renderDiffHtml escapes html", renderDiffHtml([{ type: "add", text: "<script>" }]).includes("&lt;script&gt;"));
+
+const emptyDiffHtml = renderDiffHtml([]);
+assert("renderDiffHtml empty has summary", emptyDiffHtml.includes("+0 / -0"));
+
+// ─── Knowledge Markdown ──────────────────────────────────────
+
+console.log("\n── Knowledge Markdown ──");
+
+const knowledge = {
+  filesModified: ["src/a.ts", "src/b.ts"],
+  toolUsage: { read: 5, write: 3 },
+  errorCount: 2,
+  turnCount: 4,
+  bashCommands: ["npm test", "git status"],
+  durationMs: 120_000,
+  eventCount: 50,
+};
+const md = generateKnowledgeMarkdown("user/session-abc", knowledge);
+assert("knowledge md has title", md.includes("# Session Summary"));
+assert("knowledge md has session name", md.includes("session-abc"));
+assert("knowledge md has files", md.includes("src/a.ts"));
+assert("knowledge md has tools table", md.includes("read") && md.includes("write"));
+assert("knowledge md has bash commands", md.includes("npm test"));
+assert("knowledge md has error count", md.includes("2"));
+
+const emptyKnowledge = {
+  filesModified: [],
+  toolUsage: {},
+  errorCount: 0,
+  turnCount: 0,
+  bashCommands: [],
+  durationMs: 5000,
+  eventCount: 0,
+};
+const emptyMd = generateKnowledgeMarkdown("sess:empty", emptyKnowledge);
+assert("empty knowledge has no file mods message", emptyMd.includes("No file modifications"));
+assert("empty knowledge has no bash message", emptyMd.includes("No bash commands"));
+
+// ─── WS Protocol (send) ──────────────────────────────────────
+
+console.log("\n── WS Protocol (send) ──");
+
+assert("send is a function", typeof send === "function");
+let sentData = "";
+const mockWs = { send: (d: string) => { sentData = d; } };
+send(mockWs, { type: "text_delta", text: "hello" });
+assert("send serializes to JSON", sentData.includes("text_delta"));
+assert("send includes payload", sentData.includes("hello"));
+const parsed = JSON.parse(sentData);
+eq("send type field", parsed.type, "text_delta");
 
 // ─── Summary ──────────────────────────────────────────────────
 
