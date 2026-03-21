@@ -42,6 +42,20 @@ import { renderDiffHtml } from "../xtdb-event-logger-ui/lib/diff.ts";
 import { generateKnowledgeMarkdown } from "../xtdb-event-logger-ui/lib/knowledge.ts";
 import { send } from "../web-chat/lib/ws-protocol.ts";
 
+// Batch 1.3 — Config & Identity
+import { loadCanaryConfig } from "../canary-monitor/config.ts";
+import { loadHabitConfig } from "../habit-monitor/config.ts";
+import { projectId } from "../project-registry/identity.ts";
+import { discoverAgents, formatAgentList } from "../agent-spawner/agents.ts";
+
+// Batch 1.4 — Remaining Pure Functions
+import { computeToolFailureRate, computeTurnInflation, computeContextBloat, computeDuration, detectRetryStorm, computeToolDensity } from "../canary-monitor/metrics.ts";
+import { checkCommitHabit, checkTestHabit, checkErrorStreak, checkScopeCreep, checkFreshStart } from "../habit-monitor/habits.ts";
+import { isMutation, inputSummary } from "../xtdb-projector/mutations.ts";
+import { projectTask, projectReasoning, projectResult, projectChanges } from "../xtdb-projector/projectors.ts";
+import { createRunState, accumulate } from "../xtdb-projector/accumulator.ts";
+import { captureError, unflushedErrorCount } from "../lib/errors.ts";
+
 // ─── Health Score ─────────────────────────────────────────────
 
 console.log("\n── Health Score ──");
@@ -441,6 +455,341 @@ assert("send serializes to JSON", sentData.includes("text_delta"));
 assert("send includes payload", sentData.includes("hello"));
 const parsed = JSON.parse(sentData);
 eq("send type field", parsed.type, "text_delta");
+
+// ─── Canary Config ────────────────────────────────────────────
+
+console.log("\n── Canary Config ──");
+
+const canaryConf = loadCanaryConfig();
+assert("canary config has toolFailureRate", "toolFailureRate" in canaryConf);
+assert("canary config has maxTurnsPerRun", "maxTurnsPerRun" in canaryConf);
+assert("canary config has contextBloatBytes", "contextBloatBytes" in canaryConf);
+assert("canary config has maxDurationMs", "maxDurationMs" in canaryConf);
+assert("canary config has retryStormCount", "retryStormCount" in canaryConf);
+assert("canary config has maxToolsPerTurn", "maxToolsPerTurn" in canaryConf);
+assert("canary toolFailureRate is a number", typeof canaryConf.toolFailureRate === "number");
+assert("canary maxTurnsPerRun is a number", typeof canaryConf.maxTurnsPerRun === "number");
+
+// ─── Habit Config ─────────────────────────────────────────────
+
+console.log("\n── Habit Config ──");
+
+const habitConf = loadHabitConfig();
+assert("habit config has thresholds", "thresholds" in habitConf);
+assert("habit config has enabled", "enabled" in habitConf);
+assert("habit thresholds has commitReminderEdits", "commitReminderEdits" in habitConf.thresholds);
+assert("habit thresholds has testReminderEdits", "testReminderEdits" in habitConf.thresholds);
+assert("habit thresholds has errorStreakCount", "errorStreakCount" in habitConf.thresholds);
+assert("habit thresholds has freshStartBytes", "freshStartBytes" in habitConf.thresholds);
+assert("habit thresholds has scopeCreepFiles", "scopeCreepFiles" in habitConf.thresholds);
+assert("habit enabled is an object", typeof habitConf.enabled === "object");
+
+// ─── Project Identity ─────────────────────────────────────────
+
+console.log("\n── Project Identity ──");
+
+const pid1 = projectId("git:github.com/user/repo");
+assert("projectId returns non-empty string", typeof pid1 === "string" && pid1.length > 0);
+assert("projectId starts with proj:", pid1.startsWith("proj:"));
+const pid2 = projectId("git:github.com/user/repo");
+eq("projectId is deterministic", pid1, pid2);
+const pid3 = projectId("git:github.com/other/repo");
+assert("projectId differs for different input", pid1 !== pid3);
+assert("projectId hash portion is hex", /^proj:[0-9a-f]+$/.test(pid1));
+
+// ─── Agent Spawner ────────────────────────────────────────────
+
+console.log("\n── Agent Spawner ──");
+
+const agents = discoverAgents();
+assert("discoverAgents returns array", Array.isArray(agents));
+// agents may be empty if ~/.pi/agent/agents/ doesn't exist — that's fine
+
+const formatted = formatAgentList([]);
+assert("formatAgentList empty returns string", typeof formatted === "string");
+assert("formatAgentList empty mentions no agents", formatted.toLowerCase().includes("no agent"));
+
+const fakeAgents = [
+  { name: "tester", description: "writes tests", systemPrompt: "test" },
+  { name: "reviewer", description: "reviews code", systemPrompt: "review" },
+];
+const formattedList = formatAgentList(fakeAgents as any);
+assert("formatAgentList includes agent names", formattedList.includes("tester") && formattedList.includes("reviewer"));
+assert("formatAgentList includes descriptions", formattedList.includes("writes tests"));
+
+// ─── Canary Metrics ───────────────────────────────────────────
+
+console.log("\n── Canary Metrics ──");
+
+const thresholds = loadCanaryConfig();
+
+// computeToolFailureRate
+const tfr0 = computeToolFailureRate([], thresholds);
+assert("tfr empty has value/threshold/alert/message", "value" in tfr0 && "threshold" in tfr0 && "alert" in tfr0 && "message" in tfr0);
+eq("tfr empty value is 0", tfr0.value, 0);
+eq("tfr empty not alerting", tfr0.alert, false);
+
+const tfrLow = computeToolFailureRate([{ is_error: false }, { is_error: false }, { is_error: true }], thresholds);
+assert("tfr low rate is fraction", tfrLow.value > 0 && tfrLow.value < 1);
+
+const tfrHigh = computeToolFailureRate(
+  Array(10).fill({ is_error: true }),
+  thresholds,
+);
+eq("tfr all errors rate is 1", tfrHigh.value, 1);
+eq("tfr all errors alerts", tfrHigh.alert, true);
+assert("tfr all errors has message", tfrHigh.message.length > 0);
+
+// computeTurnInflation
+const ti1 = computeTurnInflation(1, thresholds);
+assert("turn inflation has fields", "value" in ti1 && "threshold" in ti1 && "alert" in ti1);
+eq("turn inflation low not alerting", ti1.alert, false);
+
+const ti100 = computeTurnInflation(100, thresholds);
+eq("turn inflation high alerts", ti100.alert, true);
+assert("turn inflation high has message", ti100.message.length > 0);
+
+// computeContextBloat
+const cb0 = computeContextBloat(0, thresholds);
+eq("context bloat zero not alerting", cb0.alert, false);
+
+const cbBig = computeContextBloat(10_000_000, thresholds);
+eq("context bloat big alerts", cbBig.alert, true);
+assert("context bloat big has message", cbBig.message.length > 0);
+
+// computeDuration
+const dur0 = computeDuration(0, thresholds);
+eq("duration zero not alerting", dur0.alert, false);
+
+const durLong = computeDuration(999_999_999, thresholds);
+eq("duration long alerts", durLong.alert, true);
+assert("duration long has message", durLong.message.length > 0);
+
+// detectRetryStorm
+const rsNone = detectRetryStorm([], thresholds);
+assert("retry storm has fields", "detected" in rsNone && "tool" in rsNone && "consecutiveCount" in rsNone);
+eq("retry storm empty not detected", rsNone.detected, false);
+
+const rsStorm = detectRetryStorm(
+  Array(5).fill({ tool_name: "read" }),
+  thresholds,
+);
+eq("retry storm 5x same tool detected", rsStorm.detected, true);
+eq("retry storm tool name", rsStorm.tool, "read");
+assert("retry storm has message", rsStorm.message.length > 0);
+
+const rsMixed = detectRetryStorm(
+  [{ tool_name: "read" }, { tool_name: "write" }, { tool_name: "read" }],
+  thresholds,
+);
+eq("retry storm mixed not detected", rsMixed.detected, false);
+
+// computeToolDensity
+const td1 = computeToolDensity(1, thresholds);
+eq("tool density 1 not alerting", td1.alert, false);
+const td100 = computeToolDensity(100, thresholds);
+eq("tool density 100 alerts", td100.alert, true);
+
+// ─── Habit Monitor ────────────────────────────────────────────
+
+console.log("\n── Habit Monitor ──");
+
+const hThresholds = loadHabitConfig().thresholds;
+
+// checkCommitHabit
+const ch0 = checkCommitHabit([], [], hThresholds);
+assert("commit habit has fields", "name" in ch0 && "alert" in ch0 && "value" in ch0 && "threshold" in ch0 && "prompt" in ch0);
+eq("commit habit no edits not alerting", ch0.alert, false);
+
+const chMany = checkCommitHabit(
+  Array(20).fill("write"),
+  [],
+  hThresholds,
+);
+eq("commit habit many edits alerts", chMany.alert, true);
+assert("commit habit has prompt", chMany.prompt.length > 0);
+
+const chAfterCommit = checkCommitHabit(
+  ["write", "write"],
+  ["git commit -m 'done'"],
+  hThresholds,
+);
+eq("commit habit after commit not alerting", chAfterCommit.alert, false);
+
+// checkTestHabit
+const th0 = checkTestHabit([], [], hThresholds);
+eq("test habit no edits not alerting", th0.alert, false);
+
+const thMany = checkTestHabit(
+  Array(20).fill("edit"),
+  [],
+  hThresholds,
+);
+eq("test habit many edits alerts", thMany.alert, true);
+
+// checkErrorStreak
+const es0 = checkErrorStreak([], hThresholds);
+eq("error streak empty not alerting", es0.alert, false);
+
+const esHigh = checkErrorStreak([true, true, true, true, true], hThresholds);
+eq("error streak 5 alerts", esHigh.alert, true);
+
+const esMixed = checkErrorStreak([true, true, false], hThresholds);
+eq("error streak broken not alerting", esMixed.alert, false);
+
+// checkScopeCreep
+const sc0 = checkScopeCreep([], hThresholds);
+eq("scope creep empty not alerting", sc0.alert, false);
+
+const scMany = checkScopeCreep(
+  Array(20).fill(0).map((_, i) => `file${i}.ts`),
+  hThresholds,
+);
+eq("scope creep many files alerts", scMany.alert, true);
+
+const scDupes = checkScopeCreep(
+  Array(20).fill("same.ts"),
+  hThresholds,
+);
+eq("scope creep duplicates not alerting", scDupes.alert, false);
+
+// checkFreshStart
+const fs0 = checkFreshStart(0, hThresholds);
+eq("fresh start zero not alerting", fs0.alert, false);
+
+const fsBig = checkFreshStart(10_000_000, hThresholds);
+eq("fresh start big alerts", fsBig.alert, true);
+assert("fresh start big has prompt", fsBig.prompt.length > 0);
+
+// ─── Mutation Classification ──────────────────────────────────
+
+console.log("\n── Mutation Classification ──");
+
+eq("isMutation write true", isMutation("write", { path: "/a" }), true);
+eq("isMutation edit true", isMutation("edit", { path: "/a" }), true);
+eq("isMutation read false", isMutation("read", { path: "/a" }), false);
+eq("isMutation grep false", isMutation("grep", { pattern: "x" }), false);
+eq("isMutation bash rm true", isMutation("bash", { command: "rm -rf /tmp/foo" }), true);
+eq("isMutation bash git commit true", isMutation("bash", { command: "git commit -m 'x'" }), true);
+eq("isMutation bash ls false", isMutation("bash", { command: "ls -la" }), false);
+eq("isMutation bash npm install true", isMutation("bash", { command: "npm install foo" }), true);
+eq("isMutation unknown false", isMutation("custom_tool", {}), false);
+
+// inputSummary
+const isWrite = inputSummary("write", { path: "/tmp/foo.ts" });
+assert("inputSummary write includes path", isWrite.includes("/tmp/foo.ts"));
+const isBash = inputSummary("bash", { command: "echo hello world" });
+assert("inputSummary bash includes command", isBash.includes("echo hello"));
+const isOther = inputSummary("read", { path: "/a" });
+assert("inputSummary other returns tool name", isOther === "read");
+
+// ─── Projectors ───────────────────────────────────────────────
+
+console.log("\n── Projectors ──");
+
+const mockState = createRunState("sess:1", "task:1", "ev:input", { text: "fix the bug", source: "user" });
+
+const taskRow = projectTask("proj:1", mockState);
+assert("projectTask has _id", taskRow._id === "proj:1");
+assert("projectTask has type", taskRow.type === "AgentTaskRequested");
+assert("projectTask has session_id", taskRow.session_id === "sess:1");
+assert("projectTask has prompt", taskRow.prompt === "fix the bug");
+assert("projectTask has ts", typeof taskRow.ts === "number");
+
+const reasoningRow = projectReasoning("proj:2", mockState, "ev:turn-end");
+assert("projectReasoning has type", reasoningRow.type === "AgentReasoningTrace");
+assert("projectReasoning has turn_end_event_id", reasoningRow.turn_end_event_id === "ev:turn-end");
+
+const resultRow = projectResult("proj:3", mockState);
+assert("projectResult has type", resultRow.type === "AgentResultProduced");
+assert("projectResult has total_turns", typeof resultRow.total_turns === "number");
+
+const changesNull = projectChanges("proj:4", mockState);
+eq("projectChanges no mutations returns null", changesNull, null);
+
+// With mutations
+const stateWithMutation = accumulate(
+  accumulate(mockState, "turn_start", "ev:ts", { turnIndex: 0 }),
+  "tool_call",
+  "ev:tc1",
+  { toolName: "write", input: { path: "/a.ts" } },
+);
+const changesRow = projectChanges("proj:5", stateWithMutation!);
+assert("projectChanges with mutations returns object", changesRow !== null);
+assert("projectChanges has type", changesRow!.type === "ProjectStateChanged");
+assert("projectChanges has mutating_tool_count", changesRow!.mutating_tool_count > 0);
+
+// ─── Accumulator ──────────────────────────────────────────────
+
+console.log("\n── Accumulator ──");
+
+const rs = createRunState("sess:a", "task:a", "ev:in", { text: "hello", source: "cli" });
+assert("createRunState has sessionId", rs.sessionId === "sess:a");
+assert("createRunState has taskId", rs.taskId === "task:a");
+assert("createRunState has prompt", rs.prompt === "hello");
+assert("createRunState has inputSource", rs.inputSource === "cli");
+assert("createRunState has turnIndex 0", rs.turnIndex === 0);
+assert("createRunState has empty mutations", rs.mutations.length === 0);
+assert("createRunState has empty reasoningTraceIds", rs.reasoningTraceIds.length === 0);
+
+// accumulate null returns null
+eq("accumulate null state returns null", accumulate(null, "turn_start", "ev:1", {}), null);
+
+// accumulate turn_start
+const afterTurn = accumulate(rs, "turn_start", "ev:ts1", { turnIndex: 0 });
+assert("after turn_start turnIndex updated", afterTurn!.turnIndex === 0);
+assert("after turn_start totalTurns updated", afterTurn!.totalTurns >= 1);
+
+// accumulate tool_call
+const afterTool = accumulate(afterTurn, "tool_call", "ev:tc1", { toolName: "read", input: { path: "/x" } });
+assert("after tool_call has tool event id", afterTool!.currentTurn.toolCallEventIds.length === 1);
+assert("after tool_call has tool summary", afterTool!.currentTurn.toolSummaries.length === 1);
+
+// accumulate tool_call with mutation
+const afterWrite = accumulate(afterTool, "tool_call", "ev:tc2", { toolName: "write", input: { path: "/y.ts" } });
+assert("after write has mutation", afterWrite!.mutations.length === 1);
+assert("mutation has toolName", afterWrite!.mutations[0].toolName === "write");
+
+// accumulate tool_result
+const afterResult = accumulate(afterWrite, "tool_result", "ev:tr1", { toolName: "write", toolCallId: "tc2" });
+assert("after tool_result has result event id", afterResult!.currentTurn.toolResultEventIds.length === 1);
+
+// ─── Error Capture ────────────────────────────────────────────
+
+console.log("\n── Error Capture ──");
+
+// captureError should not throw
+let captureThrew = false;
+try {
+  captureError({
+    component: "test-suite",
+    operation: "test captureError",
+    error: new Error("test error"),
+    severity: "cosmetic",
+  });
+} catch {
+  captureThrew = true;
+}
+eq("captureError does not throw", captureThrew, false);
+
+// captureError with non-Error
+let captureThrew2 = false;
+try {
+  captureError({
+    component: "test-suite",
+    operation: "test captureError string",
+    error: "string error",
+    severity: "transient",
+  });
+} catch {
+  captureThrew2 = true;
+}
+eq("captureError handles string error", captureThrew2, false);
+
+// unflushedErrorCount
+const errCount = unflushedErrorCount();
+assert("unflushedErrorCount returns number", typeof errCount === "number");
+assert("unflushedErrorCount >= 0", errCount >= 0);
 
 // ─── Summary ──────────────────────────────────────────────────
 
