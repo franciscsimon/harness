@@ -24,12 +24,17 @@ docker compose up -d --no-recreate qlever 2>/dev/null || true
 echo "=== Copying TTL into qlever container ==="
 docker cp "$TTL_FILE" qlever:/data/harness.ttl
 
+echo "=== Writing settings file ==="
+docker exec qlever sh -c 'cat > /data/settings.json << EOF
+{"languages-internal": [], "ascii-prefixes-only": true, "num-triples-per-batch": 100000}
+EOF'
+
 echo "=== Building index with qlever-index binary ==="
 docker exec qlever /qlever/qlever-index \
   -i /data/harness \
   -f /data/harness.ttl \
   -F ttl \
-  -s '{"languages-internal": [], "ascii-prefixes-only": true, "num-triples-per-batch": 100000}'
+  -s /data/settings.json
 
 echo "=== Restarting qlever to serve new index ==="
 docker restart qlever

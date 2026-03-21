@@ -86,6 +86,49 @@ SELECT ?project ?name WHERE {
            doap:name ?name .
 }`,
   },
+  coverage: {
+    label: "Test Coverage",
+    icon: "🧪",
+    desc: "Which exported functions have tests — green = tested, red = untested",
+    query: `PREFIX code: <https://pi.dev/code/>
+PREFIX schema: <https://schema.org/>
+SELECT ?name ?file ?tested WHERE {
+  ?fn a schema:DefinedTerm ;
+      schema:name ?name ;
+      code:filePath ?file ;
+      code:isExported true .
+  OPTIONAL {
+    ?testMod code:tests ?fn .
+  }
+  OPTIONAL {
+    ?testMod2 code:tests ?mod .
+    ?fn code:definedIn ?mod .
+  }
+  BIND(BOUND(?testMod) || BOUND(?testMod2) AS ?tested)
+}
+ORDER BY DESC(?tested) ?file ?name`,
+  },
+  untested: {
+    label: "Untested Functions",
+    icon: "🚨",
+    desc: "Exported functions with zero test coverage — prioritize these",
+    query: `PREFIX code: <https://pi.dev/code/>
+PREFIX schema: <https://schema.org/>
+SELECT ?name ?file WHERE {
+  ?fn a schema:DefinedTerm ;
+      schema:name ?name ;
+      code:filePath ?file ;
+      code:isExported true .
+  FILTER NOT EXISTS {
+    ?testMod code:tests ?fn .
+  }
+  FILTER NOT EXISTS {
+    ?testMod2 code:tests ?mod .
+    ?fn code:definedIn ?mod .
+  }
+}
+ORDER BY ?file ?name`,
+  },
 };
 
 export async function renderGraph(queryKey?: string, customQuery?: string): Promise<string> {
@@ -139,11 +182,12 @@ export async function renderGraph(queryKey?: string, customQuery?: string): Prom
   }
 
   // Build graph data for D3 (only for module/call queries)
+  const GRAPH_QUERIES = new Set(["modules", "calls", "coverage"]);
   let graphJson = "null";
-  if (result?.results?.bindings?.length > 0 && (activeKey === "modules" || activeKey === "calls")) {
-    const nodes = new Map<string, { id: string; label: string; group: string }>();
+  let graphMode = activeKey;
+  if (result?.results?.bindings?.length > 0 && GRAPH_QUERIES.has(activeKey)) {
+    const nodes = new Map<string, { id: string; label: string; group: string; tested?: boolean }>();
     const links: { source: string; target: string }[] = [];
-    const vars = result.head.vars as string[];
 
     if (activeKey === "modules") {
       for (const row of result.results.bindings) {
@@ -167,6 +211,16 @@ export async function renderGraph(queryKey?: string, customQuery?: string): Prom
         if (!nodes.has(calleeId)) nodes.set(calleeId, { id: calleeId, label: calleeName, group: calleeFile.split("/")[0] ?? "" });
         links.push({ source: callerId, target: calleeId });
       }
+    } else if (activeKey === "coverage") {
+      for (const row of result.results.bindings) {
+        const name = row.name?.value ?? "";
+        const file = row.file?.value ?? "";
+        const tested = row.tested?.value === "true";
+        const nodeId = `${file}#${name}`;
+        const group = file.split("/")[0] ?? "";
+        if (!nodes.has(nodeId)) nodes.set(nodeId, { id: nodeId, label: name, group, tested });
+      }
+      // No links for coverage — it's a scatter plot of tested vs untested
     }
 
     graphJson = JSON.stringify({ nodes: [...nodes.values()], links });
@@ -202,9 +256,13 @@ export async function renderGraph(queryKey?: string, customQuery?: string): Prom
       </form>
     </div>
 
-    ${(activeKey === "modules" || activeKey === "calls") && graphJson !== "null" ? `
+    ${GRAPH_QUERIES.has(activeKey) && graphJson !== "null" ? `
     <div class="section">
       <h2>Graph Visualization</h2>
+      ${activeKey === "coverage" ? `<div style="margin-bottom:0.5rem;font-size:0.85rem;color:var(--text-dim)">
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#238636;margin-right:4px"></span>Tested
+        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#da3633;margin:0 4px 0 12px"></span>Untested
+      </div>` : ""}
       <div class="card" id="graph-container" style="height:500px;position:relative;overflow:hidden"></div>
     </div>
     ` : ""}
@@ -230,9 +288,13 @@ export async function renderGraph(queryKey?: string, customQuery?: string): Prom
         .attr("height", height)
         .attr("viewBox", [0, 0, width, height]);
 
-      // Color by group (directory)
+      // Color by group (directory) or by tested status
+      const graphMode = "${graphMode}";
       const groups = [...new Set(data.nodes.map(n => n.group))];
-      const color = d3.scaleOrdinal(d3.schemeTableau10).domain(groups);
+      const groupColor = d3.scaleOrdinal(d3.schemeTableau10).domain(groups);
+      const color = graphMode === "coverage"
+        ? (d) => d.tested ? "#238636" : "#da3633"
+        : (d) => groupColor(d.group);
 
       const simulation = d3.forceSimulation(data.nodes)
         .force("link", d3.forceLink(data.links).id(d => d.id).distance(80))

@@ -45,8 +45,10 @@ interface ModuleNode {
   "@type": string;
   "schema:name": string;
   "code:filePath": string;
+  "code:isTestFile"?: boolean;
   "schema:requires"?: { "@id": string }[];
   "code:exports"?: string[];
+  "code:tests"?: { "@id": string }[];
 }
 
 interface FunctionNode {
@@ -58,8 +60,10 @@ interface FunctionNode {
   "code:line": number;
   "code:isAsync": boolean;
   "code:isExported": boolean;
+  "code:isTestFunction"?: boolean;
   "code:parameters": number;
   "code:calls"?: { "@id": string }[];
+  "code:tests"?: { "@id": string }[];
 }
 
 // ---- Resolve import path to relative file path ----
@@ -84,6 +88,17 @@ function resolveImport(importPath: string, fromFile: string): string | null {
   if (allFiles.has(resolved)) return resolved;
 
   return null;
+}
+
+// ---- Test file detection ----
+
+function isTestFile(filePath: string): boolean {
+  return (
+    filePath.startsWith("test/") ||
+    filePath.endsWith(".test.ts") ||
+    filePath.endsWith(".spec.ts") ||
+    /\/test[-.]/.test(filePath)
+  );
 }
 
 // ---- Extract functions and calls from a source file ----
@@ -195,13 +210,72 @@ function extractFromFile(filePath: string, source: ts.SourceFile) {
 
   ts.forEachChild(source, visitNode);
 
+  const testFile = isTestFile(filePath);
+
+  // For test files: collect module-level calls to imported source functions
+  // Test files typically call imported functions at top level (not inside function bodies)
+  const testEdges: { "@id": string }[] = [];
+  if (testFile) {
+    // Collect all calls at module level (not inside function bodies)
+    const moduleLevelCalls = collectCalls(source, filePath, importMap);
+    for (const call of moduleLevelCalls) {
+      // Only keep calls that resolve to imported source functions (not local helpers)
+      const id = call["@id"];
+      if (id.includes("#") && !id.includes(filePath + "#")) {
+        testEdges.push(call);
+      }
+    }
+
+    // Also: any named import from a source file is a test edge
+    // (the test file imports it to test it)
+    for (const [localName, mapped] of importMap.entries()) {
+      if (mapped.includes("#")) {
+        const fnId = `urn:pi:fn:${mapped}`;
+        if (!testEdges.find((e) => e["@id"] === fnId)) {
+          testEdges.push({ "@id": fnId });
+        }
+      }
+    }
+
+    // Handle dynamic import() — e.g. await import("../handlers/x.ts")
+    function findDynamicImports(n: ts.Node) {
+      if (ts.isCallExpression(n) && n.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        const arg = n.arguments[0];
+        if (arg && ts.isStringLiteral(arg)) {
+          const resolved = resolveImport(arg.text.replace(/\?.*$/, ""), filePath);
+          if (resolved && !isTestFile(resolved)) {
+            // Add import edge if not already present
+            const modId = `urn:pi:mod:${resolved}`;
+            if (!imports.find((i) => i["@id"] === modId)) {
+              imports.push({ "@id": modId });
+            }
+            // Add test edge to all exported functions in that module
+            // We'll resolve this by adding a module-level test edge
+            if (!testEdges.find((e) => e["@id"] === modId)) {
+              testEdges.push({ "@id": modId });
+            }
+          }
+        }
+      }
+      ts.forEachChild(n, findDynamicImports);
+    }
+    ts.forEachChild(source, findDynamicImports);
+
+    // Mark all functions in test files as test functions
+    for (const fn of functions) {
+      fn["code:isTestFunction"] = true;
+    }
+  }
+
   const moduleNode: ModuleNode = {
     "@id": moduleId,
     "@type": "schema:SoftwareSourceCode",
     "schema:name": path.basename(filePath),
     "code:filePath": filePath,
+    ...(testFile ? { "code:isTestFile": true } : {}),
     ...(imports.length > 0 ? { "schema:requires": imports } : {}),
     ...(exports.length > 0 ? { "code:exports": exports } : {}),
+    ...(testEdges.length > 0 ? { "code:tests": testEdges } : {}),
   };
 
   return { moduleNode, functions };
@@ -323,6 +397,7 @@ const jsonld = {
     prov: "http://www.w3.org/ns/prov#",
     xsd: "http://www.w3.org/2001/XMLSchema#",
     "code:calls": { "@type": "@id" },
+    "code:tests": { "@type": "@id" },
     "code:definedIn": { "@type": "@id" },
     "schema:requires": { "@type": "@id" },
   },

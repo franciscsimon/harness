@@ -1,4 +1,4 @@
-# TODO: Test Coverage Graph in QLever
+# ✅ DONE: Test Coverage Graph in QLever
 
 ## Goal
 
@@ -94,10 +94,12 @@ NODE_PATH=xtdb-event-logger/node_modules npx jiti scripts/export-xtdb-triples.ts
 - `scripts/parse-call-graph.ts` — steps 1, 2, 3
 - `harness-ui/pages/graph.ts` — steps 4, 5
 
-## Expected Outcome
+## Results (2026-03-21)
 
-After implementation:
-- SPARQL query shows 287 exported functions with tested/untested status
-- ~30+ functions marked as tested (up from 4)
-- D3 visualization colors: green = tested, red = untested
-- Coverage percentage visible at a glance
+- **292 exported source functions** tracked
+- **44 tested** (15%), **249 untested** (85%)
+- **50 test edges** from 9 test modules
+- D3 visualization: green = tested, red = untested, with legend
+- Two new SPARQL query cards: "Test Coverage" and "Untested Functions"
+- Dynamic `import()` calls correctly resolved (14 handler test edges)
+- QLever index: 10,020 triples (up from 9,231)
