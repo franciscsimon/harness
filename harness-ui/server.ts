@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { readFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -90,6 +91,29 @@ app.post("/api/sparql", async (c) => {
   } catch (e) {
     return c.json({ error: (e as Error).message }, 502);
   }
+});
+
+// Graph refresh — runs the full pipeline: parse AST → export triples → re-index QLever
+app.post("/api/graph/refresh", async (c) => {
+  const root = join(__dirname, "..");
+  const steps: { name: string; cmd: string }[] = [
+    { name: "Parse call graph", cmd: "NODE_PATH=xtdb-projector/node_modules npx jiti scripts/parse-call-graph.ts" },
+    { name: "Export triples", cmd: "NODE_PATH=xtdb-event-logger/node_modules npx jiti scripts/export-xtdb-triples.ts" },
+    { name: "Re-index QLever", cmd: "./scripts/qlever-index.sh" },
+  ];
+  const results: { step: string; ok: boolean; duration: number; output?: string }[] = [];
+  for (const { name, cmd } of steps) {
+    const t0 = Date.now();
+    try {
+      const out = execSync(cmd, { cwd: root, timeout: 120_000, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+      results.push({ step: name, ok: true, duration: Date.now() - t0, output: out.slice(-200) });
+    } catch (e: any) {
+      results.push({ step: name, ok: false, duration: Date.now() - t0, output: (e.stderr || e.message || "").slice(-300) });
+      break; // stop on first failure
+    }
+  }
+  const allOk = results.every((r) => r.ok);
+  return c.json({ success: allOk, steps: results }, allOk ? 200 : 500);
 });
 
 // Routes with path params (IDs contain slashes — need {.+} wildcard)

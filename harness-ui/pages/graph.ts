@@ -239,10 +239,14 @@ export async function renderGraph(queryKey?: string, customQuery?: string): Prom
     .join("\n");
 
   const content = `
-    <div class="page-header">
-      <h1>🕸️ Knowledge Graph</h1>
-      <p>SPARQL-powered exploration of code structure, decisions, and project data</p>
+    <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem">
+      <div>
+        <h1>🕸️ Knowledge Graph</h1>
+        <p>SPARQL-powered exploration of code structure, decisions, and project data</p>
+      </div>
+      <button id="refresh-graph-btn" class="btn" onclick="refreshGraph()" style="white-space:nowrap">🔄 Refresh Graph</button>
     </div>
+    <div id="refresh-status" style="display:none;margin-bottom:1rem"></div>
 
     <div class="sparql-query-grid">
       ${queryCards}
@@ -272,6 +276,35 @@ export async function renderGraph(queryKey?: string, customQuery?: string): Prom
       ${resultsHtml}
     </div>
 
+    <script>
+    async function refreshGraph() {
+      const btn = document.getElementById("refresh-graph-btn");
+      const status = document.getElementById("refresh-status");
+      btn.disabled = true;
+      btn.textContent = "⏳ Refreshing...";
+      status.style.display = "block";
+      status.innerHTML = '<div class="card" style="padding:0.75rem;color:var(--text-dim)">Running pipeline: parse AST → export triples → re-index QLever...</div>';
+      try {
+        const r = await fetch("/api/graph/refresh", { method: "POST" });
+        const d = await r.json();
+        const stepsHtml = d.steps.map(s =>
+          '<div style="margin:0.25rem 0">' +
+          (s.ok ? '✅' : '❌') + ' <b>' + s.step + '</b> — ' +
+          (s.duration / 1000).toFixed(1) + 's' +
+          (s.output ? '<br><code style="font-size:0.75rem;color:var(--text-dim)">' + s.output.split('\\n').pop() + '</code>' : '') +
+          '</div>'
+        ).join('');
+        status.innerHTML = '<div class="card" style="padding:0.75rem">' +
+          (d.success ? '✅ Graph refreshed!' : '❌ Pipeline failed') +
+          stepsHtml + '</div>';
+        if (d.success) setTimeout(() => location.reload(), 1500);
+      } catch (e) {
+        status.innerHTML = '<div class="card" style="padding:0.75rem;color:#da3633">❌ ' + e.message + '</div>';
+      }
+      btn.disabled = false;
+      btn.textContent = "🔄 Refresh Graph";
+    }
+    </script>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script>
     (function() {
