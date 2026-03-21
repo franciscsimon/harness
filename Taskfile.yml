@@ -473,3 +473,67 @@ tasks:
       - 'test -d "$HOME/.pi/agent/extensions/xtdb-event-logger" && echo "xtdb-event-logger deployed" || (echo "xtdb-event-logger missing"; exit 1)'
       - 'echo "Current XTDB event count:"'
       - 'PGPASSWORD=xtdb psql -h localhost -p 5433 -U xtdb -d xtdb -Atqc "SELECT COUNT(*) FROM events"'
+
+  # ── Code Quality ─────────────────────────────────────────────────
+
+  check:
+    desc: Run all quality checks (format + lint + import sorting)
+    cmds:
+      - npx biome check .
+
+  fmt:
+    desc: Auto-fix formatting, imports, and safe lint fixes
+    cmds:
+      - npx biome check --write .
+
+  lint:
+    desc: Run linter only (no formatting)
+    cmds:
+      - npx biome lint .
+
+  'check:ci':
+    desc: Quality check for CI — exits non-zero on any issue
+    cmds:
+      - npx biome ci .
+
+  'hooks:install':
+    desc: Enable git pre-commit quality hook
+    cmds:
+      - git config core.hooksPath .githooks
+      - echo "✅ Git hooks enabled. Pre-commit will run quality checks on staged files."
+
+  # ── CI Runner ────────────────────────────────────────────────────
+
+  'ci:runner':
+    desc: Start the CI runner (watches queue, runs pipelines in Docker)
+    cmds:
+      - npx tsx ci-runner/runner.ts
+
+  'ci:run':
+    desc: Run CI pipeline on current repo (one-shot, no queue)
+    cmds:
+      - |
+        JOB=$(mktemp /tmp/ci-job-XXXXXX.json)
+        cat > "$JOB" << EOF
+        {
+          "id": "manual-$(date +%s)",
+          "repo": "$(basename $(pwd))",
+          "ref": "refs/heads/$(git branch --show-current)",
+          "commitHash": "$(git rev-parse HEAD)",
+          "commitMessage": "$(git log -1 --format=%s)",
+          "pusher": "$(whoami)",
+          "timestamp": $(date +%s000)
+        }
+        EOF
+        npx tsx ci-runner/runner.ts --once "$JOB"
+        rm -f "$JOB"
+
+  'ci:hook:install':
+    desc: Install Soft Serve post-receive hook for CI
+    vars:
+      SS_DATA: '{{.SOFT_SERVE_DATA_PATH | default "/var/local/lib/soft-serve"}}'
+    cmds:
+      - mkdir -p {{.SS_DATA}}/hooks
+      - cp ci-runner/hooks/post-receive {{.SS_DATA}}/hooks/post-receive
+      - chmod +x {{.SS_DATA}}/hooks/post-receive
+      - echo "✅ Soft Serve CI hook installed at {{.SS_DATA}}/hooks/post-receive"

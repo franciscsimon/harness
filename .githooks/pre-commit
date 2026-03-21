@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# ─── Pre-commit quality gate ──────────────────────────────────────
+# Runs the appropriate quality tool for each changed file's language.
+# This hook WARNS but does NOT block commits (exit 0 always).
+# To make it blocking, change the final exit to: exit $exitcode
+#
+# Setup: git config core.hooksPath .githooks
+# ──────────────────────────────────────────────────────────────────
+
+set -euo pipefail
+
+# Get staged files (only added/modified, not deleted)
+STAGED=$(git diff --cached --name-only --diff-filter=ACM)
+if [ -z "$STAGED" ]; then
+  exit 0
+fi
+
+exitcode=0
+
+# ── Collect files by language ────────────────────────────────────
+TS_FILES=""
+GO_FILES=""
+PY_FILES=""
+RS_FILES=""
+SH_FILES=""
+
+for file in $STAGED; do
+  case "$file" in
+    *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs)
+      TS_FILES="$TS_FILES $file" ;;
+    *.go)
+      GO_FILES="$GO_FILES $file" ;;
+    *.py|*.pyi)
+      PY_FILES="$PY_FILES $file" ;;
+    *.rs)
+      RS_FILES="$RS_FILES $file" ;;
+    *.sh|*.bash)
+      SH_FILES="$SH_FILES $file" ;;
+  esac
+done
+
+# ── TypeScript / JavaScript ──────────────────────────────────────
+if [ -n "$TS_FILES" ]; then
+  if [ -f "biome.json" ] && command -v npx &>/dev/null; then
+    echo "🔍 Biome: checking TypeScript/JS files..."
+    if ! npx biome check --no-errors-on-unmatched $TS_FILES 2>&1; then
+      echo "⚠️  Biome found issues. Run: npx biome check --write ."
+      exitcode=1
+    fi
+  fi
+fi
+
+# ── Go ───────────────────────────────────────────────────────────
+if [ -n "$GO_FILES" ]; then
+  if command -v gofmt &>/dev/null; then
+    echo "🔍 gofmt: checking Go files..."
+    UNFORMATTED=$(gofmt -l $GO_FILES 2>/dev/null || true)
+    if [ -n "$UNFORMATTED" ]; then
+      echo "⚠️  Unformatted Go files: $UNFORMATTED"
+      echo "   Run: gofmt -w ."
+      exitcode=1
+    fi
+  fi
+  if command -v go &>/dev/null && [ -f "go.mod" ]; then
+    echo "🔍 go vet: checking Go files..."
+    if ! go vet ./... 2>&1; then
+      echo "⚠️  go vet found issues."
+      exitcode=1
+    fi
+  fi
+fi
+
+# ── Python ───────────────────────────────────────────────────────
+if [ -n "$PY_FILES" ]; then
+  if command -v ruff &>/dev/null; then
+    echo "🔍 ruff: checking Python files..."
+    if ! ruff check $PY_FILES 2>&1; then
+      echo "⚠️  ruff found issues. Run: ruff check --fix ."
+      exitcode=1
+    fi
+    if ! ruff format --check $PY_FILES 2>&1; then
+      echo "⚠️  ruff format found issues. Run: ruff format ."
+      exitcode=1
+    fi
+  fi
+fi
+
+# ── Rust ─────────────────────────────────────────────────────────
+if [ -n "$RS_FILES" ]; then
+  if command -v cargo &>/dev/null && [ -f "Cargo.toml" ]; then
+    echo "🔍 cargo fmt: checking Rust files..."
+    if ! cargo fmt -- --check 2>&1; then
+      echo "⚠️  Unformatted Rust files. Run: cargo fmt"
+      exitcode=1
+    fi
+    echo "🔍 cargo clippy: checking Rust files..."
+    if ! cargo clippy -- -D warnings 2>&1; then
+      echo "⚠️  clippy found issues."
+      exitcode=1
+    fi
+  fi
+fi
+
+# ── Shell ────────────────────────────────────────────────────────
+if [ -n "$SH_FILES" ]; then
+  if command -v shellcheck &>/dev/null; then
+    echo "🔍 shellcheck: checking shell files..."
+    if ! shellcheck $SH_FILES 2>&1; then
+      echo "⚠️  shellcheck found issues."
+      exitcode=1
+    fi
+  fi
+fi
+
+# ── Summary ──────────────────────────────────────────────────────
+if [ $exitcode -ne 0 ]; then
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "⚠️  Quality checks found issues (non-blocking)"
+  echo "   Fix with: task fix"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+fi
+
+# Non-blocking: always allow the commit.
+# To make blocking: change to `exit $exitcode`
+exit 0

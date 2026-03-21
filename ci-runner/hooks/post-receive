@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# ─── Soft Serve post-receive hook ─────────────────────────────────
+# Install: copy to $SOFT_SERVE_DATA_PATH/hooks/post-receive
+# Make executable: chmod +x $SOFT_SERVE_DATA_PATH/hooks/post-receive
+#
+# This hook fires after every push to any repo in Soft Serve.
+# It enqueues a CI job for the runner to pick up asynchronously.
+#
+# The pusher sees "CI job queued" in their terminal but doesn't
+# have to wait for the pipeline to finish.
+# ──────────────────────────────────────────────────────────────────
+
+# Path to the enqueue script
+ENQUEUE="${ENQUEUE_PATH:-/opt/harness/ci-runner/enqueue.sh}"
+
+# Derive repo name from GIT_DIR
+# Soft Serve sets GIT_DIR to something like /data/repos/myrepo.git
+REPO_NAME=$(basename "${GIT_DIR:-.}" .git)
+
+# Standard post-receive: reads lines of "oldrev newrev refname" from stdin
+while read -r oldrev newrev refname; do
+  if [ -x "$ENQUEUE" ]; then
+    "$ENQUEUE" "$REPO_NAME" "$oldrev" "$newrev" "$refname"
+  else
+    >&2 echo "⚠️  CI enqueue script not found at $ENQUEUE"
+  fi
+done
