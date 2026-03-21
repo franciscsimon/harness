@@ -263,10 +263,17 @@ export async function renderGraph(queryKey?: string, customQuery?: string): Prom
     ${GRAPH_QUERIES.has(activeKey) && graphJson !== "null" ? `
     <div class="section">
       <h2>Graph Visualization</h2>
-      ${activeKey === "coverage" ? `<div style="margin-bottom:0.5rem;font-size:0.85rem;color:var(--text-dim)">
-        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#238636;margin-right:4px"></span>Tested
-        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#da3633;margin:0 4px 0 12px"></span>Untested
-      </div>` : ""}
+      ${activeKey === "coverage" ? (() => {
+        const nodes = JSON.parse(graphJson).nodes;
+        const testedCount = nodes.filter((n: any) => n.tested).length;
+        const untestedCount = nodes.length - testedCount;
+        const pct = Math.round(100 * testedCount / nodes.length);
+        return `<div style="margin-bottom:0.5rem;font-size:0.85rem;color:var(--text-dim)">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#238636;margin-right:4px"></span>Tested (${testedCount}) ← left cluster
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#da3633;margin:0 4px 0 16px"></span>Untested (${untestedCount}) → right cluster
+          <span style="margin-left:16px;font-weight:600;color:var(--text)">${pct}% coverage</span>
+        </div>`;
+      })() : ""}
       <div class="card" id="graph-container" style="height:500px;position:relative;overflow:hidden"></div>
     </div>
     ` : ""}
@@ -329,11 +336,15 @@ export async function renderGraph(queryKey?: string, customQuery?: string): Prom
         ? (d) => d.tested ? "#238636" : "#da3633"
         : (d) => groupColor(d.group);
 
+      // For coverage: strong repulsion to spread nodes out (no links to cluster them)
+      const isCoverage = graphMode === "coverage";
       const simulation = d3.forceSimulation(data.nodes)
         .force("link", d3.forceLink(data.links).id(d => d.id).distance(80))
-        .force("charge", d3.forceManyBody().strength(-200))
+        .force("charge", d3.forceManyBody().strength(isCoverage ? -30 : -200))
         .force("center", d3.forceCenter(width / 2, height / 2))
-        .force("collision", d3.forceCollide().radius(20));
+        .force("collision", d3.forceCollide().radius(isCoverage ? 12 : 20))
+        .force("x", isCoverage ? d3.forceX(d => d.tested ? width * 0.3 : width * 0.7).strength(0.15) : null)
+        .force("y", isCoverage ? d3.forceY(height / 2).strength(0.05) : null);
 
       // Arrow marker
       svg.append("defs").append("marker")
