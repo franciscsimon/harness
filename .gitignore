@@ -2,3 +2,7 @@ node_modules/
 .DS_Store
 .claude/
 .pi/
+
+# Generated graph data (rebuild with scripts/parse-call-graph.ts + export-xtdb-triples.ts)
+data/call-graph.jsonld
+data/harness-graph.ttl

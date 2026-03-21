@@ -144,8 +144,25 @@ services:
       retries: 15
       start_period: 30s
 
+  # ── QLever (read-only SPARQL endpoint over JSON-LD graph) ──────
+  # Uses qlever-server binary directly (not the Python CLI wrapper).
+  # Index must be built first via scripts/qlever-index.sh.
+  qlever:
+    image: adfreiburg/qlever:latest
+    container_name: qlever
+    restart: unless-stopped
+    entrypoint: []
+    command: ["bash", "-c", "test -f /data/harness.index.pos && exec /qlever/qlever-server -i /data/harness -p 7001 -n -m 1GB || (echo 'No index found. Run scripts/qlever-index.sh first.' && sleep infinity)"]
+    user: root
+    ports:
+      - "7001:7001"
+    volumes:
+      - qlever-data:/data
+    working_dir: /data
+
 volumes:
   redpanda-data:
   xtdb-primary-data:
   xtdb-replica-data:
   garage-data:
+  qlever-data:

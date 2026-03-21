@@ -74,6 +74,39 @@ export async function checkChatHealth(): Promise<boolean> {
   } catch { return false; }
 }
 
+// :7001 QLever SPARQL
+const QLEVER_URL = process.env.QLEVER_URL ?? "http://localhost:7001";
+export const QLEVER_API_URL = QLEVER_URL;
+
+export async function checkQleverHealth(): Promise<boolean> {
+  try {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), 3000);
+    const r = await fetch(QLEVER_URL, {
+      method: "POST",
+      body: "query=SELECT * WHERE { ?s ?p ?o } LIMIT 1",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      signal: c.signal,
+    });
+    clearTimeout(t);
+    return r.ok;
+  } catch { return false; }
+}
+
+export async function sparqlQuery(query: string): Promise<any> {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), 15000);
+  const r = await fetch(QLEVER_URL, {
+    method: "POST",
+    body: `query=${encodeURIComponent(query)}`,
+    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    signal: c.signal,
+  });
+  clearTimeout(t);
+  if (!r.ok) throw new Error(`SPARQL error: ${r.status}`);
+  return r.json();
+}
+
 // :3335 Ops API
 export const fetchHealth = () => get<any>(`${OPS_API}/api/health`);
 export const fetchBackups = () => get<any[]>(`${OPS_API}/api/backups`);

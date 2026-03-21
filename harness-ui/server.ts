@@ -18,6 +18,7 @@ import { renderEventDetail } from "./pages/event-detail.ts";
 import { renderFlow } from "./pages/flow.ts";
 import { renderKnowledgePage } from "./pages/knowledge.ts";
 import { renderStream } from "./pages/stream.ts";
+import { renderGraph } from "./pages/graph.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -68,6 +69,28 @@ app.get("/errors", async (c) => {
 app.get("/stream", async (c) => c.html(await renderStream()));
 app.get("/ops", async (c) => c.html(await renderOps()));
 app.get("/chat", async (c) => c.html(await renderChat()));
+app.get("/graph", async (c) => {
+  const q = c.req.query("q") || undefined;
+  const sparql = c.req.query("sparql") || undefined;
+  return c.html(await renderGraph(q, sparql));
+});
+
+// SPARQL proxy to QLever
+app.post("/api/sparql", async (c) => {
+  const qleverUrl = process.env.QLEVER_URL ?? "http://localhost:7001";
+  try {
+    const body = await c.req.text();
+    const resp = await fetch(qleverUrl, {
+      method: "POST",
+      body,
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    });
+    const data = await resp.text();
+    return c.body(data, resp.status, { "Content-Type": "application/json" });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 502);
+  }
+});
 
 // Routes with path params (IDs contain slashes — need {.+} wildcard)
 // Hono's {.+} is greedy — /sessions/:id{.+}/flow doesn't work because {.+} consumes /flow.
