@@ -16,9 +16,8 @@
 import { watch, readdirSync, readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { execSync, spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { recordCIRun, type CIRunInput } from "./recorder.ts";
-import { resolveSteps } from "./pipeline.ts";
+import { type CIRunInput, recordCIRun } from "./recorder.ts";
+import { resolveSteps, resolvePipelineJsonLd } from "./pipeline.ts";
 
 // ─── Configuration ───────────────────────────────────────────────
 
@@ -142,8 +141,9 @@ async function runJob(job: CIJob): Promise<void> {
     // 2. Check out the code
     checkout(job, workDir);
 
-    // 3. Resolve pipeline steps (from .ci.yaml or auto-detect)
+    // 3. Resolve pipeline steps (from .ci.jsonld or auto-detect)
     const steps = await resolveSteps(workDir);
+    const pipelineJsonLd = resolvePipelineJsonLd(workDir, job.repo);
     console.log(`   ${steps.length} step(s) to run`);
 
     // 4. Execute each step
@@ -164,7 +164,7 @@ async function runJob(job: CIJob): Promise<void> {
       }
     }
 
-    // 5. Record results in XTDB
+    // 5. Record results in XTDB (the run AND the pipeline config are both JSON-LD)
     const totalDuration = Date.now() - startTime;
     const runInput: CIRunInput = {
       repo: job.repo,
@@ -180,6 +180,7 @@ async function runJob(job: CIJob): Promise<void> {
         exitCode: r.exitCode,
       })),
       durationMs: totalDuration,
+      pipelineJsonLd,
     };
 
     try {

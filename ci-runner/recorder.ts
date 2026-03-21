@@ -2,17 +2,12 @@
 // Writes CI pipeline results to XTDB `ci_runs` table as JSON-LD.
 // Follows the same pattern as lib/test-recorder.ts.
 //
-// The JSON-LD makes CI runs queryable via SPARQL alongside:
-//   - test_runs (test results)
-//   - events (agent activity)
-//   - decisions (why changes were made)
-//   - function lifecycle (what functions changed)
-//
-// Example SPARQL: "Show me all failed CI runs for commits that
-// touched functions with fan-in > 10"
+// Uses the shared JSONLD_CONTEXT — same namespaces as every other
+// entity in the harness. No separate context, no translation.
 
-import postgres from "postgres";
 import { randomUUID } from "node:crypto";
+import postgres from "postgres";
+import { JSONLD_CONTEXT, piId } from "../lib/jsonld/context.ts";
 
 const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
 const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
@@ -22,9 +17,14 @@ let sql: ReturnType<typeof postgres> | null = null;
 function db() {
   if (!sql) {
     sql = postgres({
-      host: XTDB_HOST, port: XTDB_PORT,
-      database: "xtdb", user: "xtdb", password: "xtdb",
-      max: 2, idle_timeout: 30, connect_timeout: 5,
+      host: XTDB_HOST,
+      port: XTDB_PORT,
+      database: "xtdb",
+      user: "xtdb",
+      password: "xtdb",
+      max: 2,
+      idle_timeout: 30,
+      connect_timeout: 5,
     });
   }
   return sql;
@@ -42,6 +42,7 @@ export interface CIRunInput {
   steps: CIStepResult[];
   durationMs: number;
   projectId?: string;
+  pipelineJsonLd?: object; // the resolved pipeline config (already JSON-LD)
 }
 
 export interface CIStepResult {
@@ -55,20 +56,15 @@ export interface CIStepResult {
 
 export async function recordCIRun(input: CIRunInput): Promise<string> {
   const conn = db();
-  const t = (v: string | null) => conn.typed(v as any, 25); // text
+  const t = (v: string | null) => conn.typed(v as any, 25); // text — matches lib/db.ts pattern
   const n = (v: number | null) => conn.typed(v as any, 20); // bigint
 
   const id = `ci:${randomUUID()}`;
   const now = Date.now();
 
   const jsonld = JSON.stringify({
-    "@context": {
-      schema: "https://schema.org/",
-      prov: "http://www.w3.org/ns/prov#",
-      code: "https://pi.dev/code/",
-      xsd: "http://www.w3.org/2001/XMLSchema#",
-    },
-    "@id": `urn:pi:${id}`,
+    "@context": JSONLD_CONTEXT,
+    "@id": piId(id),
     "@type": "code:CIRun",
     "schema:name": `CI: ${input.repo}@${input.commitHash.slice(0, 8)}`,
     "code:repo": input.repo,
@@ -89,6 +85,7 @@ export async function recordCIRun(input: CIRunInput): Promise<string> {
       "code:durationMs": s.durationMs,
     })),
     "code:durationMs": input.durationMs,
+    "code:pipeline": input.pipelineJsonLd ?? null,
     "prov:generatedAtTime": { "@type": "xsd:long", "@value": now },
   });
 

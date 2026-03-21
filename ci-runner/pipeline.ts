@@ -2,24 +2,44 @@
 // Determines what steps to run for a given codebase.
 //
 // Priority:
-//   1. .ci.yaml in repo root (explicit pipeline)
-//   2. Auto-detect from language stack (using code-quality/registry)
+//   1. .ci.jsonld in repo root (explicit pipeline — already in the graph)
+//   2. Auto-detect from language stack (generates JSON-LD on the fly)
 //
-// The .ci.yaml format is intentionally minimal:
+// The .ci.jsonld format is native JSON-LD — no YAML, no translation.
+// The pipeline config IS a graph node. It links to steps, images,
+// and tools. When stored in XTDB, it's queryable: "which repos use
+// Biome?", "which repos have no CI?", "what steps does repo X run?"
 //
-//   steps:
-//     - name: check
-//       image: oven/bun:latest
-//       commands:
-//         - bun install --frozen-lockfile
-//         - npx biome ci .
-//     - name: test
-//       image: oven/bun:latest
-//       commands:
-//         - bun test
+// Example .ci.jsonld:
+//
+//   {
+//     "@context": {
+//       "schema": "https://schema.org/",
+//       "code": "https://pi.dev/code/"
+//     },
+//     "@type": "code:Pipeline",
+//     "schema:name": "harness CI",
+//     "code:steps": [
+//       {
+//         "@type": "code:PipelineStep",
+//         "schema:name": "check",
+//         "code:image": "oven/bun:latest",
+//         "code:commands": [
+//           "bun install --frozen-lockfile",
+//           "npx biome ci ."
+//         ]
+//       },
+//       {
+//         "@type": "code:PipelineStep",
+//         "schema:name": "test",
+//         "code:image": "oven/bun:latest",
+//         "code:commands": ["bun test"]
+//       }
+//     ]
+//   }
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join, extname } from "node:path";
+import { join } from "node:path";
 
 export interface PipelineStep {
   name: string;
@@ -27,27 +47,35 @@ export interface PipelineStep {
   commands: string[];
 }
 
-interface CIConfig {
-  steps: PipelineStep[];
-}
-
 // ─── Main resolver ───────────────────────────────────────────────
 
 export async function resolveSteps(workDir: string): Promise<PipelineStep[]> {
-  // 1. Check for explicit .ci.yaml
+  // 1. Check for explicit .ci.jsonld
   const ciFile = findCIConfig(workDir);
   if (ciFile) {
-    return parseCIConfig(ciFile);
+    return parseCIJsonLd(ciFile);
   }
 
   // 2. Auto-detect from codebase
   return autoDetectSteps(workDir);
 }
 
-// ─── Explicit config ─────────────────────────────────────────────
+// Also export the full JSON-LD pipeline (for storing in XTDB)
+export function resolvePipelineJsonLd(workDir: string, repo: string): object {
+  const ciFile = findCIConfig(workDir);
+  if (ciFile) {
+    return JSON.parse(readFileSync(ciFile, "utf-8"));
+  }
+
+  // Auto-detected: generate JSON-LD
+  const steps = autoDetectSteps(workDir);
+  return stepsToJsonLd(steps, repo, "auto-detected");
+}
+
+// ─── Explicit JSON-LD config ─────────────────────────────────────
 
 function findCIConfig(workDir: string): string | null {
-  const candidates = [".ci.yaml", ".ci.yml", "ci.yaml", "ci.yml"];
+  const candidates = [".ci.jsonld", "ci.jsonld"];
   for (const name of candidates) {
     const path = join(workDir, name);
     if (existsSync(path)) return path;
@@ -55,54 +83,44 @@ function findCIConfig(workDir: string): string | null {
   return null;
 }
 
-function parseCIConfig(filePath: string): PipelineStep[] {
-  const content = readFileSync(filePath, "utf-8");
-
-  // Minimal YAML parser — handles the flat structure we need
-  // For production: use a real YAML parser
+function parseCIJsonLd(filePath: string): PipelineStep[] {
+  const doc = JSON.parse(readFileSync(filePath, "utf-8"));
   const steps: PipelineStep[] = [];
-  let current: Partial<PipelineStep> | null = null;
-  let inCommands = false;
 
-  for (const rawLine of content.split("\n")) {
-    const line = rawLine.trimEnd();
-    const trimmed = line.trim();
+  // Handle both single pipeline and array of steps
+  const rawSteps = doc["code:steps"] ?? doc.steps ?? [];
 
-    // Skip empty lines and comments
-    if (!trimmed || trimmed.startsWith("#")) {
-      continue;
-    }
-
-    // New step
-    if (trimmed.startsWith("- name:")) {
-      if (current?.name && current.image && current.commands) {
-        steps.push(current as PipelineStep);
-      }
-      current = { name: trimmed.replace("- name:", "").trim(), commands: [] };
-      inCommands = false;
-      continue;
-    }
-
-    if (current) {
-      if (trimmed.startsWith("image:")) {
-        current.image = trimmed.replace("image:", "").trim();
-        inCommands = false;
-      } else if (trimmed === "commands:") {
-        inCommands = true;
-      } else if (inCommands && trimmed.startsWith("- ")) {
-        current.commands!.push(trimmed.slice(2).trim());
-      } else {
-        inCommands = false;
-      }
-    }
-  }
-
-  // Push last step
-  if (current?.name && current.image && current.commands) {
-    steps.push(current as PipelineStep);
+  for (const step of rawSteps) {
+    steps.push({
+      name: step["schema:name"] ?? step.name ?? "unnamed",
+      image: step["code:image"] ?? step.image ?? "alpine:latest",
+      commands: step["code:commands"] ?? step.commands ?? [],
+    });
   }
 
   return steps;
+}
+
+// ─── Convert steps to JSON-LD ────────────────────────────────────
+
+export function stepsToJsonLd(steps: PipelineStep[], repo: string, source: string): object {
+  return {
+    "@context": {
+      schema: "https://schema.org/",
+      code: "https://pi.dev/code/",
+      prov: "http://www.w3.org/ns/prov#",
+    },
+    "@type": "code:Pipeline",
+    "schema:name": `CI: ${repo}`,
+    "code:repo": repo,
+    "code:source": source,
+    "code:steps": steps.map((s) => ({
+      "@type": "code:PipelineStep",
+      "schema:name": s.name,
+      "code:image": s.image,
+      "code:commands": s.commands,
+    })),
+  };
 }
 
 // ─── Auto-detection ──────────────────────────────────────────────
@@ -115,12 +133,7 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
   if (files.includes("package.json")) {
     const hasBiome = files.includes("biome.json");
     const hasBunLock = files.includes("bun.lockb");
-    const hasPackageLock = files.includes("package-lock.json");
-
-    const installCmd = hasBunLock
-      ? "bun install --frozen-lockfile"
-      : "npm ci";
-
+    const installCmd = hasBunLock ? "bun install --frozen-lockfile" : "npm ci";
     const image = hasBunLock ? "oven/bun:latest" : "node:22-slim";
 
     if (hasBiome) {
@@ -131,7 +144,6 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
       });
     }
 
-    // Check for test script in package.json
     try {
       const pkg = JSON.parse(readFileSync(join(workDir, "package.json"), "utf-8"));
       if (pkg.scripts?.test) {
@@ -141,9 +153,8 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
           commands: [installCmd, hasBunLock ? "bun test" : "npm test"],
         });
       }
-    } catch {}
+    } catch { /* no package.json or parse error */ }
 
-    // TypeScript type checking
     if (files.includes("tsconfig.json")) {
       steps.push({
         name: "typecheck",
@@ -159,7 +170,7 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
       name: "check",
       image: "golang:1.23",
       commands: [
-        "test -z \"$(gofmt -l . | tee /dev/stderr)\"",
+        'test -z "$(gofmt -l . | tee /dev/stderr)"',
         "go vet ./...",
       ],
     });
@@ -175,10 +186,7 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
     steps.push({
       name: "check",
       image: "rust:1.80",
-      commands: [
-        "cargo fmt -- --check",
-        "cargo clippy -- -D warnings",
-      ],
+      commands: ["cargo fmt -- --check", "cargo clippy -- -D warnings"],
     });
     steps.push({
       name: "test",
@@ -189,20 +197,13 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
 
   // ── Python ──────────────────────────────────────────────────
   if (files.includes("pyproject.toml") || files.includes("requirements.txt") || files.includes("setup.py")) {
-    const hasRuff = files.includes("pyproject.toml"); // ruff config usually in pyproject.toml
-
-    if (hasRuff) {
+    if (files.includes("pyproject.toml")) {
       steps.push({
         name: "check",
         image: "python:3.12-slim",
-        commands: [
-          "pip install ruff --quiet",
-          "ruff check .",
-          "ruff format --check .",
-        ],
+        commands: ["pip install ruff --quiet", "ruff check .", "ruff format --check ."],
       });
     }
-
     steps.push({
       name: "test",
       image: "python:3.12-slim",
@@ -218,11 +219,7 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
     steps.push({
       name: "check",
       image: "elixir:1.17",
-      commands: [
-        "mix deps.get",
-        "mix format --check-formatted",
-        "mix credo --strict 2>/dev/null || true",
-      ],
+      commands: ["mix deps.get", "mix format --check-formatted", "mix credo --strict 2>/dev/null || true"],
     });
     steps.push({
       name: "test",
@@ -231,7 +228,7 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
     });
   }
 
-  // ── Shell scripts (if that's all there is) ──────────────────
+  // ── Shell scripts ───────────────────────────────────────────
   const shellFiles = files.filter((f) => f.endsWith(".sh"));
   if (shellFiles.length > 0 && steps.length === 0) {
     steps.push({
@@ -241,14 +238,14 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
     });
   }
 
-  // ── Fallback: nothing detected ──────────────────────────────
+  // ── Fallback ────────────────────────────────────────────────
   if (steps.length === 0) {
     steps.push({
       name: "info",
       image: "alpine:latest",
       commands: [
-        "echo 'No .ci.yaml found and language not auto-detected.'",
-        "echo 'Create a .ci.yaml in your repo root to define CI steps.'",
+        "echo 'No .ci.jsonld found and language not auto-detected.'",
+        "echo 'Create a .ci.jsonld in your repo root to define CI steps.'",
         "ls -la",
       ],
     });

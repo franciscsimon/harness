@@ -1,6 +1,8 @@
 # Harness CI Runner
 
 A minimal, harness-native CI/CD runner designed for Soft Serve.
+Everything is JSON-LD — pipeline configs, run results, step outcomes.
+No YAML. No translation layer. It's in the graph from the start.
 
 ## Architecture
 
@@ -24,13 +26,14 @@ runner.ts (background process)
        │  picks up job file
        │
        ├─ 1. Checks out code at pushed commit
-       ├─ 2. Reads .ci.yaml OR auto-detects language
+       ├─ 2. Reads .ci.jsonld OR auto-detects language
        ├─ 3. Runs each step in a Docker container
-       ├─ 4. Writes results to XTDB as JSON-LD
-       └─ 5. Cleans up working directory
+       ├─ 4. Writes results to XTDB as JSON-LD (code:CIRun)
+       ├─ 5. Pipeline config itself stored as JSON-LD (code:Pipeline)
+       └─ 6. Cleans up working directory
               │
               ▼
-         XTDB ci_runs table
+         XTDB ci_runs table (jsonld column)
               │
               ▼
     export-xtdb-triples.ts → QLever → /graph page
@@ -53,33 +56,53 @@ task ci:hook:install
 
 ## Pipeline Configuration
 
-### Option A: Explicit `.ci.yaml`
+### Option A: Explicit `.ci.jsonld`
 
-Place a `.ci.yaml` in your repo root:
+Place a `.ci.jsonld` in your repo root. It's native JSON-LD — the same
+format as every other entity in the harness. No YAML to validate, no
+translation to get it into the graph. It IS the graph.
 
-```yaml
-steps:
-  - name: check
-    image: oven/bun:latest
-    commands:
-      - bun install --frozen-lockfile
-      - npx biome ci .
-
-  - name: test
-    image: oven/bun:latest
-    commands:
-      - bun test
-
-  - name: typecheck
-    image: oven/bun:latest
-    commands:
-      - bun install --frozen-lockfile
-      - npx tsc --noEmit
+```json
+{
+  "@context": {
+    "schema": "https://schema.org/",
+    "code": "https://pi.dev/code/"
+  },
+  "@type": "code:Pipeline",
+  "schema:name": "harness CI",
+  "code:steps": [
+    {
+      "@type": "code:PipelineStep",
+      "schema:name": "check",
+      "code:image": "oven/bun:latest",
+      "code:commands": [
+        "bun install --frozen-lockfile",
+        "npx biome ci ."
+      ]
+    },
+    {
+      "@type": "code:PipelineStep",
+      "schema:name": "test",
+      "code:image": "oven/bun:latest",
+      "code:commands": ["bun test"]
+    },
+    {
+      "@type": "code:PipelineStep",
+      "schema:name": "typecheck",
+      "code:image": "oven/bun:latest",
+      "code:commands": [
+        "bun install --frozen-lockfile",
+        "npx tsc --noEmit"
+      ]
+    }
+  ]
+}
 ```
 
 ### Option B: Auto-detection
 
-If no `.ci.yaml` exists, the runner detects the language from manifest files and runs the canonical quality tools:
+If no `.ci.jsonld` exists, the runner detects the language from manifest
+files and generates the pipeline as JSON-LD on the fly:
 
 | Detected file | Language | Steps |
 |---|---|---|
@@ -89,6 +112,61 @@ If no `.ci.yaml` exists, the runner detects the language from manifest files and
 | `pyproject.toml` | Python | ruff check, ruff format --check, pytest |
 | `mix.exs` | Elixir | mix format --check, mix credo, mix test |
 | `*.sh` only | Shell | shellcheck |
+
+The auto-detected pipeline is converted to `code:Pipeline` JSON-LD and
+stored alongside the run results. SPARQL can query both explicit and
+auto-detected pipelines the same way.
+
+## Why JSON-LD, not YAML
+
+Every entity in the harness is JSON-LD:
+- Decisions → `prov:Activity`
+- Test runs → `schema:AssessAction`
+- Functions → `schema:DefinedTerm`
+- Events → `ev:*`
+- Deployments → `schema:DeployAction`
+- **CI runs → `code:CIRun`**
+- **CI pipelines → `code:Pipeline`**
+
+If the pipeline config were YAML, it would need to be parsed, validated
+against a schema, and translated into JSON-LD before it could enter the
+graph. That's three steps of lossy transformation. With `.ci.jsonld`,
+the config file IS the graph node. Zero translation.
+
+This means SPARQL queries like these work directly:
+
+```sparql
+# Which repos use Biome?
+SELECT ?repo WHERE {
+  ?pipeline a code:Pipeline ;
+            code:repo ?repo ;
+            code:steps ?step .
+  ?step code:commands ?cmd .
+  FILTER(CONTAINS(?cmd, "biome"))
+}
+
+# What images does the harness CI use?
+SELECT DISTINCT ?image WHERE {
+  ?pipeline a code:Pipeline ;
+            code:repo "harness" ;
+            code:steps ?step .
+  ?step code:image ?image .
+}
+
+# Failed CI runs where the pipeline had no test step
+SELECT ?run ?repo ?commit WHERE {
+  ?run a code:CIRun ;
+       code:repo ?repo ;
+       code:commitHash ?commit ;
+       schema:actionStatus schema:FailedActionStatus ;
+       code:pipeline ?pipeline .
+  ?pipeline code:steps ?step .
+  FILTER NOT EXISTS {
+    ?pipeline code:steps ?testStep .
+    ?testStep schema:name "test" .
+  }
+}
+```
 
 ## Environment Variables
 
@@ -103,63 +181,9 @@ If no `.ci.yaml` exists, the runner detects the language from manifest files and
 | `XTDB_EVENT_HOST` | `localhost` | XTDB host for recording results |
 | `XTDB_EVENT_PORT` | `5433` | XTDB port |
 
-## XTDB Integration
-
-CI results are stored in the `ci_runs` table as JSON-LD:
-
-```json
-{
-  "@type": "code:CIRun",
-  "code:repo": "harness",
-  "code:commitHash": "abc123...",
-  "schema:actionStatus": "schema:CompletedActionStatus",
-  "code:steps": [
-    { "@type": "code:CIStep", "schema:name": "check", "code:exitCode": 0 },
-    { "@type": "code:CIStep", "schema:name": "test", "code:exitCode": 0 }
-  ],
-  "code:durationMs": 4521
-}
-```
-
-### SPARQL Queries
-
-After adding `ci_runs` to `export-xtdb-triples.ts`, these queries work on `/graph`:
-
-```sparql
-# Recent CI runs
-SELECT ?run ?repo ?status ?duration WHERE {
-  ?run a code:CIRun ;
-       code:repo ?repo ;
-       schema:actionStatus ?status ;
-       code:durationMs ?duration .
-} ORDER BY DESC(?run) LIMIT 20
-
-# Failed runs with commit info
-SELECT ?repo ?commit ?message WHERE {
-  ?run a code:CIRun ;
-       code:repo ?repo ;
-       code:commitHash ?commit ;
-       code:commitMessage ?message ;
-       schema:actionStatus schema:FailedActionStatus .
-}
-
-# CI + test coverage: commits that failed CI AND touched untested functions
-# (requires function lifecycle + test coverage data)
-SELECT ?commit ?repo ?fn WHERE {
-  ?run a code:CIRun ;
-       code:commitHash ?commit ;
-       code:repo ?repo ;
-       schema:actionStatus schema:FailedActionStatus .
-  ?event a code:FunctionEvent ;
-         code:commitHash ?commit ;
-         code:functionName ?fn .
-  FILTER NOT EXISTS { ?test code:tests ?fn }
-}
-```
-
 ## Integration TODO
 
 - [ ] Add `ci_runs` to `scripts/export-xtdb-triples.ts` table list
-- [ ] Add CI run query cards to `harness-ui/pages/graph.ts`
+- [ ] Add CI query cards to `harness-ui/pages/graph.ts`
 - [ ] Add `ci: () => "ci:${randomUUID()}"` to `lib/jsonld/ids.ts`
-- [ ] Notification on failure (SSH message back to pusher, or Slack)
+- [ ] SSH notification on failure (message back to pusher via Soft Serve)
