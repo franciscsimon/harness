@@ -2,10 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { serve } from "@hono/node-server";
 import { createNodeWebSocket } from "@hono/node-ws";
-import { readFileSync } from "node:fs";
 import { captureError } from "../lib/errors.ts";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { parseClientMessage, send } from "./lib/ws-protocol.ts";
@@ -14,36 +11,15 @@ import {
   setSessionModel, getSessionInfo, getContextUsageInfo, getSessionStatsInfo,
   extractHistory, getForkPoints, getAvailableCommands, poolSize, resolveDialog,
 } from "./lib/session-pool.ts";
-import { renderChat } from "./pages/chat.ts";
-
 const PORT = Number(process.env.CHAT_PORT ?? "3334");
 const CWD = process.env.CHAT_CWD ?? process.cwd();
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = new Hono();
 app.use("/*", cors({ origin: "*" }));
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 
-// ─── Static files ─────────────────────────────────────────────────
-
-app.get("/static/:file", (c) => {
-  const file = c.req.param("file");
-  const types: Record<string, string> = {
-    "chat.js": "application/javascript",
-    "chat.css": "text/css",
-    "style.css": "text/css",
-  };
-  const ct = types[file];
-  if (!ct) return c.text("Not found", 404);
-  try {
-    let path = join(__dirname, "static", file);
-    if (file === "style.css") path = join(__dirname, "..", "xtdb-event-logger-ui", "static", "style.css");
-    const content = readFileSync(path, "utf-8");
-    return c.body(content, 200, { "Content-Type": ct + "; charset=utf-8" });
-  } catch { return c.text("Not found", 404); }
-});
-
-app.get("/", (c) => c.html(renderChat()));
+// Health check (used by harness-ui to detect if chat service is up)
+app.get("/", (c) => c.json({ status: "ok", service: "chat-ws" }));
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
