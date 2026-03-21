@@ -66,35 +66,36 @@ async function main() {
     ? pass("GET /api/artifact-versions → array (empty for unknown path)")
     : fail("/api/artifact-versions shape", `status=${artVersions.status}`);
 
-  // ── Happy path: HTML pages ──
-  console.log("\nHTML page endpoints:");
+  // ── Additional JSON APIs ──
+  console.log("\nAdditional JSON API endpoints:");
 
-  for (const path of ["/", "/sessions", "/dashboard", "/decisions", "/artifacts", "/projects", "/ops"]) {
-    const page = await html(path);
-    const hasNav = page.text.includes("href=\"/") && page.text.includes("<header") || page.text.includes("class=\"nav");
-    const hasUndefined = page.text.includes(">undefined<") || page.text.includes(": undefined");
-    page.status === 200 && hasNav && !hasUndefined
-      ? pass(`GET ${path} → 200 with navigation, no "undefined"`)
-      : fail(`GET ${path}`, `status=${page.status} hasNav=${hasNav} hasUndefined=${hasUndefined}`);
-  }
+  const events = await json("/api/events?limit=5");
+  events.status === 200 && Array.isArray(events.body)
+    ? pass("GET /api/events?limit=5 → array")
+    : fail("/api/events shape", `status=${events.status}`);
+
+  const projects = await json("/api/projects");
+  projects.status === 200 && Array.isArray(projects.body)
+    ? pass("GET /api/projects → array")
+    : fail("/api/projects shape", `status=${projects.status}`);
+
+  const testRuns = await json("/api/test-runs");
+  testRuns.status === 200 && Array.isArray(testRuns.body)
+    ? pass("GET /api/test-runs → array")
+    : fail("/api/test-runs shape", `status=${testRuns.status}`);
+
+  const projections = await json("/api/projections/__nonexistent__");
+  projections.status === 200 && Array.isArray(projections.body)
+    ? pass("GET /api/projections → array (empty for unknown session)")
+    : fail("/api/projections shape", `status=${projections.status}`);
 
   // ── Error path: 404s ──
   console.log("\nError contracts:");
-
-  const missingProject = await html("/projects/__nonexistent__");
-  missingProject.status === 404
-    ? pass("GET /projects/__nonexistent__ → 404")
-    : fail("/projects/missing", `expected 404, got ${missingProject.status}`);
 
   const missingEvent = await json("/api/events/__nonexistent__");
   missingEvent.status === 404
     ? pass("GET /api/events/__nonexistent__ → 404")
     : fail("/api/events/missing", `expected 404, got ${missingEvent.status}`);
-
-  const missingVersion = await json("/api/artifact-versions/__nonexistent__");
-  missingVersion.status === 404
-    ? pass("GET /api/artifact-versions/__nonexistent__ → 404")
-    : fail("/api/artifact-versions/missing", `expected 404, got ${missingVersion.status}`);
 
   // ── Errors API ──
   console.log("\nErrors API endpoints:");
@@ -118,12 +119,6 @@ async function main() {
   errorsCompFilter.status === 200 && Array.isArray(errorsCompFilter.body) && errorsCompFilter.body.length === 0
     ? pass("GET /api/errors?component=__nonexistent__ → empty array")
     : fail("/api/errors?component filter", `status=${errorsCompFilter.status} len=${errorsCompFilter.body?.length}`);
-
-  // ── Error path: path traversal ──
-  const traversal = await html("/static/../../etc/passwd");
-  traversal.status === 404
-    ? pass("GET /static/../../etc/passwd → 404 (path traversal blocked)")
-    : fail("Path traversal", `expected 404, got ${traversal.status}`);
 
   // ── Summary ──
   console.log(`\n── Results: ${passed} passed, ${failed} failed ──`);

@@ -39,6 +39,8 @@ async function main() {
   await check(`${HARNESS}/stream`, "GET /stream", "Live");
   await check(`${HARNESS}/ops`, "GET /ops", "<!DOCTYPE html");
   await check(`${HARNESS}/chat`, "GET /chat", "<!DOCTYPE html");
+  await check(`${HARNESS}/graph`, "GET /graph", "Knowledge Graph");
+  await check(`${HARNESS}/chat`, "GET /chat", "<!DOCTYPE html");
 
   console.log("\n── API Contracts: web-chat (:3334) ──\n");
   await check(`${CHAT}/`, "GET / (chat)", "<!DOCTYPE html");
