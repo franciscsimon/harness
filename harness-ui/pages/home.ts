@@ -3,16 +3,14 @@
 // so the page renders even if backends are down.
 
 import { layout } from "../components/layout.ts";
-import { healthDot } from "../components/badge.ts";
-import { fetchStats, fetchDashboard, fetchHealth, fetchIncidents, checkAllContainers } from "../lib/api.ts";
+import { fetchStats, fetchDashboard, fetchIncidents, checkAllContainers } from "../lib/api.ts";
 import type { ContainerStatus } from "../lib/api.ts";
 import { formatNumber, relativeTime } from "../lib/format.ts";
 
 export async function renderHome(): Promise<string> {
-  const [stats, dashboard, health, incidents, containers] = await Promise.all([
+  const [stats, dashboard, incidents, containers] = await Promise.all([
     fetchStats().catch(() => null),
     fetchDashboard().catch(() => null),
-    fetchHealth().catch(() => null),
     fetchIncidents("open").catch(() => null),
     checkAllContainers().catch(() => [] as ContainerStatus[]),
   ]);
@@ -20,19 +18,16 @@ export async function renderHome(): Promise<string> {
   const content = `
     <div class="page-header">
       <h1>⚡ Harness Overview</h1>
-      <p>Unified view across all harness services</p>
     </div>
 
-    ${renderBackendStatus(containers)}
-
-    <div class="grid grid-4" style="margin-top:1.5rem">
+    <div class="grid grid-4">
       ${renderStatCard("Sessions", dashboard ? formatNumber(dashboard.totalSessions) : "—", dashboard ? `avg ${formatNumber(dashboard.avgEventsPerSession)} events/session` : "Event API unavailable", dashboard != null)}
       ${renderStatCard("Events", stats ? formatNumber(stats.total) : "—", stats?.byCategory ? `${Object.keys(stats.byCategory).length} categories` : "—", stats != null)}
       ${renderStatCard("Open Incidents", incidents ? String(incidents.length) : "—", incidents ? (incidents.length === 0 ? "All clear" : `${incidents.length} need attention`) : "Ops API unavailable", incidents != null)}
-      ${renderStatCard("System Health", health ? capitalize(health.overall) : "—", health ? healthSummary(health) : "Ops API unavailable", health != null)}
+      ${renderStatCard("System Health", containers.length ? `${containers.filter(c => c.ok).length}/${containers.length} up` : "—", containers.length ? (containers.every(c => c.ok) ? "All services healthy" : "Some services down") : "Unavailable", containers.length > 0 && containers.every(c => c.ok))}
     </div>
 
-    ${renderHealthDetail(health)}
+    ${renderSystemHealth(containers)}
 
     ${renderCategoryBreakdown(stats)}
 
@@ -44,17 +39,30 @@ export async function renderHome(): Promise<string> {
 
 // ─── Sub-renderers ─────────────────────────────────────────────
 
-function renderBackendStatus(containers: ContainerStatus[]): string {
-  if (!containers.length) return `<p style="color:var(--text-dim)">Container status unavailable</p>`;
-  const dots = containers.map((c) =>
-    `<span class="backend-status">
-      <span class="backend-dot" style="background:${c.ok ? "#238636" : "#da3633"}"></span>
-      ${c.name} :${c.port}
-    </span>`
-  ).join("\n");
-  const up = containers.filter((c) => c.ok).length;
-  return `<div style="display:flex;gap:0.75rem;flex-wrap:wrap">${dots}</div>
-    <p style="color:var(--text-dim);font-size:0.8rem;margin-top:0.4rem">${up}/${containers.length} services up</p>`;
+function renderSystemHealth(containers: ContainerStatus[]): string {
+  if (!containers.length) {
+    return `<div class="section">
+      <h2>System Health</h2>
+      <div class="card"><div class="empty-state">Container status unavailable</div></div>
+    </div>`;
+  }
+
+  const rows = containers.map((c) => `<tr>
+    <td><span class="backend-dot" style="background:${c.ok ? "#238636" : "#da3633"};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px"></span>${c.name}</td>
+    <td><code>:${c.port}</code></td>
+    <td>${c.role}</td>
+    <td style="color:${c.ok ? "#238636" : "#da3633"};font-weight:600">${c.ok ? "Up" : "Down"}</td>
+  </tr>`).join("\n");
+
+  return `<div class="section">
+    <h2>System Health</h2>
+    <div class="card" style="overflow-x:auto">
+      <table class="data-table">
+        <thead><tr><th>Service</th><th>Port</th><th>Role</th><th>Status</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </div>`;
 }
 
 function renderStatCard(label: string, value: string, sub: string, available: boolean): string {
@@ -63,44 +71,6 @@ function renderStatCard(label: string, value: string, sub: string, available: bo
     <div class="stat-value" style="color:${color}">${value}</div>
     <div class="stat-label">${label}</div>
     <div class="stat-sub">${sub}</div>
-  </div>`;
-}
-
-function renderHealthDetail(health: any): string {
-  if (!health) {
-    return `<div class="section">
-      <h2>System Health</h2>
-      <div class="card"><div class="empty-state">Ops API unavailable — cannot fetch health data</div></div>
-    </div>`;
-  }
-
-  const rows = (health.components || []).map((c: any) => {
-    const statusColor = c.status === "healthy" ? "#238636" : c.status === "degraded" ? "#d29922" : "#da3633";
-    const details = c.details || {};
-    let detailStr = "";
-    if (c.name === "primary" || c.name === "replica") {
-      detailStr = details.pgwire ? "pgwire ✓" : "pgwire ✗";
-      if (details.port) detailStr += ` :${details.port}`;
-    } else if (c.name === "redpanda") {
-      detailStr = details.healthy ? "cluster healthy" : "cluster unhealthy";
-    } else {
-      detailStr = JSON.stringify(details).slice(0, 80);
-    }
-    return `<tr>
-      <td>${c.name}</td>
-      <td><span style="color:${statusColor};font-weight:600">${c.status}</span></td>
-      <td style="color:var(--text-dim);font-size:0.85rem">${detailStr}</td>
-    </tr>`;
-  }).join("");
-
-  return `<div class="section">
-    <h2>System Health</h2>
-    <div class="card">
-      <table class="data-table">
-        <thead><tr><th>Component</th><th>Status</th><th>Details</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
   </div>`;
 }
 
@@ -133,13 +103,4 @@ function renderCategoryBreakdown(stats: any): string {
   </div>`;
 }
 
-function healthSummary(h: any): string {
-  if (!h.components) return h.overall || "unknown";
-  const ok = h.components.filter((c: any) => c.status === "healthy").length;
-  const total = h.components.length;
-  return `${ok}/${total} components healthy`;
-}
 
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
