@@ -8,9 +8,11 @@ import { sparqlQuery } from "../lib/api.ts";
 import { escapeHtml } from "../lib/format.ts";
 
 // Pre-built queries for the UI
-const CANNED_QUERIES: Record<string, { label: string; query: string }> = {
+const CANNED_QUERIES: Record<string, { label: string; icon: string; desc: string; query: string }> = {
   modules: {
     label: "Module Dependencies",
+    icon: "📦",
+    desc: "Which files import which — the full module dependency graph",
     query: `PREFIX schema: <https://schema.org/>
 PREFIX code: <https://pi.dev/code/>
 SELECT ?from ?fromName ?to ?toName WHERE {
@@ -22,6 +24,8 @@ SELECT ?from ?fromName ?to ?toName WHERE {
   },
   hotspots: {
     label: "Function Call Hotspots",
+    icon: "🔥",
+    desc: "Most-called functions ranked by caller count — find the bottlenecks",
     query: `PREFIX code: <https://pi.dev/code/>
 PREFIX schema: <https://schema.org/>
 SELECT ?name ?file (COUNT(?caller) AS ?callCount) WHERE {
@@ -35,6 +39,8 @@ LIMIT 30`,
   },
   calls: {
     label: "Function Call Graph",
+    icon: "🕸️",
+    desc: "Caller → callee edges between functions with interactive visualization",
     query: `PREFIX code: <https://pi.dev/code/>
 PREFIX schema: <https://schema.org/>
 SELECT ?callerName ?callerFile ?calleeName ?calleeFile WHERE {
@@ -48,6 +54,8 @@ LIMIT 200`,
   },
   types: {
     label: "All Entity Types",
+    icon: "🏷️",
+    desc: "Count of every RDF type in the graph — code, decisions, projects, errors",
     query: `SELECT ?type (COUNT(?s) AS ?count) WHERE {
   ?s a ?type .
 }
@@ -56,6 +64,8 @@ ORDER BY DESC(?count)`,
   },
   decisions: {
     label: "Decisions by Outcome",
+    icon: "📋",
+    desc: "Design decisions with their outcomes — success, failure, or deferred",
     query: `PREFIX ev: <https://pi.dev/events/>
 PREFIX prov: <http://www.w3.org/ns/prov#>
 SELECT ?task ?outcome WHERE {
@@ -66,7 +76,9 @@ SELECT ?task ?outcome WHERE {
 ORDER BY ?outcome`,
   },
   projects: {
-    label: "Projects with Dependencies",
+    label: "Projects",
+    icon: "📁",
+    desc: "All tracked projects from the DOAP registry",
     query: `PREFIX doap: <http://usefulinc.com/ns/doap#>
 PREFIX ev: <https://pi.dev/events/>
 SELECT ?project ?name WHERE {
@@ -160,11 +172,15 @@ export async function renderGraph(queryKey?: string, customQuery?: string): Prom
     graphJson = JSON.stringify({ nodes: [...nodes.values()], links });
   }
 
-  // Canned query buttons
-  const queryButtons = Object.entries(CANNED_QUERIES)
-    .map(([key, { label }]) => {
-      const cls = key === activeKey ? "filter-chip active" : "filter-chip";
-      return `<a href="/graph?q=${key}" class="${cls}">${label}</a>`;
+  // Canned query cards
+  const queryCards = Object.entries(CANNED_QUERIES)
+    .map(([key, { label, icon, desc }]) => {
+      const isActive = key === activeKey;
+      return `<a href="/graph?q=${key}" class="sparql-query-card${isActive ? " sparql-query-active" : ""}">
+        <span class="sparql-query-icon">${icon}</span>
+        <span class="sparql-query-label">${label}</span>
+        <span class="sparql-query-desc">${desc}</span>
+      </a>`;
     })
     .join("\n");
 
@@ -174,8 +190,8 @@ export async function renderGraph(queryKey?: string, customQuery?: string): Prom
       <p>SPARQL-powered exploration of code structure, decisions, and project data</p>
     </div>
 
-    <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">
-      ${queryButtons}
+    <div class="sparql-query-grid">
+      ${queryCards}
     </div>
 
     <div class="section">

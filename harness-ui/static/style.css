@@ -1883,3 +1883,54 @@ main#stream {
   .detail-page { padding: 12px; }
   .field-key { width: 140px; }
 }
+
+/* ─── SPARQL Query Cards ───────────────────────────────────── */
+
+.sparql-query-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.sparql-query-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.85rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--text);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  cursor: pointer;
+}
+
+.sparql-query-card:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-secondary));
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.sparql-query-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.sparql-query-icon {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.sparql-query-label {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.sparql-query-desc {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  line-height: 1.3;
+}
