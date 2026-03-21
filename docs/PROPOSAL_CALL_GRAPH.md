@@ -251,6 +251,21 @@ SELECT ?deploy ?env ?release ?version ?testStatus WHERE {
 }
 ```
 
+## XTDB / Seed Schema Impact
+
+**No new XTDB tables needed.** The AST call graph lives on disk as `data/call-graph.jsonld` — it's not stored in XTDB. QLever reads from a combined Turtle file that merges:
+1. JSON-LD extracted from existing XTDB `jsonld` columns (20 tables)
+2. The AST call graph from disk
+
+**No seed schema changes needed.** All 20 tables with `jsonld` columns are already seeded. The `events` table already has a `jsonld` column. The `code:` namespace is added only to `lib/jsonld/context.ts` (shared config, not schema).
+
+**What does change:**
+- `lib/jsonld/context.ts` — add `code: "https://pi.dev/code/"` to the NS object
+- `docker-compose.yml` — add QLever service
+- `Taskfile.yml` — add `task graph:refresh`
+- New scripts: `scripts/parse-call-graph.ts`, `scripts/export-xtdb-triples.ts`
+- New data files: `data/call-graph.jsonld`, `data/harness-graph.ttl`
+
 ## Implementation Plan
 
 | Step | Script / File | Output | Effort |
