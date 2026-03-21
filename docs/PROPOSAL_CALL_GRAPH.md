@@ -1,121 +1,146 @@
-# Proposal: Function Call Graph via AST → JSON-LD → QLever
+# Proposal: Linked Data Graph — XTDB JSON-LD → QLever SPARQL
 
 ## Overview
 
-Parse the harness TypeScript codebase with the TS compiler API, produce a JSON-LD graph of modules, functions, and call edges, convert to Turtle for QLever, and query via SPARQL. QLever serves as a **read-only materialized view** — no data manipulation, just fast graph queries.
+The harness already stores JSON-LD documents in 20 XTDB tables. QLever becomes a **read-only materialized SPARQL view** over all this linked data — code structure (from AST parsing), events, decisions, projects, artifacts, deployments, errors, and more. No data manipulation in QLever; it's a query engine over a periodically-refreshed snapshot.
 
 ## Architecture
 
 ```
-scripts/parse-call-graph.ts          → data/call-graph.jsonld   (JSON-LD source of truth)
-scripts/jsonld-to-turtle.ts          → data/call-graph.ttl      (Turtle for QLever)
-qlever (Docker)                      → SPARQL endpoint :7001    (read-only queries)
-harness-ui /graph page               → visualize via SPARQL     (D3.js force graph)
+                    XTDB (source of truth)
+                    ┌─────────────────────┐
+                    │ 20 tables with jsonld│
+                    │ columns + new AST    │
+                    │ call-graph jsonld    │
+                    └─────────┬───────────┘
+                              │
+              scripts/export-xtdb-triples.ts
+              (SELECT jsonld FROM each table)
+                              │
+                              ▼
+                    data/harness-graph.ttl
+                    (all triples, one file)
+                              │
+                              ▼
+                    ┌─────────────────────┐
+                    │  QLever :7001       │
+                    │  (SPARQL endpoint)  │
+                    │  read-only index    │
+                    └─────────┬───────────┘
+                              │
+                    harness-ui /graph page
+                    (SPARQL → D3.js visualization)
 ```
 
-### Data Flow
+### Data Sources
 
-```
-TypeScript AST ──parse──► JSON-LD (.jsonld)
-                               │
-                    ┌──────────┼──────────┐
-                    ▼          ▼          ▼
-              Turtle (.ttl)   XTDB       disk (git-tracked)
-                    │       (jsonld col)
-                    ▼
-              QLever index
-                    │
-                    ▼
-              SPARQL :7001 ◄── harness-ui /graph
-```
+**20 XTDB tables with `jsonld` columns:**
+
+| Table | @type | Triples About |
+|-------|-------|---------------|
+| `projects` | `doap:Project` | Project identity, git remote, lifecycle phase |
+| `session_projects` | `prov:Activity` | Session ↔ project links |
+| `project_dependencies` | `prov:Entity` | npm/pip dependencies per project |
+| `decommission_records` | `prov:Activity` | Project decommission events |
+| `decisions` | `prov:Activity` | Design decisions with outcomes |
+| `session_postmortems` | `prov:Activity` | Session summaries (turns, errors, files) |
+| `delegations` | `prov:Activity` | Agent delegation events |
+| `artifacts` | `prov:Entity` | Tracked file artifacts |
+| `artifact_versions` | `schema:CreativeWork` + `prov:Entity` | File version history |
+| `workflow_runs` | `schema:HowTo` + `prov:Activity` | Workflow execution records |
+| `workflow_step_runs` | `prov:Activity` | Individual workflow step results |
+| `requirements` | `schema:CreativeWork` + `prov:Entity` | Project requirements |
+| `releases` | `doap:Version` + `prov:Entity` | Software releases |
+| `deployments` | `schema:DeployAction` + `prov:Activity` | Deployment records |
+| `test_runs` | `schema:AssessAction` | Test execution results |
+| `environments` | `schema:Place` + `prov:Location` | Deployment environments |
+| `backup_records` | `prov:Entity` | Backup snapshots |
+| `incidents` | `schema:Action` | Operational incidents |
+| `errors` | `schema:Action` (FailedActionStatus) | Captured error events |
+| `events` | (has jsonld column) | All 30 pi lifecycle events |
+
+**Plus the AST call graph** (new, from `scripts/parse-call-graph.ts`):
+
+| Source | @type | Triples About |
+|--------|-------|---------------|
+| `data/call-graph.jsonld` | `schema:SoftwareSourceCode`, `schema:DefinedTerm` | Modules, functions, call edges, imports |
 
 ## Vocabulary
 
-### Namespaces
+All namespaces already in `lib/jsonld/context.ts` plus one new one:
 
-| Prefix | URI | Source |
-|--------|-----|--------|
-| `schema:` | `https://schema.org/` | Existing in harness |
-| `code:` | `https://pi.dev/code/` | **New** — code structure properties |
-| `doap:` | `http://usefulinc.com/ns/doap#` | Existing in harness |
-| `prov:` | `http://www.w3.org/ns/prov#` | Existing in harness |
-| `xsd:` | `http://www.w3.org/2001/XMLSchema#` | Existing in harness |
+| Prefix | URI | Used By |
+|--------|-----|---------|
+| `schema:` | `https://schema.org/` | Most entities |
+| `prov:` | `http://www.w3.org/ns/prov#` | Provenance chains |
+| `doap:` | `http://usefulinc.com/ns/doap#` | Projects, releases |
+| `foaf:` | `http://xmlns.com/foaf/0.1/` | Agents |
+| `ev:` | `https://pi.dev/events/` | Harness-specific properties |
+| `code:` | `https://pi.dev/code/` | **New** — AST code structure |
+| `xsd:` | `http://www.w3.org/2001/XMLSchema#` | Typed literals |
 
-### Entity Types
-
-| Entity | RDF Type | IRI Pattern | Example |
-|--------|----------|-------------|---------|
-| Module | `schema:SoftwareSourceCode` | `urn:pi:mod:{relative-path}` | `urn:pi:mod:harness-ui/server.ts` |
-| Function | `schema:DefinedTerm` | `urn:pi:fn:{relative-path}#{name}` | `urn:pi:fn:harness-ui/lib/api.ts#fetchErrors` |
-| Parse run | `prov:Entity` | `urn:pi:graph:{project}:{iso-ts}` | `urn:pi:graph:harness:2026-03-20T12-00-00Z` |
-
-### Properties
+### New `code:` Properties (for AST graph only)
 
 | Property | Domain | Range | Description |
 |----------|--------|-------|-------------|
 | `code:filePath` | Module, Function | `xsd:string` | Relative file path |
 | `code:line` | Function | `xsd:integer` | Declaration line number |
-| `code:isAsync` | Function | `xsd:boolean` | Whether function is async |
-| `code:isExported` | Function | `xsd:boolean` | Whether function is exported |
+| `code:isAsync` | Function | `xsd:boolean` | Async function |
+| `code:isExported` | Function | `xsd:boolean` | Exported from module |
 | `code:parameters` | Function | `xsd:integer` | Parameter count |
-| `code:calls` | Function | Function | Call edge: caller → callee |
-| `code:definedIn` | Function | Module | Which module defines this function |
-| `schema:requires` | Module | Module | Import edge: importer → imported |
+| `code:calls` | Function | Function | Call edge |
+| `code:definedIn` | Function | Module | Module containing function |
 | `code:exports` | Module | `xsd:string` | Exported name |
 
-### JSON-LD Document
+## Export Pipeline
 
-Single file: `data/call-graph.jsonld`
+### Step 1: Export XTDB JSON-LD → Turtle
 
-```json
-{
-  "@context": {
-    "schema": "https://schema.org/",
-    "code": "https://pi.dev/code/",
-    "doap": "http://usefulinc.com/ns/doap#",
-    "prov": "http://www.w3.org/ns/prov#",
-    "xsd": "http://www.w3.org/2001/XMLSchema#",
-    "code:calls": { "@type": "@id" },
-    "code:definedIn": { "@type": "@id" },
-    "schema:requires": { "@type": "@id" }
-  },
-  "@id": "urn:pi:graph:harness:2026-03-20T12-00-00Z",
-  "@type": "prov:Entity",
-  "prov:generatedAtTime": "2026-03-20T12:00:00Z",
-  "schema:about": { "@id": "urn:pi:proj:harness" },
-  "@graph": [
-    {
-      "@id": "urn:pi:mod:harness-ui/server.ts",
-      "@type": "schema:SoftwareSourceCode",
-      "schema:name": "server.ts",
-      "code:filePath": "harness-ui/server.ts",
-      "schema:requires": [
-        { "@id": "urn:pi:mod:harness-ui/pages/home.ts" },
-        { "@id": "urn:pi:mod:harness-ui/lib/api.ts" }
-      ],
-      "code:exports": ["default"]
-    },
-    {
-      "@id": "urn:pi:fn:harness-ui/lib/api.ts#fetchErrors",
-      "@type": "schema:DefinedTerm",
-      "schema:name": "fetchErrors",
-      "code:definedIn": { "@id": "urn:pi:mod:harness-ui/lib/api.ts" },
-      "code:filePath": "harness-ui/lib/api.ts",
-      "code:line": 32,
-      "code:isAsync": false,
-      "code:isExported": true,
-      "code:parameters": 1,
-      "code:calls": [
-        { "@id": "urn:pi:fn:harness-ui/lib/api.ts#get" }
-      ]
-    }
-  ]
-}
+`scripts/export-xtdb-triples.ts`:
+
+```
+For each of 20 tables:
+  SELECT _id, jsonld FROM {table} WHERE jsonld IS NOT NULL AND jsonld != ''
+  Parse each jsonld string as JSON-LD
+  Expand @context → full IRIs
+  Emit as N-Triples / Turtle
+→ data/harness-graph.ttl
 ```
 
-## QLever Setup
+This single file contains ALL linked data from the harness — decisions linked to projects, artifacts linked to sessions, errors linked to components, code functions linked to modules.
 
-### Docker Service
+### Step 2: Add AST call graph
+
+`scripts/parse-call-graph.ts`:
+- Parse ~200 TypeScript files with TS compiler API
+- Output `data/call-graph.jsonld`
+- Convert to Turtle and **append** to `data/harness-graph.ttl`
+
+### Step 3: QLever index + serve
+
+```bash
+# Build index from combined Turtle
+docker exec qlever bash -c "
+  cd /data &&
+  cp /input/harness-graph.ttl . &&
+  qlever index &&
+  qlever start
+"
+```
+
+### Refresh (periodic or on-demand)
+
+```bash
+# Re-export all XTDB JSON-LD + re-parse AST → rebuild QLever index
+NODE_PATH=xtdb-event-logger/node_modules npx jiti scripts/export-xtdb-triples.ts
+NODE_PATH=xtdb-projector/node_modules npx jiti scripts/parse-call-graph.ts
+# → data/harness-graph.ttl (combined)
+docker exec qlever bash -c "cd /data && cp /input/harness-graph.ttl . && qlever index && qlever restart"
+```
+
+Add as a Taskfile command: `task graph:refresh`
+
+## QLever Docker
 
 Add to `docker-compose.yml`:
 
@@ -127,83 +152,62 @@ qlever:
   volumes:
     - qlever-data:/data
     - ./data:/input:ro
-  environment:
-    - UID=1000
-    - GID=1000
 
 qlever-data:
   driver: local
 ```
 
-### Index Build
-
-After generating `data/call-graph.ttl`:
-
-```bash
-docker exec qlever bash -c "
-  cd /data &&
-  qlever setup-config harness --data-format ttl &&
-  cp /input/call-graph.ttl . &&
-  qlever index &&
-  qlever start
-"
-```
-
-QLever indexes the Turtle file and starts a SPARQL endpoint at `:7001`.
-
-### Re-index (on code changes)
-
-```bash
-# 1. Re-parse
-NODE_PATH=xtdb-projector/node_modules npx jiti scripts/parse-call-graph.ts
-
-# 2. Convert
-NODE_PATH=xtdb-projector/node_modules npx jiti scripts/jsonld-to-turtle.ts
-
-# 3. Re-index
-docker exec qlever bash -c "cd /data && cp /input/call-graph.ttl . && qlever index && qlever restart"
-```
-
 ## Example SPARQL Queries
 
-### All functions in a module
+### Cross-domain: Which functions are involved in decisions?
+
 ```sparql
 PREFIX code: <https://pi.dev/code/>
+PREFIX prov: <http://www.w3.org/ns/prov#>
+PREFIX ev: <https://pi.dev/events/>
 PREFIX schema: <https://schema.org/>
 
-SELECT ?fn ?name ?line WHERE {
-  ?fn a schema:DefinedTerm ;
-      code:definedIn <urn:pi:mod:harness-ui/lib/api.ts> ;
-      schema:name ?name ;
-      code:line ?line .
-}
-ORDER BY ?line
-```
-
-### Who calls fetchErrors?
-```sparql
-PREFIX code: <https://pi.dev/code/>
-PREFIX schema: <https://schema.org/>
-
-SELECT ?caller ?callerName ?callerFile WHERE {
-  ?caller code:calls <urn:pi:fn:harness-ui/lib/api.ts#fetchErrors> ;
-          schema:name ?callerName ;
-          code:filePath ?callerFile .
+SELECT ?decision ?task ?file WHERE {
+  ?decision a prov:Activity ;
+            ev:task ?task ;
+            ev:files ?file .
+  ?mod a schema:SoftwareSourceCode ;
+       code:filePath ?file .
 }
 ```
 
-### Module dependency graph
+### All entities linked to a project
+
+```sparql
+PREFIX doap: <http://usefulinc.com/ns/doap#>
+PREFIX ev: <https://pi.dev/events/>
+PREFIX schema: <https://schema.org/>
+
+SELECT ?entity ?type WHERE {
+  ?entity ev:projectId "proj:harness" ;
+          a ?type .
+}
+```
+
+### Error → component → functions (trace from error to code)
+
 ```sparql
 PREFIX schema: <https://schema.org/>
 PREFIX code: <https://pi.dev/code/>
 
-SELECT ?from ?to WHERE {
-  ?from a schema:SoftwareSourceCode ;
-        schema:requires ?to .
+SELECT ?error ?component ?fn ?fnName WHERE {
+  ?error a schema:Action ;
+         schema:actionStatus schema:FailedActionStatus ;
+         schema:agent/schema:name ?component .
+  ?fn code:definedIn ?mod ;
+     schema:name ?fnName .
+  ?mod code:filePath ?path .
+  FILTER(CONTAINS(?path, ?component))
 }
 ```
 
-### Most-called functions (hotspots)
+### Function call hotspots
+
 ```sparql
 PREFIX code: <https://pi.dev/code/>
 PREFIX schema: <https://schema.org/>
@@ -217,57 +221,57 @@ ORDER BY DESC(?callCount)
 LIMIT 20
 ```
 
-### Call chain (2 levels deep)
-```sparql
-PREFIX code: <https://pi.dev/code/>
-PREFIX schema: <https://schema.org/>
+### Module dependency graph
 
-SELECT ?l1name ?l2name ?l3name WHERE {
-  <urn:pi:fn:harness-ui/server.ts#renderHome> code:calls ?l2 .
-  ?l2 schema:name ?l2name .
+```sparql
+PREFIX schema: <https://schema.org/>
+PREFIX code: <https://pi.dev/code/>
+
+SELECT ?from ?to WHERE {
+  ?from a schema:SoftwareSourceCode ;
+        schema:requires ?to .
+}
+```
+
+### Deployment → release → test run chain
+
+```sparql
+PREFIX schema: <https://schema.org/>
+PREFIX doap: <http://usefulinc.com/ns/doap#>
+
+SELECT ?deploy ?env ?release ?version ?testStatus WHERE {
+  ?deploy a schema:DeployAction ;
+          schema:location ?env .
+  ?release a doap:Version ;
+           doap:revision ?version .
   OPTIONAL {
-    ?l2 code:calls ?l3 .
-    ?l3 schema:name ?l3name .
+    ?test a schema:AssessAction ;
+          schema:actionStatus ?testStatus .
   }
-  BIND("renderHome" AS ?l1name)
 }
 ```
 
 ## Implementation Plan
 
-| Step | Script | Output | Effort |
-|------|--------|--------|--------|
+| Step | Script / File | Output | Effort |
+|------|---------------|--------|--------|
 | 1 | `scripts/parse-call-graph.ts` | `data/call-graph.jsonld` | M |
-| 2 | `scripts/jsonld-to-turtle.ts` | `data/call-graph.ttl` | S |
-| 3 | Docker compose + index script | QLever on `:7001` | S |
+| 2 | `scripts/export-xtdb-triples.ts` | `data/harness-graph.ttl` (all JSON-LD from XTDB + call graph) | M |
+| 3 | `docker-compose.yml` + init | QLever on `:7001` | S |
 | 4 | `harness-ui/pages/graph.ts` | `/graph` page with D3.js | L |
 | 5 | SPARQL proxy in harness-ui | `/api/sparql` → `:7001` | S |
+| 6 | `Taskfile.yml` entry | `task graph:refresh` | S |
 
-### Step 1: AST Parser (Medium)
-- Use `typescript` package (already in `xtdb-projector/node_modules/`)
-- Walk all `.ts` files, skip `node_modules/`
-- For each file: extract imports, exports, function declarations
-- For each function: walk body, find `CallExpression` nodes, resolve to function IRIs
-- Output `@graph` array as JSON-LD
+### Data Volume Estimate
 
-### Step 2: JSON-LD → Turtle (Small)
-- Expand JSON-LD context to full IRIs
-- Convert each entity to Turtle triples
-- Simple template: `<subject> <predicate> <object> .`
+| Source | Estimated Triples |
+|--------|-------------------|
+| events (7000 rows × ~20 triples) | ~140,000 |
+| decisions (~50 rows × ~8 triples) | ~400 |
+| artifacts (~200 rows × ~6 triples) | ~1,200 |
+| projects + sessions (~50 rows × ~10) | ~500 |
+| AST call graph (~200 files, ~800 fns) | ~5,000 |
+| All other tables | ~2,000 |
+| **Total** | **~150,000 triples** |
 
-### Step 3: QLever Docker (Small)
-- Add to docker-compose.yml
-- Init script: copy TTL, build index, start server
-- Health check on `:7001`
-
-### Step 4: Graph UI Page (Large)
-- Server-rendered page at `/graph`
-- D3.js force-directed layout
-- Fetch data via SPARQL (module dependency or function call graph)
-- Click node → show callers/callees
-- Filter by module prefix
-
-### Step 5: SPARQL Proxy (Small)
-- `/api/sparql` endpoint in harness-ui
-- Forwards SPARQL queries to QLever `:7001`
-- Avoids CORS issues
+QLever handles billions of triples. 150K will index in under a second.
