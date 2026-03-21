@@ -5,10 +5,37 @@
 // DOM element IDs that ops.js expects, wrapped in harness-ui layout.
 
 import { layout } from "../components/layout.ts";
+import { checkAllContainers } from "../lib/api.ts";
 
 export async function renderOps(): Promise<string> {
+  // Fetch container status server-side
+  const containers = await checkAllContainers().catch(() => []);
+  const up = containers.filter((c) => c.ok).length;
+
+  const containerRows = containers.map((c) => `
+    <tr>
+      <td><span class="backend-dot" style="background:${c.ok ? "#238636" : "#da3633"};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px"></span>${c.name}</td>
+      <td><code>:${c.port}</code></td>
+      <td>${c.role}</td>
+      <td style="color:${c.ok ? "#238636" : "#da3633"};font-weight:600">${c.ok ? "Up" : "Down"}</td>
+    </tr>
+  `).join("\n");
+
   const content = `
     <main class="ops-page">
+
+      <div class="ops-section">
+        <div class="ops-section-header">
+          <h2>🐳 Docker Containers</h2>
+          <span class="ops-refresh-badge">${up}/${containers.length} up</span>
+        </div>
+        <div class="card" style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr><th>Service</th><th>Port</th><th>Role</th><th>Status</th></tr></thead>
+            <tbody>${containerRows}</tbody>
+          </table>
+        </div>
+      </div>
 
       <div class="ops-api-banner ops-api-checking" id="api-banner">
         Connecting to Ops API at <code>localhost:3335</code>...

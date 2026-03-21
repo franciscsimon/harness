@@ -82,9 +82,10 @@ export async function checkQleverHealth(): Promise<boolean> {
   try {
     const c = new AbortController();
     const t = setTimeout(() => c.abort(), 3000);
+    const params = new URLSearchParams({ query: "SELECT * WHERE { ?s ?p ?o } LIMIT 1" });
     const r = await fetch(QLEVER_URL, {
       method: "POST",
-      body: "query=SELECT * WHERE { ?s ?p ?o } LIMIT 1",
+      body: params.toString(),
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       signal: c.signal,
     });
@@ -96,15 +97,72 @@ export async function checkQleverHealth(): Promise<boolean> {
 export async function sparqlQuery(query: string): Promise<any> {
   const c = new AbortController();
   const t = setTimeout(() => c.abort(), 15000);
+  const params = new URLSearchParams({ query });
   const r = await fetch(QLEVER_URL, {
     method: "POST",
-    body: `query=${encodeURIComponent(query)}`,
+    body: params.toString(),
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     signal: c.signal,
   });
   clearTimeout(t);
-  if (!r.ok) throw new Error(`SPARQL error: ${r.status}`);
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    throw new Error(`SPARQL error ${r.status}: ${text.slice(0, 200)}`);
+  }
   return r.json();
+}
+
+// Docker container health probes
+async function probeHttp(url: string, timeout = 3000): Promise<boolean> {
+  try {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), timeout);
+    const r = await fetch(url, { signal: c.signal });
+    clearTimeout(t);
+    return r.ok || r.status < 500; // 401/403 means service is up
+  } catch { return false; }
+}
+
+async function probeTcp(host: string, port: number, timeout = 2000): Promise<boolean> {
+  try {
+    const { createConnection } = await import("node:net");
+    return new Promise((resolve) => {
+      const sock = createConnection({ host, port, timeout }, () => { sock.destroy(); resolve(true); });
+      sock.on("error", () => resolve(false));
+      sock.on("timeout", () => { sock.destroy(); resolve(false); });
+    });
+  } catch { return false; }
+}
+
+export interface ContainerStatus {
+  name: string;
+  port: string;
+  role: string;
+  ok: boolean;
+}
+
+export async function checkAllContainers(): Promise<ContainerStatus[]> {
+  const checks: Array<{ name: string; port: string; role: string; check: Promise<boolean> }> = [
+    { name: "Redpanda", port: "19092", role: "Kafka broker", check: probeTcp("localhost", 19092) },
+    { name: "Garage S3", port: "3900", role: "Object store", check: probeHttp("http://localhost:3900/health") },
+    { name: "XTDB Primary", port: "5433", role: "Database (write)", check: probeHttp("http://localhost:8083/healthz/alive") },
+    { name: "XTDB Replica", port: "5434", role: "Database (read)", check: probeHttp("http://localhost:8084/healthz/alive") },
+    { name: "Keycloak", port: "8180", role: "Auth server", check: probeHttp("http://localhost:8180/health/ready") },
+    { name: "QLever", port: "7001", role: "SPARQL endpoint", check: checkQleverHealth() },
+    { name: "Event API", port: "3333", role: "Event logger", check: probeHttp("http://localhost:3333/api/stats") },
+    { name: "Ops API", port: "3335", role: "Operations", check: probeHttp("http://localhost:3335/api/health") },
+    { name: "Chat WS", port: "3334", role: "Chat service", check: checkChatHealth() },
+    { name: "Harness UI", port: "3336", role: "This UI", check: Promise.resolve(true) },
+  ];
+
+  const results = await Promise.all(checks.map(async (c) => ({
+    name: c.name,
+    port: c.port,
+    role: c.role,
+    ok: await c.check,
+  })));
+
+  return results;
 }
 
 // :3335 Ops API

@@ -4,17 +4,17 @@
 
 import { layout } from "../components/layout.ts";
 import { healthDot } from "../components/badge.ts";
-import { fetchStats, fetchDashboard, fetchHealth, fetchIncidents, checkChatHealth, checkQleverHealth } from "../lib/api.ts";
+import { fetchStats, fetchDashboard, fetchHealth, fetchIncidents, checkAllContainers } from "../lib/api.ts";
+import type { ContainerStatus } from "../lib/api.ts";
 import { formatNumber, relativeTime } from "../lib/format.ts";
 
 export async function renderHome(): Promise<string> {
-  const [stats, dashboard, health, incidents, chatOk, qleverOk] = await Promise.all([
+  const [stats, dashboard, health, incidents, containers] = await Promise.all([
     fetchStats().catch(() => null),
     fetchDashboard().catch(() => null),
     fetchHealth().catch(() => null),
     fetchIncidents("open").catch(() => null),
-    checkChatHealth().catch(() => false),
-    checkQleverHealth().catch(() => false),
+    checkAllContainers().catch(() => [] as ContainerStatus[]),
   ]);
 
   const content = `
@@ -23,7 +23,7 @@ export async function renderHome(): Promise<string> {
       <p>Unified view across all harness services</p>
     </div>
 
-    ${renderBackendStatus(stats, health, chatOk, qleverOk)}
+    ${renderBackendStatus(containers)}
 
     <div class="grid grid-4" style="margin-top:1.5rem">
       ${renderStatCard("Sessions", dashboard ? formatNumber(dashboard.totalSessions) : "—", dashboard ? `avg ${formatNumber(dashboard.avgEventsPerSession)} events/session` : "Event API unavailable", dashboard != null)}
@@ -78,28 +78,17 @@ export async function renderHome(): Promise<string> {
 
 // ─── Sub-renderers ─────────────────────────────────────────────
 
-function renderBackendStatus(stats: any, health: any, chatOk: boolean, qleverOk: boolean): string {
-  const eventOk = stats != null;
-  const opsOk = health != null;
-
-  return `<div style="display:flex;gap:0.75rem;flex-wrap:wrap">
-    <span class="backend-status">
-      <span class="backend-dot" style="background:${eventOk ? "#238636" : "#da3633"}"></span>
-      Event API :3333
-    </span>
-    <span class="backend-status">
-      <span class="backend-dot" style="background:${opsOk ? "#238636" : "#da3633"}"></span>
-      Ops API :3335
-    </span>
-    <span class="backend-status">
-      <span class="backend-dot" style="background:${chatOk ? "#238636" : "#da3633"}"></span>
-      Chat WS :3334
-    </span>
-    <span class="backend-status">
-      <span class="backend-dot" style="background:${qleverOk ? "#238636" : "#da3633"}"></span>
-      QLever SPARQL :7001
-    </span>
-  </div>`;
+function renderBackendStatus(containers: ContainerStatus[]): string {
+  if (!containers.length) return `<p style="color:var(--text-dim)">Container status unavailable</p>`;
+  const dots = containers.map((c) =>
+    `<span class="backend-status">
+      <span class="backend-dot" style="background:${c.ok ? "#238636" : "#da3633"}"></span>
+      ${c.name} :${c.port}
+    </span>`
+  ).join("\n");
+  const up = containers.filter((c) => c.ok).length;
+  return `<div style="display:flex;gap:0.75rem;flex-wrap:wrap">${dots}</div>
+    <p style="color:var(--text-dim);font-size:0.8rem;margin-top:0.4rem">${up}/${containers.length} services up</p>`;
 }
 
 function renderStatCard(label: string, value: string, sub: string, available: boolean): string {
