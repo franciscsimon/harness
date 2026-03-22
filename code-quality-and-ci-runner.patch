@@ -1,0 +1,4887 @@
+From c673f104d932b5cb1128ce352868b52df39e989a Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sat, 21 Mar 2026 20:19:59 +0000
+Subject: [PATCH 1/6] docs: add function lifecycle tracking implementation
+ summary
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Research findings + implementation plan for tracking functions from
+creation through changes to decommissioning.
+
+Key findings:
+- Existing code ontologies (CodeOntology, SEON) are OOP-centric, don't fit TS
+- git log -L uses regex, not AST — misses 34% of TS functions
+- AST parsing finds 100% of functions at all indent levels
+- Blast radius model validated: lib/errors.ts → 6 files, session-pool → 44 files
+- All required infrastructure exists (call graph parser, XTDB, QLever, decision log)
+
+Architecture: post-commit git hook → AST parse changed files only → diff against
+stored function registry → emit lifecycle events → calculate blast radius
+
+5 phases, 9-14h total effort. Phases 1-2 work standalone without XTDB.
+---
+ docs/PROGRESS_FUNCTION_LIFECYCLE.md | 355 ++++++++++++++++++++++++++++
+ 1 file changed, 355 insertions(+)
+ create mode 100644 docs/PROGRESS_FUNCTION_LIFECYCLE.md
+
+diff --git a/docs/PROGRESS_FUNCTION_LIFECYCLE.md b/docs/PROGRESS_FUNCTION_LIFECYCLE.md
+new file mode 100644
+index 0000000..3b52c9f
+--- /dev/null
++++ b/docs/PROGRESS_FUNCTION_LIFECYCLE.md
+@@ -0,0 +1,355 @@
++# Function Lifecycle Tracking — Implementation Summary
++
++> Last updated: 2026-03-21
++> Status: Research complete, ready for implementation
++> Related: `docs/PROPOSAL_CALL_GRAPH.md`, `docs/TODO_TEST_COVERAGE_GRAPH.md`
++
++---
++
++## Goal
++
++Track every function from first creation through changes to decommissioning, driven by changing requirements. When a file changes, identify which functions were affected and calculate the blast radius through the call graph.
++
++## Research Findings
++
++### 1. Existing ontologies don't fit functional TypeScript
++
++We evaluated five code ontologies. All are OOP-centric (Class → Method → Inheritance). The harness has **3 classes** and **304 exported functions**. The organizing unit is the ES Module (file), not the Class.
++
++| Ontology | Problem |
++|---|---|
++| CodeOntology (ISWC 2017) | Package → Class → Method hierarchy, no modules |
++| SEON Code Ontology (UZH) | Explicitly OOP |
++| SEON (UFES, Brazil) | Process-level, not code structure |
++| LLNL Call Graph Ontology | Call edges only — no structural model |
++| GraphGen4Code (IBM) | Python-centric, Class as primary container |
++
++**Reusable pieces:** LLNL's `calls`/`calledBy` naming convention. `xkos:hasPart` for containment. The `code:` namespace already adopted in `scripts/parse-call-graph.ts`.
++
++### 2. `git log -L` is regex, not AST
++
++We tested `git log -L :funcname:file` against the harness codebase. It uses regex heuristics from userdiff patterns — **not AST parsing**. There is no built-in TypeScript pattern.
++
++| What | `git log -L` | AST parser |
++|---|---|---|
++| Top-level `function X()` | ✅ finds | ✅ finds |
++| Indented/nested functions | ❌ `fatal: no match` | ✅ finds |
++| `const X = () => {}` | Unreliable | ✅ finds |
++| Object methods | ❌ | ✅ finds |
++| Function END line | ❌ guesses | ✅ exact |
++| Call edges | ❌ | ✅ |
++| **Coverage** | **~66% of functions** | **100%** |
++
++Proven on real example: `persistDelegation` (async function, indented inside handler) — git says `fatal: no match`, AST finds it immediately.
++
++**Conclusion:** AST parsing is required for accuracy. Git provides the *trigger* (which files changed), AST provides the *analysis* (what functions exist and how they connect).
++
++### 3. The blast radius model works
++
++Tested two real examples from the harness:
++
++**`lib/errors.ts` changed → 6 files in blast radius**
++- Origin: 11 functions (captureError, flushErrors, startErrorCollector, etc.)
++- Distance 1: 4 files (agent-spawner, artifact-tracker, web-chat, xtdb-event-logger)
++- Distance 2: 1 file (agent-spawner again, via runSubagent → captureError)
++
++**`web-chat/lib/session-pool.ts` changed → 44 files in blast radius**
++- Origin: 40 functions (notify, setStatus, createPoolSession, etc.)
++- Distance 1: 35 files — every extension handler calls notify()
++- Distance 2: 6 files (test files, router, workflow engine)
++- Distance 3: 2 files (test/test-handler::main, xtdb-event-logger::capture)
++
++The chain: `file changed → functions in file → callers of those functions → files containing those callers → repeat`.
++
++### 4. The harness already has most of the infrastructure
++
++| Component | Status | What it does |
++|---|---|---|
++| AST call graph parser | ✅ exists | `scripts/parse-call-graph.ts` — 192 files, 675+ functions, 1042 call edges |
++| QLever SPARQL endpoint | ✅ exists | Indexes all triples, queries from `/graph` page |
++| Triple export pipeline | ✅ exists | `scripts/export-xtdb-triples.ts` → `data/harness-graph.ttl` |
++| Decision log | ✅ exists | Records what/why/outcome with file paths |
++| Requirements tracker | ✅ exists | proposed → accepted → implemented → verified → rejected |
++| Test recorder | ✅ exists | Writes test results to XTDB `test_runs` table |
++| Test coverage in graph | ✅ exists | `code:tests` edges, 44/292 functions tested |
++| Event system | ✅ exists | 30 lifecycle events routed through XTDB |
++| Git hooks | ❌ missing | Only default samples, none active |
++| Incremental graph update | ❌ missing | Full re-parse required currently |
++| Function lifecycle events | ❌ missing | No tracking of created/modified/deleted |
++| Commit → function mapping | ❌ missing | No link from git commit to affected functions |
++| Blast radius calculation | ❌ missing | Call graph exists but no tooling to walk it from a change |
++
++---
++
++## Architecture
++
++### The event flow
++
++```
++git commit
++  │
++  ▼
++.githooks/post-commit (shell script)
++  │  runs: git diff --name-only HEAD~1 HEAD
++  │  filters: only .ts files
++  │  calls: scripts/update-graph.ts <changed-files>
++  │
++  ▼
++scripts/update-graph.ts
++  │  1. Loads stored graph state (per-file function registry)
++  │  2. AST-parses ONLY the changed .ts files
++  │  3. Diffs new functions vs stored functions for each file:
++  │     - Function in new but not old → CREATED
++  │     - Function in old but not new → DELETED
++  │     - Function in both but signature/calls changed → MODIFIED
++  │     - Call edges added/removed → RECONNECTED
++  │  4. Emits lifecycle events as JSON-LD → XTDB
++  │  5. Updates stored graph state
++  │  6. Calculates blast radius from changed functions
++  │  7. Logs summary to stdout
++  │
++  ▼
++XTDB (function_events table)
++  │  stores: lifecycle events with commit hash, session, decision links
++  │
++  ▼
++export-xtdb-triples.ts + qlever-index.sh
++  │  periodic: materializes all triples for SPARQL querying
++  │
++  ▼
++QLever → /graph page
++     queryable: function history, blast radius, requirement traceability
++```
++
++### The data model
++
++Uses the existing `code:` namespace (`https://pi.dev/code/`) from `lib/jsonld/context.ts`.
++
++#### New: Function lifecycle event (JSON-LD → XTDB)
++
++```jsonld
++{
++  "@context": { /* existing JSONLD_CONTEXT */ },
++  "@id": "urn:pi:fnevt:<uuid>",
++  "@type": "code:FunctionEvent",
++  "code:eventType": "created | modified | deleted | moved | renamed",
++  "code:functionId": "urn:pi:fn:<filePath>#<functionName>",
++  "code:filePath": "lib/errors.ts",
++  "code:functionName": "captureError",
++  "code:commitHash": "abc123def",
++  "code:commitMessage": "feat: add error capture",
++  "code:sessionId": "sess:<uuid>",          // if from agent session
++  "code:decisionId": "dec:<uuid>",           // if decision log entry exists
++  "prov:generatedAtTime": { "@type": "xsd:long", "@value": "1711000000000" },
++  "code:blastRadius": 6,
++  "code:affectedFiles": ["agent-spawner/index.ts", "web-chat/server.ts", ...]
++}
++```
++
++#### New: Per-file function registry (stored graph state)
++
++```json
++{
++  "lib/errors.ts": {
++    "commitHash": "abc123",
++    "functions": {
++      "captureError": { "line": 45, "exported": true, "async": false, "calls": ["extractError", "ensureDir"], "params": 3 },
++      "flushErrors": { "line": 78, "exported": false, "async": true, "calls": ["t", "n", "buildJsonLd"], "params": 0 }
++    }
++  }
++}
++```
++
++Stored at: `data/function-registry.json` (committed to repo, updated by post-commit hook).
++
++### Blast radius calculation
++
++Walk the call graph outward from changed functions:
++
++```
++Input:  set of function IDs that changed
++Output: rings of affected files at increasing distance
++
++Ring 0: the changed file itself
++Ring 1: files containing functions that CALL the changed functions
++Ring 2: files containing functions that CALL Ring 1 functions
++Ring N: continue until no new files found (or max depth)
++```
++
++The call graph for this walk comes from the existing `data/call-graph.jsonld` (already has `code:calls` edges between all functions).
++
++### Linking to requirements and decisions
++
++The connection through existing infrastructure:
++
++```
++Requirement (requirements table)
++  → links to: Decision (decisions table)
++    → decision has: files[] (JSON array of affected file paths)
++      → file path matches: code:filePath on function nodes
++        → function has: code:calls edges to other functions
++          → blast radius calculable from here
++```
++
++And in reverse (from a commit):
++
++```
++Commit (from post-commit hook)
++  → changed files (git diff --name-only)
++    → functions in those files (function registry)
++      → decisions referencing those files (SPARQL query)
++        → requirements linked to those decisions (SPARQL query)
++```
++
++---
++
++## Implementation Plan
++
++### Phase 1: Post-commit hook + function registry (core)
++
++**Files to create:**
++- `.githooks/post-commit` — shell script, entry point
++- `scripts/update-graph.ts` — incremental AST parser + diff engine
++- `data/function-registry.json` — per-file function state (generated)
++
++**What it does:**
++1. post-commit hook calls update-graph.ts with list of changed .ts files
++2. update-graph.ts loads function-registry.json
++3. For each changed file: AST-parse → extract functions and calls → diff against registry
++4. Emit created/modified/deleted events to stdout (human-readable summary)
++5. Write updated function-registry.json
++6. Optionally write lifecycle events to XTDB (if XTDB is running)
++
++**Setup:**
++```bash
++git config core.hooksPath .githooks
++chmod +x .githooks/post-commit
++```
++
++**Effort estimate:** M (2-3 hours)
++
++### Phase 2: Blast radius calculation
++
++**Files to modify:**
++- `scripts/update-graph.ts` — add blast radius walk after detecting changes
++
++**What it does:**
++1. After detecting changed functions, load the call graph (from `data/call-graph.jsonld` or re-parse)
++2. Reverse-walk `code:calls` edges from changed functions outward
++3. Group affected functions by file = blast radius rings
++4. Log: "Changed lib/errors.ts → blast radius: 6 files (4 at distance 1, 1 at distance 2)"
++5. Identify affected test files in the blast radius
++
++**Effort estimate:** S-M (1-2 hours)
++
++### Phase 3: XTDB integration + QLever queries
++
++**Files to create/modify:**
++- `scripts/update-graph.ts` — write `code:FunctionEvent` JSON-LD to XTDB `function_events` table
++- `scripts/export-xtdb-triples.ts` — add `function_events` to the export list
++- `harness-ui/pages/graph.ts` — add SPARQL query cards for lifecycle
++
++**New XTDB table:** `function_events`
++```
++_id, function_id, file_path, function_name, event_type, commit_hash,
++commit_message, session_id, decision_id, blast_radius, affected_files, ts, jsonld
++```
++
++**New SPARQL queries for /graph page:**
++- "Function Lifecycle" — show all events for a given function
++- "Blast Radius" — given a file, show affected files and distance
++- "Recently Created Functions" — functions born in last N commits
++- "Recently Deleted Functions" — functions removed in last N commits
++- "Most Changed Functions" — functions with the most modification events (volatility)
++- "Orphaned Functions" — functions with no requirement/decision link
++
++**Effort estimate:** M (2-3 hours)
++
++### Phase 4: Requirement linkage
++
++**Files to modify:**
++- `scripts/update-graph.ts` — after detecting changes, query decisions table for matching file paths
++- Link: function event → decision → requirement (through existing XTDB relationships)
++
++**New SPARQL queries:**
++- "Requirement → Functions" — forward traceability: which functions implement a requirement
++- "Function → Requirements" — reverse traceability: which requirements drove this function
++- "Unlinked Functions" — functions with no decision or requirement connection
++
++**Effort estimate:** S-M (1-2 hours)
++
++### Phase 5: Historical backfill
++
++**Files to create:**
++- `scripts/backfill-function-history.ts` — walk entire git history and generate lifecycle events
++
++**What it does:**
++1. `git log --reverse --format="%H %s"` — get all commits chronologically
++2. For each commit: `git diff --name-only <commit>~1 <commit>` → changed .ts files
++3. For each changed file: checkout at that commit, AST-parse, diff against previous
++4. Emit lifecycle events backdated to the commit timestamp
++5. Write all events to XTDB
++
++**Optimization:** Only parse files that actually changed (not the full 192 at each commit). Typical commit touches 2-5 files. 210 commits × ~3 files avg = ~630 file parses.
++
++**Effort estimate:** M-L (3-4 hours)
++
++---
++
++## Key Design Decisions
++
++### D1: AST for accuracy, git for triggering
++Git tells us WHICH files changed (cheap: `git diff --name-only`). AST tells us WHAT changed inside those files (accurate: full syntax tree). We never use `git log -L` for function detection — it misses 34% of functions in TypeScript.
++
++### D2: File is the event boundary, function is the connection point
++A commit changes files. Each file contains functions (the registry). Functions are connected to other functions via call edges. The blast radius propagates through these connections. The file is the unit of change detection; the function is the unit of impact analysis.
++
++### D3: Incremental updates, not full re-parse
++On each commit, re-parse only the changed files (~2-5 typically). The rest of the graph stays as-is. The function registry stores the "last known" state per file.
++
++### D4: Use existing vocabulary and infrastructure
++Use the `code:` namespace already in `lib/jsonld/context.ts`. Write to XTDB like everything else. Export to QLever via existing pipeline. Display on existing `/graph` page.
++
++### D5: The hook is a `.githooks/` directory committed to the repo
++Following git 2.9+ convention: `git config core.hooksPath .githooks`. The hook scripts are version-controlled, shared across all developers, and don't conflict with user-local hooks in `.git/hooks/`.
++
++### D6: Blast radius includes test identification
++When calculating blast radius, test files are flagged. This connects to the existing test coverage graph (44/292 tested) and answers "which tests should re-run after this change?"
++
++---
++
++## Dependencies
++
++| Dependency | Status | Notes |
++|---|---|---|
++| TypeScript compiler API | ✅ available | Used by existing `scripts/parse-call-graph.ts` |
++| XTDB | ✅ running | Existing infrastructure, 20+ tables |
++| QLever | ✅ running | Existing SPARQL endpoint |
++| `code:` namespace | ✅ defined | In `lib/jsonld/context.ts` |
++| `data/call-graph.jsonld` | ✅ generated | By `scripts/parse-call-graph.ts` |
++| Git 2.9+ | ✅ available | Required for `core.hooksPath` |
++
++## Files Summary
++
++| File | Action | Phase |
++|---|---|---|
++| `.githooks/post-commit` | Create | 1 |
++| `scripts/update-graph.ts` | Create | 1-4 |
++| `data/function-registry.json` | Generated | 1 |
++| `scripts/export-xtdb-triples.ts` | Modify (add function_events) | 3 |
++| `harness-ui/pages/graph.ts` | Modify (add query cards) | 3 |
++| `scripts/backfill-function-history.ts` | Create | 5 |
++| `lib/jsonld/context.ts` | Verify (code: namespace) | 1 |
++
++## Total Effort Estimate
++
++| Phase | Effort | Cumulative |
++|---|---|---|
++| 1. Hook + registry | 2-3h | 2-3h |
++| 2. Blast radius | 1-2h | 3-5h |
++| 3. XTDB + QLever | 2-3h | 5-8h |
++| 4. Requirement linkage | 1-2h | 6-10h |
++| 5. Historical backfill | 3-4h | 9-14h |
++| **Total** | **9-14h** | |
++
++Phases 1-2 are immediately useful without XTDB. Phase 3 integrates with the existing data platform. Phases 4-5 are enrichment.
+-- 
+2.43.0
+
+
+From dc97f5e7f841543e9dd15870d3b3c3800711b0a5 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sat, 21 Mar 2026 20:33:15 +0000
+Subject: [PATCH 2/6] docs: add resilience and reliability audit to lifecycle
+ progress
+
+Deep audit of the harness codebase through lenses from software
+engineering research on resilient systems:
+
+Findings (concrete, measured against the actual codebase):
+- 0 global unhandled rejection handlers (CRITICAL)
+- 0 graceful shutdown handlers for SIGTERM/SIGINT (CRITICAL)
+- 34 catch-and-log-only patterns (silent failure swallowing)
+- 171 'as any' casts (type system bypassed)
+- 9 Promise.all / 0 Promise.allSettled (no partial failure handling)
+- 8 fetch() calls without timeout/AbortController
+- 43 exported functions without return type (no API contract)
+- 82 console.* calls bypassing the event system
+- 20 module-level let in async code (race condition candidates)
+
+New items M10-M17 covering:
+- Error handling quality (ROC, UC Berkeley)
+- Partial failure handling (Alvaro et al., SIGMOD 2015)
+- Timeout/cancellation (Nygard, Release It!)
+- Type safety erosion (Hanenberg et al., ESEM 2014)
+- Observability gaps (Majors et al.)
+- Shared mutable state (Goetz et al.)
+- External dependency failure mapping (Chaos Engineering)
+
+New phases 7 (resilience pattern detection) and 8 (dependency mapping).
+Prioritized risk table with 12 items ranked by severity.
+Updated effort: 16-27h total across 10 phases.
+---
+ docs/PROGRESS_FUNCTION_LIFECYCLE.md | 370 +++++++++++++++++++++++++++-
+ 1 file changed, 363 insertions(+), 7 deletions(-)
+
+diff --git a/docs/PROGRESS_FUNCTION_LIFECYCLE.md b/docs/PROGRESS_FUNCTION_LIFECYCLE.md
+index 3b52c9f..9e015e1 100644
+--- a/docs/PROGRESS_FUNCTION_LIFECYCLE.md
++++ b/docs/PROGRESS_FUNCTION_LIFECYCLE.md
+@@ -8,7 +8,7 @@
+ 
+ ## Goal
+ 
+-Track every function from first creation through changes to decommissioning, driven by changing requirements. When a file changes, identify which functions were affected and calculate the blast radius through the call graph.
++Track every function from first creation through changes to decommissioning, driven by changing requirements. When a file changes, identify which functions were affected and calculate the blast radius through the call graph. Beyond structural tracking, detect resilience antipatterns — silent error swallowing, missing timeouts, type safety erosion, partial failure vulnerabilities — that the AST makes visible but no human consistently checks.
+ 
+ ## Research Findings
+ 
+@@ -341,15 +341,371 @@ When calculating blast radius, test files are flagged. This connects to the exis
+ | `scripts/backfill-function-history.ts` | Create | 5 |
+ | `lib/jsonld/context.ts` | Verify (code: namespace) | 1 |
+ 
++## Missing Critical Pieces (Identified from Research)
++
++The initial plan covers the *mechanics* of tracking (hook, parse, diff, store). But software engineering research on architecture erosion, coupling analysis, and system resilience identifies several things the graph *can already detect* that we're not planning to measure. These are not nice-to-haves — they're early warning signals for systemic problems.
++
++### M1: Architecture Erosion Detection
++
++Research finding: *"Architecture erosion manifests not only through architectural violations and structural issues but also causing problems in software quality and during software evolution. Non-technical reasons that cause AEr should receive the same attention as technical reasons."* (Li et al., 2022 — Systematic Mapping Study, 73 papers)
++
++**What we should track over time:**
++- Module coupling trend (is it increasing per commit? That's erosion)
++- Circular dependency count (should decrease or stay at 0)
++- Blast radius trend (are changes affecting more files over time?)
++
++**Current state in harness:** 3 circular dependencies detected. Should be zero.
++
++### M2: Coupling Metrics (Fan-in / Fan-out)
++
++Research finding: *"Minimizing architecture debt is anticipated to make software less costly and more adaptable to change via decoupling level and propagation cost measures."* (Baabad et al., 2025)
++
++**Fan-in** = how many callers a function has. High fan-in means fragile — change it and many things break.
++**Fan-out** = how many things a function calls. High fan-out means it knows too much — god function.
++
++**Current state in harness:**
++- `artifact-tracker/db::typed` has 61 callers (fan-in) — extremely fragile
++- `web-chat/server::onMessage` calls 32 functions (fan-out) — god function
++- 53 functions have fan-out > 8
++- 18 functions have fan-in > 5
++
++These metrics should be calculated on every commit and trended. A function gaining callers over time is accumulating risk.
++
++### M3: Dead Code Detection
++
++**Current state:** 438 functions (51% of all defined) are never called by anything in the codebase. Many of these are extension entry points (handler, setup, execute) that are called dynamically by the pi framework — not statically detectable. But some will be genuinely dead code.
++
++**What we should do:** Distinguish framework entry points (handler, setup, getArgumentCompletions, execute — called by convention) from truly dead code. Track dead function count over time. It should decrease, not increase.
++
++### M4: Orphan Module Detection
++
++**Current state:** 114 modules have nothing depending on them. Many are extension entry points (loaded dynamically). But orphan modules that are NOT entry points indicate abandoned or disconnected code.
++
++### M5: Circular Dependency Monitoring
++
++**Current state:** 3 circular dependencies found:
++- `agent-spawner/agents ↔ agent-spawner/index` (within same package — acceptable)
++- `artifact-tracker/db ↔ deployment-tracker/index` (cross-package — problematic)
++- `web-chat/lib/session-pool ↔ web-chat/server` (tight coupling — known)
++
++New circular dependencies should be flagged on commit. The hook should warn (not block) when a commit introduces a new cycle.
++
++### M6: Change Volatility / Hotspot Detection
++
++Research finding: Functions that change frequently are disproportionately likely to contain bugs. (Nagappan et al., "Change Bursts as Defect Predictors", ISSRE 2010)
++
++**What we should track:** Modification count per function over time. Functions with >5 modifications in the last 20 commits are hotspots. Hotspots that also have high fan-in are critical risk — they change often AND many things depend on them.
++
++### M7: Knowledge Loss Tracking
++
++Research finding: *"Non-technical reasons that cause architecture erosion include knowledge loss"* — when the context for why a function exists is lost, it becomes impossible to maintain correctly.
++
++**What we should track:**
++- Functions with no linked decision or requirement (orphaned rationale)
++- Functions whose last modifier is no longer active (bus factor)
++- Functions with no comments AND no linked decision (zero context)
++
++The harness decision log already captures "why" — but only if the developer uses it. Functions with no decision link are undocumented risk.
++
++### M8: Resilience of the Tracking System Itself
++
++**What happens when:**
++- The post-commit hook fails? (Answer: commit still succeeds — hooks are informational only. But registry may be stale.)
++- The function registry is corrupted? (Answer: we need a rebuild-from-scratch command.)
++- XTDB is unreachable? (Answer: lifecycle events should queue locally, flush later.)
++- A rebase rewrites history? (Answer: the registry is per-file, not per-commit — survives rebasing.)
++- A merge conflict in function-registry.json? (Answer: registry should be regeneratable, not merge-resolved. Add to `.gitattributes` as merge=ours or regenerate on conflict.)
++
++**Required safety mechanisms:**
++1. `scripts/rebuild-registry.ts` — full AST parse of all files, regenerates function-registry.json from scratch. Use when registry is stale or corrupt.
++2. The hook must NEVER block a commit. All errors → stderr warning, non-zero exit ONLY from pre-commit (never post-commit).
++3. XTDB writes must be fire-and-forget from the hook. If XTDB is down, log to `data/pending-events.jsonl` and flush on next successful connection.
++4. The registry file should have a `schemaVersion` field so future format changes can be detected and trigger a rebuild.
++
++### M9: Architectural Boundary Enforcement
++
++Research finding: *"Architectural rules, such as layer dependencies, should be automatically checked. Violations introduced during development without being noticed increase maintenance difficulty."* (Hu, 2023 — Philips Medical case study)
++
++The harness has an implicit layered architecture:
++```
++lib/            → shared infrastructure (should depend on nothing internal)
++extensions/     → each extension should depend on lib/ and pi framework only
++harness-ui/     → UI depends on lib/ only
++test/           → tests depend on everything but nothing depends on tests
++scripts/        → tooling, no production code depends on scripts
++```
++
++**What we should check:** When a commit introduces an import that violates these layer rules (e.g., `lib/errors.ts` importing from `web-chat/`), the hook should flag it as an architectural violation.
++
++### M10: Error Handling Quality (AST-detectable)
++
++Research domain: Recovery-Oriented Computing (Patterson et al., UC Berkeley ROC project, 2002). Core insight — *systems fail; what matters is how fast and correctly they recover. Most outages are caused not by the original fault, but by incorrect error handling.*
++
++**Audit results on harness (2026-03-21):**
++
++| Pattern | Count | Risk |
++|---|---|---|
++| try/catch blocks in production code | 59 files | — |
++| catch-and-log-only (console.error, no recovery, no rethrow) | 34 | **HIGH** — failure is silently swallowed, caller thinks success |
++| Explicit "never crash" swallow comments | 2 | Intentional but dangerous — masks cascading failures |
++| Global unhandled rejection handlers | **0** | **CRITICAL** — unhandled promise rejection = silent data loss |
++| Graceful shutdown handlers (SIGTERM/SIGINT) | **0** | **CRITICAL** — process kill = mid-write data corruption |
++
++**What the AST can detect:**
++1. **Catch-and-swallow** — catch block where body contains only console.log/error/warn and no throw/rethrow. Flag as "silent failure risk."
++2. **Catch-all without discrimination** — `catch (e) { ... }` that doesn't inspect error type. Research shows undifferentiated error handling is the #1 cause of incorrect recovery (Rubio-González et al., ASPLOS 2009).
++3. **Missing finally** — try/catch that acquires a resource (DB connection, file handle) but has no finally block for cleanup.
++4. **Error string construction** — `catch (e) { return { error: String(e) } }` destroys the stack trace and error type. Found in `xtdb-event-logger/index.ts:71`.
++
++### M11: Partial Failure Handling
++
++Research domain: Distributed systems reliability (Alvaro et al., "Lineage-driven fault injection", SIGMOD 2015). Core insight — *in a system of N operations, any subset can fail. Code that uses all-or-nothing patterns when partial success is acceptable will fail more often than necessary.*
++
++**Audit results:**
++
++| Pattern | Count | Implication |
++|---|---|---|
++| `Promise.all` (all-or-nothing) | 9 | If any one promise rejects, ALL results are lost |
++| `Promise.allSettled` (partial failure safe) | **0** | No code handles partial failure |
++| `Promise.race` | 0 | No timeout-via-race patterns |
++
++Every `Promise.all` call in the codebase is a site where one failing sub-operation kills all sibling operations. For example, if the hook initializes 5 XTDB endpoints with `Promise.all`, one unreachable endpoint kills all 5 — including the ones that would have worked.
++
++**What the AST can detect:** `Promise.all` calls that are not wrapped in try/catch or where no `.catch` handler exists on the returned promise. Flag as "partial failure vulnerability."
++
++### M12: Timeout and Cancellation
++
++Research domain: Release It! (Nygard, 2007, 2018). Stability pattern: *"Every outward call must have a timeout. Without one, a hung dependency silently converts your system from 'running' to 'stuck'."*
++
++**Audit results:**
++- 8 `fetch()` calls in production code with no AbortController or timeout signal
++- 0 uses of `Promise.race` for timeout-via-race
++
++**What the AST can detect:** `fetch()`, `http.request()`, or DB query calls where no `AbortController`, `signal`, or `setTimeout` exists in the enclosing scope. Flag as "missing timeout — may hang indefinitely."
++
++### M13: Type Safety Erosion
++
++Research domain: Type system effectiveness studies (Hanenberg et al., ESEM 2014). Finding — *`as any` in TypeScript defeats the entire purpose of the type system. It's not a cast, it's a promise to the compiler that you know better — and that promise is almost never kept.*
++
++**Audit results:**
++
++| Pattern | Count | Risk |
++|---|---|---|
++| `as any` casts | 171 | **HIGH** — each is a hole in the type system |
++| Non-null assertions (`!.`) | 10 | Medium — may NPE at runtime |
++| Total unsafe operations | 216 | |
++| Runtime assertions in production | **3** | Almost no defense-in-depth |
++| Exported functions without return type | 43 of 222 (19%) | Caller has no contract |
++
++171 `as any` casts means 171 places where a runtime type error can occur that the compiler cannot prevent. This is a form of technical debt that accumulates silently — the compiler reports zero errors, but the runtime guarantees are hollow.
++
++**What the AST can detect:**
++1. `as any` — count per file, track trend. Should be decreasing.
++2. Exported functions without return type annotation — these are public API surface with no contract.
++3. Non-null assertions — each one is a potential null pointer at runtime.
++
++**Proposed metric:** "Type Safety Score" = 1 − (unsafe_casts / total_expressions). Track per module, trend per commit.
++
++### M14: API Contract Stability (Breaking Change Detection)
++
++Research domain: Semantic Versioning and contract-first design (Hyrum's Law: *"With a sufficient number of users, every observable behavior of your system will be depended on by somebody."*)
++
++The harness has 293 exported symbols. Any change to their signature (parameters added/removed, return type changed, function renamed) is a potential breaking change that ripples through all callers.
++
++**What the AST can detect on commit:**
++1. Exported function signature changed (parameter count, parameter types, return type)
++2. Exported function removed (= definitely breaking)
++3. Exported function renamed (= breaking unless re-exported under old name)
++
++The lifecycle event system already tracks MODIFIED — extend it to track WHAT changed (signature, body, or both). Signature changes are breaking; body changes are non-breaking (if contract is preserved).
++
++### M15: Observability Gaps
++
++Research domain: Observability Engineering (Majors et al., O'Reilly 2022). Core principle — *"You cannot fix what you cannot see. Structured logs, not printf debugging."*
++
++**Audit results:**
++
++| Pattern | Count | Assessment |
++|---|---|---|
++| `console.log/error/warn` in production | 82 | Unstructured — no level, no correlation ID, no timestamp |
++| Structured logger usage | 3 | Almost none |
++| Health check endpoints | 3 | Minimal |
++| Distributed trace IDs / correlation | 0 | No request tracing across modules |
++
++The harness has an event system that writes to XTDB — which is a form of structured logging. But the 82 console.* calls bypass it entirely. These are invisible to the graph, to XTDB, and to any monitoring.
++
++**What the AST can detect:** Functions that use `console.log/error/warn` instead of the event system. Track count per module. Should trend toward zero as structured logging replaces printf debugging.
++
++### M16: Shared Mutable State
++
++Research domain: Concurrency correctness (Goetz et al., "Java Concurrency in Practice", 2006; adapted to Node.js event loop). Core risk — *even in single-threaded Node.js, module-level `let` variables shared across async call chains create temporal coupling bugs.*
++
++**Audit results:**
++- 20 module-level `let` declarations in production code
++- 0 mutex/lock patterns (acceptable in Node.js single-thread, BUT WebSocket handlers run interleaved across `await` points)
++
++Module-level `let` variables in the harness include session pools, enabled flags, and endpoint lists. These are mutated by async handlers that yield at `await` points. Between the `await` and the resume, another handler may mutate the same variable.
++
++**What the AST + call graph can detect together:**
++1. Module-level `let` — flag as shared mutable state
++2. Functions that write to module-level `let` AND are async — flag as "concurrent mutation risk"
++3. Two different async functions in the same module both writing the same `let` — flag as "race condition candidate"
++
++This is the `mg:writesBinding` edge type from the vocabulary we designed. It already exists in the data model — we just haven't planned to use it for safety analysis.
++
++### M17: Resilience Under Dependency Failure
++
++Research domain: Chaos Engineering (Basiri et al., "Chaos Engineering", IEEE Software 2016). Core question — *"What happens to YOUR system when a dependency is unavailable?"*
++
++The harness depends on: XTDB (database), QLever (SPARQL), WebSocket connections, filesystem, and the pi coding agent framework. For each dependency:
++
++| Dependency | What happens when it's down? | Evidence |
++|---|---|---|
++| XTDB | Events silently swallowed (catch-and-swallow at line 86) | Intentional but loses data |
++| QLever | Unknown — no error handling in graph queries | Likely uncaught exception |
++| WebSocket disconnect | Session pool handles it | Tested |
++| Filesystem full | Unknown — no disk space checks | Likely crash |
++| pi framework unavailable | Extensions fail to load | Handled by framework |
++
++**What we should add to the graph:** A `code:dependsOnExternal` edge type that tags which external systems each function relies on. When a function calls `fetch()`, `sql`, `db.query()`, or `fs.*`, the graph should record the external dependency. This enables "What breaks if XTDB is down?" as a SPARQL query.
++
++---
++
++## Updated Phase Plan
++
++Add to existing phases:
++
++### Phase 2b: Code Health Metrics (alongside blast radius)
++
++Calculate on each commit and store as JSON-LD:
++- Fan-in / fan-out per changed function
++- Circular dependency count (delta from previous)
++- Dead code count (delta)
++- Module coupling score for changed modules
++
++### Phase 3b: Health Dashboard SPARQL Queries
++
++Add to `/graph` page:
++- "Coupling Trend" — fan-in/fan-out over last N commits
++- "Circular Dependencies" — current cycles in the graph
++- "Hotspots" — most-modified functions (requires lifecycle events from Phase 1)
++- "Architecture Violations" — imports that cross layer boundaries
++- "Dead Code" — functions with zero callers (excluding framework entry points)
++
++### Phase 6: Architectural Rule Checking (new)
++
++Define allowed import directions in a config file. The hook checks every new import against the rules and warns on violations.
++
++**Effort estimate:** S-M (1-2 hours)
++
++### Phase 7: Resilience Pattern Detection (new — from M10-M17)
++
++Extend the AST parser to detect antipatterns WITHIN function bodies, not just structural relationships between them. This is where the call graph becomes a code health system.
++
++**7a. Error handling quality scanner**
++For each function, classify its error handling:
++- `safe` — try/catch with recovery logic or rethrow
++- `swallowed` — catch with only console.* and no rethrow
++- `unhandled` — async function with no try/catch around I/O
++- `discriminated` — catch block that inspects error type before acting
++- `undiscriminated` — catch block that treats all errors identically
++
++Store as property on function node: `code:errorHandling "swallowed"`.
++
++**7b. Timeout and cancellation scanner**
++For each function that makes outward calls (fetch, DB query, HTTP):
++- `guarded` — has AbortController or timeout
++- `unguarded` — no timeout mechanism
++
++Store as: `code:timeoutGuard "unguarded"`.
++
++**7c. Type safety scorer**
++Per module:
++- Count of `as any` casts
++- Count of non-null assertions
++- Count of exported functions without return type
++- "Type Safety Score" = 1 − (unsafe / total)
++
++Store as: `code:typeSafetyScore "0.82"`.
++
++**7d. Shared state detector**
++For each module-level `let`:
++- Which async functions write to it?
++- Is it written from multiple async call chains?
++- Flag concurrent mutation candidates
++
++Uses existing `mg:writesBinding` from the vocabulary.
++
++**7e. Partial failure detector**
++Flag `Promise.all` calls where:
++- No try/catch wraps the call
++- No `.catch()` on the returned promise
++- `Promise.allSettled` would be more appropriate
++
++**Effort estimate for Phase 7:** M-L (3-5 hours)
++
++### Phase 8: External Dependency Mapping (new — from M17)
++
++Add `code:dependsOnExternal` edges to the graph. When AST detects:
++- `fetch()` → tag with "http"
++- `sql` template tag or `db.query()` → tag with "xtdb"
++- `fs.*` calls → tag with "filesystem"
++- `WebSocket` or `ws.*` → tag with "websocket"
++
++Enables SPARQL query: "Which functions break if XTDB is down?" → all functions with `code:dependsOnExternal "xtdb"` plus their callers via blast radius.
++
++**Effort estimate:** S-M (1-2 hours)
++
++---
++
++## Prioritized Risk Summary
++
++The audit identified these concrete risks in the current codebase, ranked by severity:
++
++| # | Risk | Severity | Evidence | Detectable by graph? |
++|---|---|---|---|---|
++| 1 | No global unhandled rejection handler | CRITICAL | 0 handlers found | No — requires code review |
++| 2 | No graceful shutdown (SIGTERM/SIGINT) | CRITICAL | 0 handlers found | No — requires code review |
++| 3 | 34 catch-and-log-only patterns | HIGH | Silent failure in 34 catch blocks | **YES — AST pattern** |
++| 4 | 171 `as any` casts | HIGH | Type system bypassed 171 times | **YES — AST count** |
++| 5 | 0 `Promise.allSettled` / 9 `Promise.all` | HIGH | No partial failure handling | **YES — AST pattern** |
++| 6 | 8 fetch() calls without timeout | HIGH | May hang indefinitely | **YES — AST pattern** |
++| 7 | 3 circular dependencies | MEDIUM | Cross-package cycles exist | **YES — graph cycle** |
++| 8 | `typed()` has 61 callers (fan-in) | MEDIUM | Single function = single point of failure | **YES — fan-in metric** |
++| 9 | `onMessage` calls 32 functions (fan-out) | MEDIUM | God function, untestable | **YES — fan-out metric** |
++| 10 | 43 exported functions without return type | MEDIUM | No API contract for callers | **YES — AST pattern** |
++| 11 | 82 console.* calls bypass event system | LOW | Invisible to monitoring | **YES — AST pattern** |
++| 12 | 20 module-level `let` in async code | LOW | Potential race conditions | **YES — AST + writesBinding** |
++
++Items 1-2 should be fixed immediately — they don't need the graph system. Items 3-12 are what the graph system should detect and trend over time.
++
++---
++
+ ## Total Effort Estimate
+ 
+ | Phase | Effort | Cumulative |
+ |---|---|---|
+ | 1. Hook + registry | 2-3h | 2-3h |
+ | 2. Blast radius | 1-2h | 3-5h |
+-| 3. XTDB + QLever | 2-3h | 5-8h |
+-| 4. Requirement linkage | 1-2h | 6-10h |
+-| 5. Historical backfill | 3-4h | 9-14h |
+-| **Total** | **9-14h** | |
+-
+-Phases 1-2 are immediately useful without XTDB. Phase 3 integrates with the existing data platform. Phases 4-5 are enrichment.
++| 2b. Code health metrics | 1-2h | 4-7h |
++| 3. XTDB + QLever | 2-3h | 6-10h |
++| 3b. Health dashboard queries | 1-2h | 7-12h |
++| 4. Requirement linkage | 1-2h | 8-14h |
++| 5. Historical backfill | 3-4h | 11-18h |
++| 6. Architectural rule checking | 1-2h | 12-20h |
++| 7. Resilience pattern detection | 3-5h | 15-25h |
++| 8. External dependency mapping | 1-2h | 16-27h |
++| **Total** | **16-27h** | |
++
++**Suggested implementation order by value:**
++1. **Phase 1** (hook + registry) — foundation, everything else depends on it
++2. **Phase 2 + 2b** (blast radius + health metrics) — immediately actionable on every commit
++3. **Phase 7a** (error handling scanner) — catches the most dangerous patterns (34 silent failures)
++4. **Phase 6** (architectural rules) — prevents new erosion while you fix existing
++5. **Phase 3 + 3b** (XTDB + dashboard) — makes everything visible and queryable
++6. **Phase 7b-e** (remaining resilience scanners) — deeper safety analysis
++7. **Phase 8** (dependency mapping) — "what breaks if X is down" queries
++8. **Phase 4** (requirement linkage) — traceability enrichment
++9. **Phase 5** (historical backfill) — trend analysis over full project history
++
++Phases 1-2 are immediately useful standalone. Phase 7a has the highest safety ROI because it finds the 34 places where failures are silently swallowed today.
+-- 
+2.43.0
+
+
+From 0e605c3b6ca982ef93ebc0f9cec863c657fef6bd Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sat, 21 Mar 2026 21:04:29 +0000
+Subject: [PATCH 3/6] feat: add language-agnostic code quality framework
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Three components:
+
+1. biome.json — TypeScript/JS quality config for the harness itself
+   Rules: noExplicitAny, noConsole, noImportCycles, noFloatingPromises,
+   noUnusedImports, noDebugger, useImportType, organizeImports, etc.
+   Baseline: 282 files, 490 errors, 1415 warnings (to be fixed incrementally).
+
+2. code-quality/ — language-agnostic detection and enforcement extension
+   - registry.ts: maps 17 languages to their fmt/lint/vet/test tools
+     (TypeScript→Biome, Go→gofmt+golangci-lint, Rust→rustfmt+clippy,
+      Python→ruff+mypy, Java, Kotlin, C/C++, C#, Ruby, PHP, Swift,
+      Elixir, Zig, Shell, SQL, Terraform, Dockerfile)
+   - detect.ts: scans any codebase, counts files by extension,
+     finds manifest files, checks which tools are installed vs missing
+   - index.ts: extension that runs detection on session_start,
+     provides /quality command (scan|fix|setup|report)
+
+3. docs/CODE_QUALITY_STANDARD.md — universal rules for all agents
+   - The workflow: detect stack → install tools → run on every write
+   - Tool table for every language (formatter + linter + typechecker)
+   - 19 anti-patterns every agent must avoid (imports, errors, types,
+     architecture, async)
+   - Per-role instructions (planner, worker, tester, reviewer, etc.)
+
+The key insight: the harness generates code in ANY language, not just
+TypeScript. Biome is right for TS but useless for Go/Rust/Python.
+The registry knows what tool to use for each language. The detector
+figures out what language a codebase uses. The standard tells agents
+what rules to follow regardless of language.
+---
+ biome.json                    |  75 +++++
+ code-quality/detect.ts        | 326 ++++++++++++++++++++
+ code-quality/index.ts         | 188 ++++++++++++
+ code-quality/package.json     |  10 +
+ code-quality/registry.ts      | 561 ++++++++++++++++++++++++++++++++++
+ docs/CODE_QUALITY_STANDARD.md | 240 +++++++++++++++
+ package-lock.json             | 166 ++++++++++
+ package.json                  |   3 +
+ 8 files changed, 1569 insertions(+)
+ create mode 100644 biome.json
+ create mode 100644 code-quality/detect.ts
+ create mode 100644 code-quality/index.ts
+ create mode 100644 code-quality/package.json
+ create mode 100644 code-quality/registry.ts
+ create mode 100644 docs/CODE_QUALITY_STANDARD.md
+
+diff --git a/biome.json b/biome.json
+new file mode 100644
+index 0000000..316ad57
+--- /dev/null
++++ b/biome.json
+@@ -0,0 +1,75 @@
++{
++  "$schema": "https://biomejs.dev/schemas/2.4.8/schema.json",
++  "vcs": {
++    "enabled": true,
++    "clientKind": "git",
++    "useIgnoreFile": true
++  },
++  "files": {
++    "ignoreUnknown": true
++  },
++  "formatter": {
++    "enabled": true,
++    "indentStyle": "space",
++    "indentWidth": 2,
++    "lineWidth": 120
++  },
++  "javascript": {
++    "formatter": {
++      "quoteStyle": "double",
++      "semicolons": "always",
++      "trailingCommas": "all"
++    }
++  },
++  "linter": {
++    "enabled": true,
++    "rules": {
++      "recommended": true,
++
++      "correctness": {
++        "noUnusedImports": "error",
++        "noUnusedVariables": "error",
++        "noUnreachable": "error",
++        "noUnresolvedImports": "warn"
++      },
++
++      "suspicious": {
++        "noExplicitAny": "warn",
++        "noDebugger": "error",
++        "noConsole": "warn",
++        "noDoubleEquals": "error",
++        "noDuplicateObjectKeys": "error",
++        "noEmptyBlockStatements": "warn",
++        "noImportCycles": "error"
++      },
++
++      "style": {
++        "noNonNullAssertion": "warn",
++        "useImportType": "error",
++        "useConst": "error"
++      },
++
++      "complexity": {
++        "noForEach": "off",
++        "useSimplifiedLogicExpression": "warn"
++      },
++
++      "performance": {
++        "noAccumulatingSpread": "warn"
++      },
++
++      "nursery": {
++        "noFloatingPromises": "warn",
++        "noMisusedPromises": "warn"
++      }
++    }
++  },
++  "assist": {
++    "enabled": true,
++    "actions": {
++      "source": {
++        "organizeImports": "on"
++      }
++    }
++  }
++}
+diff --git a/code-quality/detect.ts b/code-quality/detect.ts
+new file mode 100644
+index 0000000..806edf2
+--- /dev/null
++++ b/code-quality/detect.ts
+@@ -0,0 +1,326 @@
++// ─── Codebase Stack Detection ────────────────────────────────────
++// Scans a project directory to determine:
++//   1. Which languages are used (by file extension)
++//   2. Which build systems / package managers exist (by manifest files)
++//   3. Which quality tools are already installed
++//   4. Which quality tools are missing and should be added
++//
++// Usage:
++//   import { detectStack } from "./detect.ts";
++//   const report = await detectStack("/path/to/project");
++//   console.log(report.languages);       // ["typescript", "shell"]
++//   console.log(report.missing);         // [{ tool: "biome", ... }]
++//   console.log(report.installed);       // [{ tool: "tsc", ... }]
++
++import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
++import { join, extname, basename } from "node:path";
++import { execSync } from "node:child_process";
++import { REGISTRY, type LanguageToolchain, type QualityTool } from "./registry.ts";
++
++export interface StackReport {
++  projectRoot: string;
++  languages: DetectedLanguage[];
++  manifests: string[];
++  installed: InstalledTool[];
++  missing: MissingTool[];
++  recommendations: string[];
++}
++
++export interface DetectedLanguage {
++  language: string;
++  fileCount: number;
++  percentage: number;
++  toolchain: LanguageToolchain;
++}
++
++export interface InstalledTool {
++  language: string;
++  tool: string;
++  role: string;
++  configFound: boolean;
++  configPath?: string;
++}
++
++export interface MissingTool {
++  language: string;
++  tool: QualityTool;
++  priority: "required" | "recommended" | "optional";
++}
++
++// Files/dirs to skip during scanning
++const SKIP_DIRS = new Set([
++  "node_modules", ".git", "dist", "build", "target", ".next",
++  "__pycache__", ".venv", "venv", ".tox", "vendor", ".gradle",
++  "bin", "obj", ".terraform", ".zig-cache", "_build", "deps",
++  "coverage", ".nyc_output", ".cache",
++]);
++
++const SKIP_FILES = new Set([
++  "package-lock.json", "yarn.lock", "bun.lockb", "Cargo.lock",
++  "go.sum", "mix.lock", "Gemfile.lock", "composer.lock",
++  "poetry.lock", "uv.lock",
++]);
++
++export async function detectStack(projectRoot: string): Promise<StackReport> {
++  const extCounts = new Map<string, number>();
++  const foundManifests: string[] = [];
++  let totalFiles = 0;
++
++  // ── 1. Walk the tree, count file extensions and find manifests ──
++  walkDir(projectRoot, (filePath, fileName) => {
++    // Check for manifest files
++    for (const tc of REGISTRY) {
++      for (const manifest of tc.manifestFiles) {
++        if (manifest.startsWith("*")) {
++          if (fileName.endsWith(manifest.slice(1))) foundManifests.push(fileName);
++        } else if (fileName === manifest) {
++          foundManifests.push(fileName);
++        }
++      }
++    }
++
++    const ext = extname(fileName).toLowerCase();
++    if (!ext && fileName === "Dockerfile") {
++      extCounts.set("Dockerfile", (extCounts.get("Dockerfile") || 0) + 1);
++      totalFiles++;
++      return;
++    }
++    if (ext) {
++      extCounts.set(ext, (extCounts.get(ext) || 0) + 1);
++      totalFiles++;
++    }
++  });
++
++  // ── 2. Map extensions to languages ─────────────────────────────
++  const languageScores = new Map<string, { count: number; tc: LanguageToolchain }>();
++
++  for (const [ext, count] of extCounts) {
++    for (const tc of REGISTRY) {
++      if (tc.extensions.some((e) => e === ext || e === ext.replace(".", ""))) {
++        const existing = languageScores.get(tc.language);
++        if (existing) {
++          existing.count += count;
++        } else {
++          languageScores.set(tc.language, { count, tc });
++        }
++      }
++    }
++  }
++
++  // Also detect from manifests (even if no source files yet)
++  for (const manifest of foundManifests) {
++    for (const tc of REGISTRY) {
++      if (tc.manifestFiles.some((m) => {
++        if (m.startsWith("*")) return manifest.endsWith(m.slice(1));
++        return manifest === m;
++      })) {
++        if (!languageScores.has(tc.language)) {
++          languageScores.set(tc.language, { count: 0, tc });
++        }
++      }
++    }
++  }
++
++  const languages: DetectedLanguage[] = [...languageScores.entries()]
++    .map(([lang, { count, tc }]) => ({
++      language: lang,
++      fileCount: count,
++      percentage: totalFiles > 0 ? Math.round((count / totalFiles) * 100) : 0,
++      toolchain: tc,
++    }))
++    .sort((a, b) => b.fileCount - a.fileCount);
++
++  // ── 3. Check which tools are already installed ─────────────────
++  const installed: InstalledTool[] = [];
++  const missing: MissingTool[] = [];
++
++  for (const lang of languages) {
++    for (const tool of lang.toolchain.tools) {
++      const configPath = tool.config ? findConfig(projectRoot, tool.config) : undefined;
++      const isInstalled = checkToolInstalled(tool, projectRoot);
++
++      if (isInstalled || configPath) {
++        installed.push({
++          language: lang.language,
++          tool: tool.name,
++          role: tool.role,
++          configFound: !!configPath,
++          configPath,
++        });
++      } else {
++        const priority = getPriority(tool, lang);
++        missing.push({ language: lang.language, tool, priority });
++      }
++    }
++  }
++
++  // ── 4. Generate recommendations ────────────────────────────────
++  const recommendations: string[] = [];
++
++  // No quality tools at all?
++  if (installed.length === 0 && languages.length > 0) {
++    recommendations.push(
++      "No code quality tools detected. This codebase has zero automated quality enforcement.",
++    );
++  }
++
++  // Has source but no formatter?
++  for (const lang of languages) {
++    if (lang.fileCount === 0) continue;
++    const hasFmt = installed.some(
++      (t) => t.language === lang.language && (t.role === "fmt" || t.role === "all-in-one"),
++    );
++    if (!hasFmt) {
++      const fmtTool = lang.toolchain.tools.find(
++        (t) => t.role === "fmt" || t.role === "all-in-one",
++      );
++      if (fmtTool) {
++        recommendations.push(
++          `${lang.language}: No formatter. Install ${fmtTool.name}: ${fmtTool.install}`,
++        );
++      }
++    }
++
++    // Has source but no linter?
++    const hasLint = installed.some(
++      (t) => t.language === lang.language && ["lint", "vet", "all-in-one"].includes(t.role),
++    );
++    if (!hasLint) {
++      const lintTool = lang.toolchain.tools.find(
++        (t) => t.role === "lint" || t.role === "all-in-one",
++      );
++      if (lintTool) {
++        recommendations.push(
++          `${lang.language}: No linter. Install ${lintTool.name}: ${lintTool.install}`,
++        );
++      }
++    }
++  }
++
++  // Missing required tools
++  for (const m of missing.filter((m) => m.priority === "required")) {
++    recommendations.push(
++      `${m.language}: Missing ${m.tool.role} tool '${m.tool.name}'. ${m.tool.description}`,
++    );
++  }
++
++  return { projectRoot, languages, manifests: foundManifests, installed, missing, recommendations };
++}
++
++// ─── Helpers ──────────────────────────────────────────────────────
++
++function walkDir(dir: string, callback: (filePath: string, fileName: string) => void) {
++  let entries: string[];
++  try {
++    entries = readdirSync(dir);
++  } catch {
++    return;
++  }
++
++  for (const entry of entries) {
++    if (SKIP_DIRS.has(entry) || entry.startsWith(".")) continue;
++    if (SKIP_FILES.has(entry)) continue;
++
++    const fullPath = join(dir, entry);
++    let stat;
++    try {
++      stat = statSync(fullPath);
++    } catch {
++      continue;
++    }
++
++    if (stat.isDirectory()) {
++      walkDir(fullPath, callback);
++    } else if (stat.isFile()) {
++      callback(fullPath, entry);
++    }
++  }
++}
++
++function findConfig(projectRoot: string, configName: string): string | undefined {
++  const path = join(projectRoot, configName);
++  if (existsSync(path)) return path;
++  return undefined;
++}
++
++function checkToolInstalled(tool: QualityTool, projectRoot: string): boolean {
++  // Check for config file presence
++  if (tool.config && existsSync(join(projectRoot, tool.config))) return true;
++
++  // Check for binary on PATH or in node_modules
++  const binaryName = tool.name.split(" ")[0]; // "go vet" → "go", "cargo test" → "cargo"
++  try {
++    execSync(`which ${binaryName} 2>/dev/null || command -v ${binaryName} 2>/dev/null`, {
++      stdio: "pipe",
++      timeout: 3000,
++    });
++    return true;
++  } catch {
++    // Not on PATH
++  }
++
++  // Check node_modules/.bin for JS tools
++  if (existsSync(join(projectRoot, "node_modules", ".bin", binaryName))) return true;
++
++  return false;
++}
++
++function getPriority(
++  tool: QualityTool,
++  lang: DetectedLanguage,
++): "required" | "recommended" | "optional" {
++  // Formatter is always required — non-negotiable
++  if (tool.role === "fmt" || tool.role === "all-in-one") return "required";
++  // Linter is required for any language with >5 source files
++  if ((tool.role === "lint" || tool.role === "vet") && lang.fileCount > 5) return "required";
++  // Type checker is recommended
++  if (tool.role === "typecheck") return "recommended";
++  // Test runner is recommended
++  if (tool.role === "test") return "recommended";
++  return "optional";
++}
++
++// ─── CLI entry point ─────────────────────────────────────────────
++// Run: bun run code-quality/detect.ts [path]
++
++if (import.meta.main || process.argv[1]?.endsWith("detect.ts")) {
++  const target = process.argv[2] || process.cwd();
++  detectStack(target).then((report) => {
++    console.log(`\n📊 Stack Report: ${report.projectRoot}\n`);
++
++    if (report.languages.length === 0) {
++      console.log("  No recognized source files found.\n");
++      return;
++    }
++
++    console.log("Languages:");
++    for (const lang of report.languages) {
++      console.log(`  ${lang.language}: ${lang.fileCount} files (${lang.percentage}%)`);
++    }
++
++    if (report.installed.length > 0) {
++      console.log("\n✅ Installed tools:");
++      for (const t of report.installed) {
++        const cfg = t.configFound ? ` (config: ${t.configPath})` : "";
++        console.log(`  ${t.language}/${t.tool} [${t.role}]${cfg}`);
++      }
++    }
++
++    if (report.missing.length > 0) {
++      console.log("\n❌ Missing tools:");
++      for (const m of report.missing) {
++        const icon = m.priority === "required" ? "🔴" : m.priority === "recommended" ? "🟡" : "⚪";
++        console.log(`  ${icon} ${m.language}/${m.tool.name} [${m.tool.role}] — ${m.priority}`);
++        console.log(`     Install: ${m.tool.install}`);
++      }
++    }
++
++    if (report.recommendations.length > 0) {
++      console.log("\n💡 Recommendations:");
++      for (const r of report.recommendations) {
++        console.log(`  • ${r}`);
++      }
++    }
++    console.log();
++  });
++}
+diff --git a/code-quality/index.ts b/code-quality/index.ts
+new file mode 100644
+index 0000000..980d4eb
+--- /dev/null
++++ b/code-quality/index.ts
+@@ -0,0 +1,188 @@
++import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
++import { detectStack, type StackReport } from "./detect.ts";
++import { REGISTRY } from "./registry.ts";
++import { existsSync, readFileSync } from "node:fs";
++import { join, extname } from "node:path";
++
++// ─── Code Quality Extension ──────────────────────────────────────
++// Detects the project's language stack and enforces code quality
++// standards appropriate for that language.
++//
++// Pattern: Habit Hooks — "deterministic scripts that detect triggers"
++//
++// Lifecycle:
++//   session_start → detect stack → cache report → set status
++//   tool_execution_end (write/edit) → check if quality tool should run
++//   registered commands → /quality scan, /quality fix, /quality setup
++
++export default function (pi: ExtensionAPI) {
++  let cachedReport: StackReport | null = null;
++  let projectRoot = process.cwd();
++  let enabled = true;
++
++  // ── Flag: --quality to disable ──
++  pi.registerFlag("code-quality", {
++    description: "Enable code quality detection and enforcement (default: true)",
++    type: "boolean",
++    default: true,
++  });
++
++  // ── Session start: detect the stack ──
++  pi.on("session_start", async (_event, ctx) => {
++    enabled = pi.getFlag("code-quality") !== false;
++    if (!enabled) return;
++
++    projectRoot = process.cwd();
++    try {
++      cachedReport = await detectStack(projectRoot);
++      const langs = cachedReport.languages
++        .filter((l) => l.fileCount > 0)
++        .map((l) => l.language)
++        .join(", ");
++
++      const missingRequired = cachedReport.missing.filter((m) => m.priority === "required");
++
++      if (missingRequired.length > 0) {
++        const tools = missingRequired.map((m) => `${m.language}/${m.tool.name}`).join(", ");
++        ctx.ui.setStatus("code-quality", `⚠️ Missing: ${tools}`);
++        ctx.ui.notify(
++          `Code quality: ${langs} detected. Missing required tools: ${tools}. Run /quality setup to install.`,
++          "warn",
++        );
++      } else {
++        ctx.ui.setStatus("code-quality", `✅ ${langs}`);
++      }
++    } catch (err) {
++      ctx.ui.setStatus("code-quality", "❌ detection failed");
++    }
++  });
++
++  // ── After file write: remind about quality checks ──
++  pi.on("tool_execution_end", async (event, ctx) => {
++    if (!enabled || !cachedReport) return;
++    const e = event as any;
++    if (e.toolName !== "write" && e.toolName !== "edit") return;
++
++    const filePath = e.args?.file_path ?? e.args?.path ?? "";
++    if (!filePath) return;
++
++    const ext = extname(filePath).toLowerCase();
++    const lang = cachedReport.languages.find((l) =>
++      l.toolchain.extensions.some((e) => e === ext),
++    );
++    if (!lang) return;
++
++    const fmtTool = lang.toolchain.tools.find(
++      (t) => t.role === "fmt" || t.role === "all-in-one",
++    );
++    if (!fmtTool) return;
++
++    // Check if the fmt/lint tool config exists (meaning it's set up)
++    const hasToolConfig = fmtTool.config && existsSync(join(projectRoot, fmtTool.config));
++    if (!hasToolConfig) return;
++
++    // Don't nag on every write — only after accumulating edits
++    // (Handled by contextual prompts cooldown system)
++  });
++
++  // ── Command: /quality scan ──
++  pi.registerCommand({
++    name: "quality",
++    description: "Code quality tools: scan | fix | setup | report",
++    schema: {
++      type: "object",
++      properties: {
++        action: {
++          type: "string",
++          enum: ["scan", "fix", "setup", "report"],
++          description: "scan=detect stack, fix=run auto-fix, setup=install tools, report=show status",
++        },
++      },
++      required: ["action"],
++    },
++    execute: async (args, ctx) => {
++      const action = (args as any).action;
++
++      if (action === "scan" || action === "report") {
++        cachedReport = await detectStack(projectRoot);
++        const lines: string[] = ["# Code Quality Report\n"];
++
++        if (cachedReport.languages.length === 0) {
++          lines.push("No recognized source files found in project.");
++          return lines.join("\n");
++        }
++
++        lines.push("## Detected Languages\n");
++        for (const lang of cachedReport.languages) {
++          if (lang.fileCount === 0) continue;
++          lines.push(`- **${lang.language}**: ${lang.fileCount} files (${lang.percentage}%)`);
++        }
++
++        if (cachedReport.installed.length > 0) {
++          lines.push("\n## Installed Tools\n");
++          for (const t of cachedReport.installed) {
++            const cfg = t.configFound ? ` ✅ config found` : " ⚠️ no config";
++            lines.push(`- ${t.language}/**${t.tool}** [${t.role}]${cfg}`);
++          }
++        }
++
++        if (cachedReport.missing.length > 0) {
++          lines.push("\n## Missing Tools\n");
++          for (const m of cachedReport.missing) {
++            const icon = m.priority === "required" ? "🔴" : "🟡";
++            lines.push(`- ${icon} ${m.language}/**${m.tool.name}** [${m.tool.role}] — ${m.priority}`);
++            lines.push(`  Install: \`${m.tool.install}\``);
++          }
++        }
++
++        if (cachedReport.recommendations.length > 0) {
++          lines.push("\n## Recommendations\n");
++          for (const r of cachedReport.recommendations) {
++            lines.push(`- ${r}`);
++          }
++        }
++
++        return lines.join("\n");
++      }
++
++      if (action === "setup") {
++        if (!cachedReport) cachedReport = await detectStack(projectRoot);
++        const required = cachedReport.missing.filter((m) => m.priority === "required");
++        if (required.length === 0) {
++          return "All required quality tools are already installed.";
++        }
++
++        const lines = ["# Setup Commands\n", "Run these to install missing quality tools:\n"];
++        for (const m of required) {
++          lines.push(`## ${m.language} — ${m.tool.name}\n`);
++          lines.push("```bash");
++          lines.push(m.tool.install);
++          lines.push("```\n");
++          if (m.tool.config) {
++            lines.push(`Config file: \`${m.tool.config}\`\n`);
++          }
++        }
++        return lines.join("\n");
++      }
++
++      if (action === "fix") {
++        if (!cachedReport) cachedReport = await detectStack(projectRoot);
++        const fixCmds: string[] = [];
++        for (const t of cachedReport.installed) {
++          const tc = REGISTRY.find((r) => r.language === t.language);
++          const tool = tc?.tools.find((tt) => tt.name === t.tool);
++          if (tool && tool.fix !== tool.check) {
++            fixCmds.push(`# ${t.language} — ${t.tool}`);
++            fixCmds.push(tool.fix);
++          }
++        }
++        if (fixCmds.length === 0) {
++          return "No auto-fix tools available. Run `/quality setup` first.";
++        }
++        return `# Auto-fix commands\n\n\`\`\`bash\n${fixCmds.join("\n")}\n\`\`\``;
++      }
++
++      return "Unknown action. Use: scan | fix | setup | report";
++    },
++  });
++}
+diff --git a/code-quality/package.json b/code-quality/package.json
+new file mode 100644
+index 0000000..6bf5f18
+--- /dev/null
++++ b/code-quality/package.json
+@@ -0,0 +1,10 @@
++{
++  "name": "code-quality",
++  "version": "1.0.0",
++  "private": true,
++  "pi": {
++    "extensions": [
++      "./index.ts"
++    ]
++  }
++}
+diff --git a/code-quality/registry.ts b/code-quality/registry.ts
+new file mode 100644
+index 0000000..d97bee2
+--- /dev/null
++++ b/code-quality/registry.ts
+@@ -0,0 +1,561 @@
++// ─── Code Quality Tool Registry ──────────────────────────────────
++// Maps programming languages to their canonical fmt/vet/lint/test tools.
++// Inspired by Go's built-in toolchain: every language has equivalents,
++// but they're scattered across different packages and configs.
++//
++// This registry answers: "Given a codebase in language X, what tools
++// should I install and run to enforce code quality?"
++
++export interface QualityTool {
++  name: string;
++  role: "fmt" | "lint" | "vet" | "test" | "typecheck" | "all-in-one";
++  install: string; // shell command to install
++  check: string; // shell command to check (non-destructive)
++  fix: string; // shell command to auto-fix
++  config?: string; // default config filename
++  description: string;
++}
++
++export interface LanguageToolchain {
++  language: string;
++  extensions: string[];
++  manifestFiles: string[]; // package.json, Cargo.toml, go.mod, etc.
++  tools: QualityTool[];
++  notes?: string;
++}
++
++export const REGISTRY: LanguageToolchain[] = [
++  // ─── TypeScript / JavaScript ────────────────────────────────────
++  {
++    language: "typescript",
++    extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
++    manifestFiles: ["package.json", "tsconfig.json", "deno.json", "bun.lockb"],
++    tools: [
++      {
++        name: "biome",
++        role: "all-in-one",
++        install: "npm install --save-dev --save-exact @biomejs/biome && npx biome init",
++        check: "npx biome check .",
++        fix: "npx biome check --write .",
++        config: "biome.json",
++        description: "Format + lint + import sorting. Replaces ESLint + Prettier. 25x faster.",
++      },
++      {
++        name: "tsc",
++        role: "typecheck",
++        install: "npm install --save-dev typescript",
++        check: "npx tsc --noEmit",
++        fix: "npx tsc --noEmit",
++        config: "tsconfig.json",
++        description: "TypeScript compiler type checking. Catches type errors the linter cannot.",
++      },
++    ],
++    notes: "Biome v2.4+ replaces ESLint+Prettier. For legacy projects already on ESLint, run `npx biome migrate eslint`.",
++  },
++
++  // ─── Go ─────────────────────────────────────────────────────────
++  {
++    language: "go",
++    extensions: [".go"],
++    manifestFiles: ["go.mod", "go.sum"],
++    tools: [
++      {
++        name: "gofmt",
++        role: "fmt",
++        install: "# built-in with Go",
++        check: "gofmt -l .",
++        fix: "gofmt -w .",
++        description: "Canonical Go formatter. Zero config. One true style.",
++      },
++      {
++        name: "go vet",
++        role: "vet",
++        install: "# built-in with Go",
++        check: "go vet ./...",
++        fix: "go vet ./...",
++        description: "Detects suspicious constructs the compiler misses.",
++      },
++      {
++        name: "golangci-lint",
++        role: "lint",
++        install: "go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest",
++        check: "golangci-lint run ./...",
++        fix: "golangci-lint run --fix ./...",
++        config: ".golangci.yml",
++        description: "Meta-linter: 50+ linters in parallel. errcheck, staticcheck, revive, gosec.",
++      },
++      {
++        name: "go test",
++        role: "test",
++        install: "# built-in with Go",
++        check: "go test -race ./...",
++        fix: "go test -race ./...",
++        description: "Built-in test runner with race detector.",
++      },
++    ],
++    notes: "Go has the best built-in toolchain. gofmt + vet + test ship with the language. golangci-lint is the only external tool needed.",
++  },
++
++  // ─── Rust ───────────────────────────────────────────────────────
++  {
++    language: "rust",
++    extensions: [".rs"],
++    manifestFiles: ["Cargo.toml", "Cargo.lock"],
++    tools: [
++      {
++        name: "rustfmt",
++        role: "fmt",
++        install: "rustup component add rustfmt",
++        check: "cargo fmt -- --check",
++        fix: "cargo fmt",
++        config: "rustfmt.toml",
++        description: "Canonical Rust formatter. Shipped with rustup.",
++      },
++      {
++        name: "clippy",
++        role: "lint",
++        install: "rustup component add clippy",
++        check: "cargo clippy -- -D warnings",
++        fix: "cargo clippy --fix --allow-dirty",
++        description: "The Rust linter. Catches common mistakes, suggests idiomatic code.",
++      },
++      {
++        name: "cargo test",
++        role: "test",
++        install: "# built-in with Cargo",
++        check: "cargo test",
++        fix: "cargo test",
++        description: "Built-in test runner.",
++      },
++    ],
++    notes: "Rust ships fmt + clippy + test with the toolchain. No external tools needed for most projects.",
++  },
++
++  // ─── Python ─────────────────────────────────────────────────────
++  {
++    language: "python",
++    extensions: [".py", ".pyi"],
++    manifestFiles: ["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile", "poetry.lock", "uv.lock"],
++    tools: [
++      {
++        name: "ruff",
++        role: "all-in-one",
++        install: "pip install ruff",
++        check: "ruff check . && ruff format --check .",
++        fix: "ruff check --fix . && ruff format .",
++        config: "pyproject.toml",
++        description: "Format + lint. Replaces black + isort + flake8 + pylint. 100x faster. Written in Rust.",
++      },
++      {
++        name: "mypy",
++        role: "typecheck",
++        install: "pip install mypy",
++        check: "mypy .",
++        fix: "mypy .",
++        config: "pyproject.toml",
++        description: "Static type checker for Python. Catches type errors in typed Python code.",
++      },
++      {
++        name: "pytest",
++        role: "test",
++        install: "pip install pytest",
++        check: "pytest",
++        fix: "pytest",
++        config: "pyproject.toml",
++        description: "Standard Python test runner.",
++      },
++    ],
++    notes: "Ruff is the Biome of Python — replaces 5+ tools with one Rust binary. Use ruff over black/flake8/pylint for new projects.",
++  },
++
++  // ─── Java ───────────────────────────────────────────────────────
++  {
++    language: "java",
++    extensions: [".java"],
++    manifestFiles: ["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle"],
++    tools: [
++      {
++        name: "google-java-format",
++        role: "fmt",
++        install: "# Download from https://github.com/google/google-java-format/releases",
++        check: "google-java-format --dry-run --set-exit-if-changed **/*.java",
++        fix: "google-java-format --replace **/*.java",
++        description: "Google's canonical Java formatter. Zero config.",
++      },
++      {
++        name: "checkstyle",
++        role: "lint",
++        install: "# Usually configured via Maven/Gradle plugin",
++        check: "mvn checkstyle:check || gradle checkstyleMain",
++        fix: "# No auto-fix — manual resolution required",
++        config: "checkstyle.xml",
++        description: "Style and convention checker. Use Google or Sun style.",
++      },
++      {
++        name: "spotbugs",
++        role: "vet",
++        install: "# Usually configured via Maven/Gradle plugin",
++        check: "mvn spotbugs:check || gradle spotbugsMain",
++        fix: "# No auto-fix — manual resolution required",
++        description: "Finds bug patterns via static analysis. Successor to FindBugs.",
++      },
++    ],
++    notes: "Java tooling is typically integrated via build system plugins (Maven/Gradle), not standalone binaries.",
++  },
++
++  // ─── Kotlin ─────────────────────────────────────────────────────
++  {
++    language: "kotlin",
++    extensions: [".kt", ".kts"],
++    manifestFiles: ["build.gradle.kts", "build.gradle"],
++    tools: [
++      {
++        name: "ktlint",
++        role: "all-in-one",
++        install: "brew install ktlint || curl -sSLO https://github.com/pinterest/ktlint/releases/latest/download/ktlint && chmod +x ktlint",
++        check: "ktlint",
++        fix: "ktlint --format",
++        config: ".editorconfig",
++        description: "Kotlin linter and formatter. Enforces official Kotlin style guide.",
++      },
++      {
++        name: "detekt",
++        role: "lint",
++        install: "# Usually configured via Gradle plugin",
++        check: "gradle detekt",
++        fix: "# Limited auto-fix via --auto-correct",
++        config: "detekt.yml",
++        description: "Static analysis for Kotlin. Catches code smells and complexity issues.",
++      },
++    ],
++  },
++
++  // ─── C / C++ ────────────────────────────────────────────────────
++  {
++    language: "c-cpp",
++    extensions: [".c", ".h", ".cpp", ".hpp", ".cc", ".cxx"],
++    manifestFiles: ["CMakeLists.txt", "Makefile", "meson.build", "configure.ac"],
++    tools: [
++      {
++        name: "clang-format",
++        role: "fmt",
++        install: "apt install clang-format || brew install clang-format",
++        check: "find . -name '*.cpp' -o -name '*.h' | xargs clang-format --dry-run --Werror",
++        fix: "find . -name '*.cpp' -o -name '*.h' | xargs clang-format -i",
++        config: ".clang-format",
++        description: "Canonical C/C++ formatter. Supports Google, LLVM, Mozilla, WebKit styles.",
++      },
++      {
++        name: "clang-tidy",
++        role: "lint",
++        install: "apt install clang-tidy || brew install llvm",
++        check: "clang-tidy src/*.cpp -- -std=c++17",
++        fix: "clang-tidy --fix src/*.cpp -- -std=c++17",
++        config: ".clang-tidy",
++        description: "C/C++ linter and static analyzer. Part of LLVM/Clang toolchain.",
++      },
++      {
++        name: "cppcheck",
++        role: "vet",
++        install: "apt install cppcheck || brew install cppcheck",
++        check: "cppcheck --enable=all --error-exitcode=1 src/",
++        fix: "# No auto-fix — manual resolution required",
++        description: "Static analysis for C/C++. Finds undefined behavior, memory leaks, style issues.",
++      },
++    ],
++  },
++
++  // ─── C# ─────────────────────────────────────────────────────────
++  {
++    language: "csharp",
++    extensions: [".cs"],
++    manifestFiles: ["*.csproj", "*.sln", "Directory.Build.props"],
++    tools: [
++      {
++        name: "dotnet format",
++        role: "fmt",
++        install: "# built-in with .NET SDK 6+",
++        check: "dotnet format --verify-no-changes",
++        fix: "dotnet format",
++        config: ".editorconfig",
++        description: "Built-in .NET formatter. Uses .editorconfig for style rules.",
++      },
++      {
++        name: "dotnet analyzers",
++        role: "lint",
++        install: "# built-in with .NET SDK — enable in .csproj",
++        check: "dotnet build /p:TreatWarningsAsErrors=true",
++        fix: "dotnet format analyzers",
++        description: "Roslyn analyzers. Enable via <EnableNETAnalyzers>true</EnableNETAnalyzers> in .csproj.",
++      },
++    ],
++    notes: "C# has excellent built-in tooling via the .NET SDK. dotnet format + analyzers cover fmt + lint.",
++  },
++
++  // ─── Ruby ───────────────────────────────────────────────────────
++  {
++    language: "ruby",
++    extensions: [".rb", ".rake"],
++    manifestFiles: ["Gemfile", "Gemfile.lock", "*.gemspec"],
++    tools: [
++      {
++        name: "rubocop",
++        role: "all-in-one",
++        install: "gem install rubocop",
++        check: "rubocop",
++        fix: "rubocop --autocorrect",
++        config: ".rubocop.yml",
++        description: "Ruby formatter + linter. Enforces the Ruby Style Guide.",
++      },
++    ],
++  },
++
++  // ─── PHP ────────────────────────────────────────────────────────
++  {
++    language: "php",
++    extensions: [".php"],
++    manifestFiles: ["composer.json", "composer.lock"],
++    tools: [
++      {
++        name: "php-cs-fixer",
++        role: "fmt",
++        install: "composer require --dev friendsofphp/php-cs-fixer",
++        check: "vendor/bin/php-cs-fixer fix --dry-run --diff",
++        fix: "vendor/bin/php-cs-fixer fix",
++        config: ".php-cs-fixer.php",
++        description: "PHP formatter. Enforces PSR-12 or custom rules.",
++      },
++      {
++        name: "phpstan",
++        role: "typecheck",
++        install: "composer require --dev phpstan/phpstan",
++        check: "vendor/bin/phpstan analyse src/",
++        fix: "# No auto-fix — manual resolution required",
++        config: "phpstan.neon",
++        description: "Static type checker for PHP. Like mypy for Python.",
++      },
++    ],
++  },
++
++  // ─── Swift ──────────────────────────────────────────────────────
++  {
++    language: "swift",
++    extensions: [".swift"],
++    manifestFiles: ["Package.swift", "*.xcodeproj", "*.xcworkspace"],
++    tools: [
++      {
++        name: "swift-format",
++        role: "fmt",
++        install: "brew install swift-format || swift package init && swift build",
++        check: "swift-format lint --recursive .",
++        fix: "swift-format format --recursive --in-place .",
++        config: ".swift-format",
++        description: "Official Swift formatter by Apple.",
++      },
++      {
++        name: "swiftlint",
++        role: "lint",
++        install: "brew install swiftlint",
++        check: "swiftlint lint",
++        fix: "swiftlint lint --fix",
++        config: ".swiftlint.yml",
++        description: "Swift style and convention linter.",
++      },
++    ],
++  },
++
++  // ─── Elixir ─────────────────────────────────────────────────────
++  {
++    language: "elixir",
++    extensions: [".ex", ".exs"],
++    manifestFiles: ["mix.exs", "mix.lock"],
++    tools: [
++      {
++        name: "mix format",
++        role: "fmt",
++        install: "# built-in with Elixir",
++        check: "mix format --check-formatted",
++        fix: "mix format",
++        config: ".formatter.exs",
++        description: "Built-in Elixir formatter. Zero config needed.",
++      },
++      {
++        name: "credo",
++        role: "lint",
++        install: "# Add {:credo, \"~> 1.7\", only: [:dev, :test]} to mix.exs deps",
++        check: "mix credo --strict",
++        fix: "# No auto-fix — manual resolution required",
++        config: ".credo.exs",
++        description: "Static analysis for Elixir. Focuses on code consistency and teaching.",
++      },
++      {
++        name: "dialyzer",
++        role: "typecheck",
++        install: "# Add {:dialyxir, \"~> 1.4\", only: [:dev, :test]} to mix.exs deps",
++        check: "mix dialyzer",
++        fix: "mix dialyzer",
++        description: "Erlang/Elixir type checker. Uses success typing. Catches type mismatches.",
++      },
++    ],
++    notes: "Elixir has Go-like built-in tooling. mix format is zero-config like gofmt.",
++  },
++
++  // ─── Zig ────────────────────────────────────────────────────────
++  {
++    language: "zig",
++    extensions: [".zig"],
++    manifestFiles: ["build.zig", "build.zig.zon"],
++    tools: [
++      {
++        name: "zig fmt",
++        role: "fmt",
++        install: "# built-in with Zig",
++        check: "zig fmt --check .",
++        fix: "zig fmt .",
++        description: "Built-in Zig formatter. Like gofmt — canonical, zero config.",
++      },
++    ],
++    notes: "Zig ships its formatter built-in. No external linting tools have matured yet.",
++  },
++
++  // ─── Shell / Bash ───────────────────────────────────────────────
++  {
++    language: "shell",
++    extensions: [".sh", ".bash", ".zsh"],
++    manifestFiles: [],
++    tools: [
++      {
++        name: "shellcheck",
++        role: "lint",
++        install: "apt install shellcheck || brew install shellcheck",
++        check: "shellcheck **/*.sh",
++        fix: "# No auto-fix — manual resolution required",
++        description: "Shell script linter. Catches quoting issues, undefined vars, POSIX portability.",
++      },
++      {
++        name: "shfmt",
++        role: "fmt",
++        install: "go install mvdan.cc/sh/v3/cmd/shfmt@latest || brew install shfmt",
++        check: "shfmt -d .",
++        fix: "shfmt -w .",
++        config: ".editorconfig",
++        description: "Shell script formatter. Supports POSIX, bash, mksh.",
++      },
++    ],
++  },
++
++  // ─── SQL ────────────────────────────────────────────────────────
++  {
++    language: "sql",
++    extensions: [".sql"],
++    manifestFiles: [],
++    tools: [
++      {
++        name: "sqlfluff",
++        role: "all-in-one",
++        install: "pip install sqlfluff",
++        check: "sqlfluff lint .",
++        fix: "sqlfluff fix .",
++        config: ".sqlfluff",
++        description: "SQL linter and formatter. Supports PostgreSQL, MySQL, SQLite, BigQuery, etc.",
++      },
++    ],
++  },
++
++  // ─── Terraform / HCL ───────────────────────────────────────────
++  {
++    language: "terraform",
++    extensions: [".tf", ".tfvars"],
++    manifestFiles: ["*.tf", ".terraform.lock.hcl"],
++    tools: [
++      {
++        name: "terraform fmt",
++        role: "fmt",
++        install: "# built-in with Terraform CLI",
++        check: "terraform fmt -check -recursive",
++        fix: "terraform fmt -recursive",
++        description: "Built-in Terraform formatter.",
++      },
++      {
++        name: "tflint",
++        role: "lint",
++        install: "brew install tflint || curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash",
++        check: "tflint --recursive",
++        fix: "tflint --fix",
++        config: ".tflint.hcl",
++        description: "Terraform linter. Catches deprecated syntax, invalid references, provider issues.",
++      },
++    ],
++  },
++
++  // ─── Dockerfile ─────────────────────────────────────────────────
++  {
++    language: "dockerfile",
++    extensions: ["Dockerfile"],
++    manifestFiles: ["Dockerfile", "docker-compose.yml", "docker-compose.yaml"],
++    tools: [
++      {
++        name: "hadolint",
++        role: "lint",
++        install: "brew install hadolint || docker pull hadolint/hadolint",
++        check: "hadolint Dockerfile",
++        fix: "# No auto-fix — manual resolution required",
++        config: ".hadolint.yaml",
++        description: "Dockerfile linter. Checks best practices, pinned versions, multi-stage patterns.",
++      },
++    ],
++  },
++
++  // ─── YAML ───────────────────────────────────────────────────────
++  {
++    language: "yaml",
++    extensions: [".yml", ".yaml"],
++    manifestFiles: [],
++    tools: [
++      {
++        name: "yamllint",
++        role: "lint",
++        install: "pip install yamllint",
++        check: "yamllint .",
++        fix: "# No auto-fix — manual resolution required",
++        config: ".yamllint.yml",
++        description: "YAML linter. Checks syntax, indentation, key ordering, line length.",
++      },
++    ],
++  },
++
++  // ─── Markdown ───────────────────────────────────────────────────
++  {
++    language: "markdown",
++    extensions: [".md"],
++    manifestFiles: [],
++    tools: [
++      {
++        name: "markdownlint",
++        role: "lint",
++        install: "npm install -g markdownlint-cli",
++        check: "markdownlint '**/*.md'",
++        fix: "markdownlint --fix '**/*.md'",
++        config: ".markdownlint.json",
++        description: "Markdown linter. Checks heading style, line length, list formatting.",
++      },
++    ],
++  },
++];
++
++// ─── Lookup helpers ──────────────────────────────────────────────
++
++export function findByExtension(ext: string): LanguageToolchain | undefined {
++  return REGISTRY.find((tc) => tc.extensions.some((e) => ext.endsWith(e) || ext === e));
++}
++
++export function findByManifest(filename: string): LanguageToolchain | undefined {
++  return REGISTRY.find((tc) => tc.manifestFiles.some((m) => {
++    if (m.startsWith("*")) return filename.endsWith(m.slice(1));
++    return filename === m;
++  }));
++}
++
++export function findByLanguage(lang: string): LanguageToolchain | undefined {
++  return REGISTRY.find((tc) => tc.language === lang.toLowerCase());
++}
+diff --git a/docs/CODE_QUALITY_STANDARD.md b/docs/CODE_QUALITY_STANDARD.md
+new file mode 100644
+index 0000000..fe02d00
+--- /dev/null
++++ b/docs/CODE_QUALITY_STANDARD.md
+@@ -0,0 +1,240 @@
++# Code Quality Standard
++
++> Every codebase the harness touches must have automated formatting, linting, and type checking.
++> This is not optional. These are the rules every agent follows regardless of role.
++
++---
++
++## The Rule
++
++**Before writing code in any codebase, detect the language stack and ensure quality tools are configured.** If they aren't, set them up first. If they are, run them after writing.
++
++This applies to the planner (who must include it in plans), the worker (who must run it), the tester (who must verify it passes), the reviewer (who must check it was run), and the committer (who must not commit code that fails checks).
++
++## The Workflow
++
++### 1. On first contact with any codebase
++
++Run `/quality scan` or mentally execute this checklist:
++
++```
++What language(s) does this codebase use?
++  → Check: file extensions, manifest files (package.json, go.mod, Cargo.toml, pyproject.toml, etc.)
++
++Does it have a formatter configured?
++  → Check: biome.json, .prettierrc, rustfmt.toml, .clang-format, pyproject.toml [tool.ruff], etc.
++  → If NO: this is the first thing to fix. Pick the canonical tool for the language (see table below).
++
++Does it have a linter configured?
++  → Check: biome.json, .golangci.yml, clippy in Cargo.toml, pyproject.toml [tool.ruff], etc.
++  → If NO: set it up. A codebase without a linter is a codebase accumulating invisible debt.
++
++Does it have type checking?
++  → Check: tsconfig.json, mypy.ini, pyproject.toml [tool.mypy], etc.
++  → If NO and the language supports it: configure it.
++```
++
++### 2. On every file write
++
++```
++After writing or editing a file:
++  1. Imports at the top, sorted, no duplicates, no unused
++  2. No debug statements left in (console.log, print, debugger, println!)
++  3. Run the formatter (or know it runs on save)
++  4. Run the linter — fix all errors, evaluate all warnings
++  5. If typed language: run the type checker
++```
++
++### 3. Before every commit
++
++```
++Run the full quality check for the language:
++  TypeScript:    npx biome check .
++  Go:            gofmt -l . && go vet ./... && golangci-lint run
++  Rust:          cargo fmt --check && cargo clippy -- -D warnings
++  Python:        ruff check . && ruff format --check . && mypy .
++  etc.
++
++If any check fails, fix it before committing.
++No exceptions. No "I'll fix it later." Fix it now.
++```
++
++## The Tool for Each Language
++
++Every language has a canonical set of quality tools. Use these. Don't reinvent.
++
++| Language | Formatter | Linter/Vet | Type Checker | Test Runner |
++|---|---|---|---|---|
++| **TypeScript/JS** | Biome | Biome | tsc --noEmit | bun test / vitest |
++| **Go** | gofmt (built-in) | go vet + golangci-lint | (compiler) | go test |
++| **Rust** | rustfmt (built-in) | clippy (built-in) | (compiler) | cargo test |
++| **Python** | ruff format | ruff check | mypy | pytest |
++| **Java** | google-java-format | checkstyle + spotbugs | (compiler) | JUnit / Gradle |
++| **Kotlin** | ktlint | detekt | (compiler) | JUnit / Gradle |
++| **C/C++** | clang-format | clang-tidy + cppcheck | (compiler) | googletest / catch2 |
++| **C#** | dotnet format | Roslyn analyzers | (compiler) | dotnet test |
++| **Ruby** | RuboCop | RuboCop | Sorbet (optional) | RSpec / minitest |
++| **PHP** | php-cs-fixer | phpstan | phpstan | PHPUnit |
++| **Swift** | swift-format | SwiftLint | (compiler) | XCTest |
++| **Elixir** | mix format (built-in) | credo | dialyzer | ExUnit |
++| **Zig** | zig fmt (built-in) | — | (compiler) | zig test |
++| **Shell** | shfmt | shellcheck | — | bats |
++| **SQL** | sqlfluff | sqlfluff | — | — |
++| **Terraform** | terraform fmt | tflint | — | terraform validate |
++| **Dockerfile** | — | hadolint | — | — |
++
++**The "all-in-one" tools** (one binary, one config, replaces multiple tools):
++- TypeScript/JS → **Biome** (replaces ESLint + Prettier)
++- Python → **Ruff** (replaces black + isort + flake8 + pylint)
++- Go → built-in (gofmt + go vet + go test ship with the language)
++- Rust → built-in (rustfmt + clippy + cargo test ship with the toolchain)
++
++## What Each Tool Role Catches
++
++**Formatter (fmt)** — Non-negotiable. Zero-config where possible.
++- Consistent indentation, spacing, line breaks
++- Import ordering and grouping
++- Trailing commas, semicolons, quote style
++- **Why:** Eliminates 100% of style arguments in code review
++
++**Linter (lint/vet)** — Catches bugs the compiler misses.
++- Unused variables and imports
++- Unreachable code
++- Suspicious patterns (== vs ===, catch-and-swallow, floating promises)
++- Circular dependencies
++- Security issues (hardcoded secrets, SQL injection patterns)
++- **Why:** Prevents entire categories of bugs before they reach production
++
++**Type Checker** — Catches type errors at compile time.
++- Wrong argument types, missing properties
++- Null/undefined dereferences
++- API contract violations (return type changed but callers not updated)
++- **Why:** Turns runtime crashes into compile-time errors
++
++## Anti-Patterns Every Agent Must Avoid
++
++These are the patterns the quality tools catch. Know them so you don't generate them:
++
++### Universal (all languages)
++
++1. **Imports in the middle of the file.** Imports go at the top. Always. No exceptions.
++2. **Debug statements left in.** No console.log, print(), println!, dbg!, System.out.println in committed code.
++3. **Unused imports.** Dead imports are noise. Remove them.
++4. **Unused variables.** If you declared it and don't use it, delete it.
++5. **Inconsistent formatting.** Use the formatter. Don't hand-format.
++6. **Commented-out code.** Delete it. Git remembers. You don't need commented-out code as a backup.
++7. **Magic numbers without names.** `if (retries > 3)` → `if (retries > MAX_RETRIES)`.
++
++### Error Handling
++
++8. **Catch-and-swallow.** `catch (e) { console.log(e) }` is NOT error handling. Either recover, rethrow, or return an error to the caller.
++9. **Catch-all without discrimination.** Different errors need different handling. Don't treat network errors the same as parse errors.
++10. **Missing error handling on I/O.** Every fetch, DB query, file read, and network call can fail. Handle it.
++
++### Type Safety
++
++11. **`as any` (TypeScript), `type: ignore` (Python), unsafe blocks without justification (Rust).** Each one is a hole in the safety net. Minimize them. When unavoidable, add a comment explaining why.
++12. **Missing return types on public functions.** Public API = contract. The caller needs to know what they get back.
++13. **Non-null assertions without proof.** `user!.name` will crash if user is null. Check first.
++
++### Architecture
++
++14. **Circular imports.** Module A imports B which imports A. This creates initialization order bugs and makes the code impossible to reason about.
++15. **God functions.** If a function calls more than 8-10 other functions, it knows too much. Split it.
++16. **Cross-layer imports.** Shared libraries should not import from application code. Tests should not be imported by production code.
++
++### Async / Concurrency
++
++17. **Floating promises.** `doSomethingAsync()` without await or .catch() means errors are silently lost.
++18. **Promise.all without partial failure handling.** If one of 5 operations fails, do you really want to lose all 5 results? Consider Promise.allSettled.
++19. **Missing timeouts on outward calls.** Every HTTP request, DB query, or RPC call needs a timeout. Without one, a hung dependency silently hangs your system.
++
++## For Each Agent Role
++
++### Planner
++- Include "set up code quality tools" as step 1 in every plan that touches a new codebase
++- Reference this standard in the plan
++- Verify: "Does this codebase have fmt + lint + typecheck configured?"
++
++### Worker / Implementer
++- Run `/quality scan` on first contact with any codebase
++- Run the formatter after every file write
++- Run the linter before declaring a task done
++- Never commit code that fails `biome check` / `ruff check` / `cargo clippy` / etc.
++
++### Tester
++- Verify that quality tools pass as part of the test suite
++- If tests import production code, verify no circular dependencies are introduced
++- Lint the test files too — test code is production code
++
++### Reviewer
++- First check: "Did the quality tools run?" If not, stop the review
++- Verify: no new `as any`, no new `catch-and-swallow`, no new circular deps
++- Check: imports at top, no debug statements, no unused code
++
++### Committer
++- Run the full quality suite before committing
++- If any check fails, do not commit. Fix first.
++- Include quality tool output in commit context if relevant
++
++### Janitor
++- Run `/quality report` to see the current state
++- Track: number of `as any` casts, catch-and-swallow patterns, circular deps
++- Goal: these numbers should decrease over time, never increase
++
++### Security Auditor
++- Verify that linting includes security rules (gosec, Biome suspicious, phpstan security)
++- Check for hardcoded secrets, SQL injection patterns, path traversal
++
++## Setup for a New Codebase
++
++When an agent encounters a codebase with no quality tools:
++
++```bash
++# 1. Detect what's there
++cd /path/to/project
++
++# 2. Look at what language it is
++ls *.ts *.go *.py *.rs *.java  # what files exist?
++cat package.json               # Node/TS project?
++cat go.mod                     # Go project?
++cat Cargo.toml                 # Rust project?
++cat pyproject.toml             # Python project?
++
++# 3. Install the canonical tool (see table above)
++# For TypeScript:
++npm install --save-dev --save-exact @biomejs/biome
++npx biome init
++
++# For Python:
++pip install ruff mypy
++# Add [tool.ruff] section to pyproject.toml
++
++# For Go:
++go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
++# Create .golangci.yml
++
++# 4. Run first check — this shows the current state
++npx biome check .       # TypeScript
++ruff check .            # Python
++golangci-lint run       # Go
++cargo clippy            # Rust
++
++# 5. Auto-fix what can be auto-fixed
++npx biome check --write .   # TypeScript
++ruff check --fix .           # Python
++golangci-lint run --fix      # Go
++cargo clippy --fix           # Rust
++
++# 6. Commit the config files
++git add biome.json           # or .golangci.yml, pyproject.toml, etc.
++git commit -m "chore: add code quality tooling"
++```
++
++## Reference
++
++Full tool registry with install commands, check commands, fix commands, and config file names: `code-quality/registry.ts`
++
++Stack detection (auto-detects languages and missing tools): `code-quality/detect.ts`
++
++Extension (integrates with harness lifecycle): `code-quality/index.ts`
+diff --git a/package-lock.json b/package-lock.json
+index c4bd464..43d4b43 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -6,6 +6,172 @@
+     "": {
+       "dependencies": {
+         "ws": "^8.19.0"
++      },
++      "devDependencies": {
++        "@biomejs/biome": "^2.4.8"
++      }
++    },
++    "node_modules/@biomejs/biome": {
++      "version": "2.4.8",
++      "resolved": "https://registry.npmjs.org/@biomejs/biome/-/biome-2.4.8.tgz",
++      "integrity": "sha512-ponn0oKOky1oRXBV+rlSaUlixUxf1aZvWC19Z41zBfUOUesthrQqL3OtiAlSB1EjFjyWpn98Q64DHelhA6jNlA==",
++      "dev": true,
++      "license": "MIT OR Apache-2.0",
++      "bin": {
++        "biome": "bin/biome"
++      },
++      "engines": {
++        "node": ">=14.21.3"
++      },
++      "funding": {
++        "type": "opencollective",
++        "url": "https://opencollective.com/biome"
++      },
++      "optionalDependencies": {
++        "@biomejs/cli-darwin-arm64": "2.4.8",
++        "@biomejs/cli-darwin-x64": "2.4.8",
++        "@biomejs/cli-linux-arm64": "2.4.8",
++        "@biomejs/cli-linux-arm64-musl": "2.4.8",
++        "@biomejs/cli-linux-x64": "2.4.8",
++        "@biomejs/cli-linux-x64-musl": "2.4.8",
++        "@biomejs/cli-win32-arm64": "2.4.8",
++        "@biomejs/cli-win32-x64": "2.4.8"
++      }
++    },
++    "node_modules/@biomejs/cli-darwin-arm64": {
++      "version": "2.4.8",
++      "resolved": "https://registry.npmjs.org/@biomejs/cli-darwin-arm64/-/cli-darwin-arm64-2.4.8.tgz",
++      "integrity": "sha512-ARx0tECE8I7S2C2yjnWYLNbBdDoPdq3oyNLhMglmuctThwUsuzFWRKrHmIGwIRWKz0Mat9DuzLEDp52hGnrxGQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT OR Apache-2.0",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=14.21.3"
++      }
++    },
++    "node_modules/@biomejs/cli-darwin-x64": {
++      "version": "2.4.8",
++      "resolved": "https://registry.npmjs.org/@biomejs/cli-darwin-x64/-/cli-darwin-x64-2.4.8.tgz",
++      "integrity": "sha512-Jg9/PsB9vDCJlANE8uhG7qDhb5w0Ix69D7XIIc8IfZPUoiPrbLm33k2Ig3NOJ/7nb3UbesFz3D1aDKm9DvzjhQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT OR Apache-2.0",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=14.21.3"
++      }
++    },
++    "node_modules/@biomejs/cli-linux-arm64": {
++      "version": "2.4.8",
++      "resolved": "https://registry.npmjs.org/@biomejs/cli-linux-arm64/-/cli-linux-arm64-2.4.8.tgz",
++      "integrity": "sha512-5CdrsJct76XG2hpKFwXnEtlT1p+4g4yV+XvvwBpzKsTNLO9c6iLlAxwcae2BJ7ekPGWjNGw9j09T5KGPKKxQig==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT OR Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=14.21.3"
++      }
++    },
++    "node_modules/@biomejs/cli-linux-arm64-musl": {
++      "version": "2.4.8",
++      "resolved": "https://registry.npmjs.org/@biomejs/cli-linux-arm64-musl/-/cli-linux-arm64-musl-2.4.8.tgz",
++      "integrity": "sha512-Zo9OhBQDJ3IBGPlqHiTISloo5H0+FBIpemqIJdW/0edJ+gEcLR+MZeZozcUyz3o1nXkVA7++DdRKQT0599j9jA==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT OR Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=14.21.3"
++      }
++    },
++    "node_modules/@biomejs/cli-linux-x64": {
++      "version": "2.4.8",
++      "resolved": "https://registry.npmjs.org/@biomejs/cli-linux-x64/-/cli-linux-x64-2.4.8.tgz",
++      "integrity": "sha512-PdKXspVEaMCQLjtZCn6vfSck/li4KX9KGwSDbZdgIqlrizJ2MnMcE3TvHa2tVfXNmbjMikzcfJpuPWH695yJrw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT OR Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=14.21.3"
++      }
++    },
++    "node_modules/@biomejs/cli-linux-x64-musl": {
++      "version": "2.4.8",
++      "resolved": "https://registry.npmjs.org/@biomejs/cli-linux-x64-musl/-/cli-linux-x64-musl-2.4.8.tgz",
++      "integrity": "sha512-Gi8quv8MEuDdKaPFtS2XjEnMqODPsRg6POT6KhoP+VrkNb+T2ywunVB+TvOU0LX1jAZzfBr+3V1mIbBhzAMKvw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT OR Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=14.21.3"
++      }
++    },
++    "node_modules/@biomejs/cli-win32-arm64": {
++      "version": "2.4.8",
++      "resolved": "https://registry.npmjs.org/@biomejs/cli-win32-arm64/-/cli-win32-arm64-2.4.8.tgz",
++      "integrity": "sha512-LoFatS0tnHv6KkCVpIy3qZCih+MxUMvdYiPWLHRri7mhi2vyOOs8OrbZBcLTUEWCS+ktO72nZMy4F96oMhkOHQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT OR Apache-2.0",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=14.21.3"
++      }
++    },
++    "node_modules/@biomejs/cli-win32-x64": {
++      "version": "2.4.8",
++      "resolved": "https://registry.npmjs.org/@biomejs/cli-win32-x64/-/cli-win32-x64-2.4.8.tgz",
++      "integrity": "sha512-vAn7iXDoUbqFXqVocuq1sMYAd33p8+mmurqJkWl6CtIhobd/O6moe4rY5AJvzbunn/qZCdiDVcveqtkFh1e7Hg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT OR Apache-2.0",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=14.21.3"
+       }
+     },
+     "node_modules/ws": {
+diff --git a/package.json b/package.json
+index 4414d1d..6570a6b 100644
+--- a/package.json
++++ b/package.json
+@@ -1,5 +1,8 @@
+ {
+   "dependencies": {
+     "ws": "^8.19.0"
++  },
++  "devDependencies": {
++    "@biomejs/biome": "^2.4.8"
+   }
+ }
+-- 
+2.43.0
+
+
+From e2aafaa927b32132aa8b48f284155912aeed91db Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sat, 21 Mar 2026 21:54:07 +0000
+Subject: [PATCH 4/6] feat: add harness-native CI runner for Soft Serve
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A minimal CI/CD runner that integrates with the harness knowledge graph.
+No external CI server needed — Soft Serve hooks trigger it, Docker runs
+the containers, XTDB stores the results.
+
+Components:
+  ci-runner/runner.ts    — queue watcher, job executor, Docker orchestrator
+  ci-runner/pipeline.ts  — reads .ci.yaml or auto-detects language:
+                           TS→biome, Go→gofmt+vet+test, Rust→fmt+clippy,
+                           Python→ruff+pytest, Elixir→format+credo+test
+  ci-runner/recorder.ts  — writes ci_runs to XTDB as JSON-LD (code:CIRun)
+  ci-runner/enqueue.sh   — writes job file to queue (called by hook)
+  ci-runner/hooks/post-receive — Soft Serve hook, calls enqueue.sh
+
+Automation layers (5 gates, none existed before):
+  .vscode/settings.json  — Biome format-on-save + organize imports
+  .githooks/pre-commit   — language-aware checks on staged files
+  Taskfile.yml           — task check, task fmt, task ci:runner, task ci:run
+  .github/workflows/     — GitHub Actions fallback (if not on Soft Serve)
+  ci-runner/             — the real CI, async, Docker-native, XTDB-integrated
+
+The flow:
+  git push → Soft Serve post-receive → enqueue.sh → queue/job.json
+  runner.ts → picks up job → checkout → detect language → Docker steps
+  → results to XTDB → queryable via SPARQL on /graph page
+
+Auto-detection tested: correctly identifies harness as TypeScript with
+Biome, generates 'npm ci && npx biome ci .' step.
+---
+ .githooks/pre-commit          | 126 ++++++++++++++
+ .github/workflows/quality.yml |  33 ++++
+ .vscode/extensions.json       |   9 +
+ .vscode/settings.json         |  41 +++++
+ Taskfile.yml                  |  64 ++++++++
+ ci-runner/README.md           | 165 +++++++++++++++++++
+ ci-runner/enqueue.sh          |  59 +++++++
+ ci-runner/hooks/post-receive  |  27 +++
+ ci-runner/pipeline.ts         | 266 ++++++++++++++++++++++++++++++
+ ci-runner/recorder.ts         | 115 +++++++++++++
+ ci-runner/runner.ts           | 301 ++++++++++++++++++++++++++++++++++
+ 11 files changed, 1206 insertions(+)
+ create mode 100755 .githooks/pre-commit
+ create mode 100644 .github/workflows/quality.yml
+ create mode 100644 .vscode/extensions.json
+ create mode 100644 .vscode/settings.json
+ create mode 100644 ci-runner/README.md
+ create mode 100755 ci-runner/enqueue.sh
+ create mode 100755 ci-runner/hooks/post-receive
+ create mode 100644 ci-runner/pipeline.ts
+ create mode 100644 ci-runner/recorder.ts
+ create mode 100644 ci-runner/runner.ts
+
+diff --git a/.githooks/pre-commit b/.githooks/pre-commit
+new file mode 100755
+index 0000000..a4efbd2
+--- /dev/null
++++ b/.githooks/pre-commit
+@@ -0,0 +1,126 @@
++#!/usr/bin/env bash
++# ─── Pre-commit quality gate ──────────────────────────────────────
++# Runs the appropriate quality tool for each changed file's language.
++# This hook WARNS but does NOT block commits (exit 0 always).
++# To make it blocking, change the final exit to: exit $exitcode
++#
++# Setup: git config core.hooksPath .githooks
++# ──────────────────────────────────────────────────────────────────
++
++set -euo pipefail
++
++# Get staged files (only added/modified, not deleted)
++STAGED=$(git diff --cached --name-only --diff-filter=ACM)
++if [ -z "$STAGED" ]; then
++  exit 0
++fi
++
++exitcode=0
++
++# ── Collect files by language ────────────────────────────────────
++TS_FILES=""
++GO_FILES=""
++PY_FILES=""
++RS_FILES=""
++SH_FILES=""
++
++for file in $STAGED; do
++  case "$file" in
++    *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs)
++      TS_FILES="$TS_FILES $file" ;;
++    *.go)
++      GO_FILES="$GO_FILES $file" ;;
++    *.py|*.pyi)
++      PY_FILES="$PY_FILES $file" ;;
++    *.rs)
++      RS_FILES="$RS_FILES $file" ;;
++    *.sh|*.bash)
++      SH_FILES="$SH_FILES $file" ;;
++  esac
++done
++
++# ── TypeScript / JavaScript ──────────────────────────────────────
++if [ -n "$TS_FILES" ]; then
++  if [ -f "biome.json" ] && command -v npx &>/dev/null; then
++    echo "🔍 Biome: checking TypeScript/JS files..."
++    if ! npx biome check --no-errors-on-unmatched $TS_FILES 2>&1; then
++      echo "⚠️  Biome found issues. Run: npx biome check --write ."
++      exitcode=1
++    fi
++  fi
++fi
++
++# ── Go ───────────────────────────────────────────────────────────
++if [ -n "$GO_FILES" ]; then
++  if command -v gofmt &>/dev/null; then
++    echo "🔍 gofmt: checking Go files..."
++    UNFORMATTED=$(gofmt -l $GO_FILES 2>/dev/null || true)
++    if [ -n "$UNFORMATTED" ]; then
++      echo "⚠️  Unformatted Go files: $UNFORMATTED"
++      echo "   Run: gofmt -w ."
++      exitcode=1
++    fi
++  fi
++  if command -v go &>/dev/null && [ -f "go.mod" ]; then
++    echo "🔍 go vet: checking Go files..."
++    if ! go vet ./... 2>&1; then
++      echo "⚠️  go vet found issues."
++      exitcode=1
++    fi
++  fi
++fi
++
++# ── Python ───────────────────────────────────────────────────────
++if [ -n "$PY_FILES" ]; then
++  if command -v ruff &>/dev/null; then
++    echo "🔍 ruff: checking Python files..."
++    if ! ruff check $PY_FILES 2>&1; then
++      echo "⚠️  ruff found issues. Run: ruff check --fix ."
++      exitcode=1
++    fi
++    if ! ruff format --check $PY_FILES 2>&1; then
++      echo "⚠️  ruff format found issues. Run: ruff format ."
++      exitcode=1
++    fi
++  fi
++fi
++
++# ── Rust ─────────────────────────────────────────────────────────
++if [ -n "$RS_FILES" ]; then
++  if command -v cargo &>/dev/null && [ -f "Cargo.toml" ]; then
++    echo "🔍 cargo fmt: checking Rust files..."
++    if ! cargo fmt -- --check 2>&1; then
++      echo "⚠️  Unformatted Rust files. Run: cargo fmt"
++      exitcode=1
++    fi
++    echo "🔍 cargo clippy: checking Rust files..."
++    if ! cargo clippy -- -D warnings 2>&1; then
++      echo "⚠️  clippy found issues."
++      exitcode=1
++    fi
++  fi
++fi
++
++# ── Shell ────────────────────────────────────────────────────────
++if [ -n "$SH_FILES" ]; then
++  if command -v shellcheck &>/dev/null; then
++    echo "🔍 shellcheck: checking shell files..."
++    if ! shellcheck $SH_FILES 2>&1; then
++      echo "⚠️  shellcheck found issues."
++      exitcode=1
++    fi
++  fi
++fi
++
++# ── Summary ──────────────────────────────────────────────────────
++if [ $exitcode -ne 0 ]; then
++  echo ""
++  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
++  echo "⚠️  Quality checks found issues (non-blocking)"
++  echo "   Fix with: task fix"
++  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
++fi
++
++# Non-blocking: always allow the commit.
++# To make blocking: change to `exit $exitcode`
++exit 0
+diff --git a/.github/workflows/quality.yml b/.github/workflows/quality.yml
+new file mode 100644
+index 0000000..c436c91
+--- /dev/null
++++ b/.github/workflows/quality.yml
+@@ -0,0 +1,33 @@
++# ─── Code Quality CI ──────────────────────────────────────────────
++# Runs on every push and PR. This is the ONLY gate that cannot be
++# bypassed — git hooks can be skipped, editors can be misconfigured,
++# but CI runs on the server.
++#
++# Uses `biome ci` which is designed for CI: exits non-zero on any
++# issue, outputs machine-readable diagnostics, no auto-fix.
++# ──────────────────────────────────────────────────────────────────
++
++name: Code Quality
++
++on:
++  push:
++    branches: [main]
++  pull_request:
++    branches: [main]
++
++jobs:
++  check:
++    name: Format + Lint + Imports
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++
++      - uses: oven-sh/setup-bun@v2
++        with:
++          bun-version: latest
++
++      - name: Install dependencies
++        run: bun install --frozen-lockfile
++
++      - name: Run Biome CI
++        run: npx biome ci .
+diff --git a/.vscode/extensions.json b/.vscode/extensions.json
+new file mode 100644
+index 0000000..75cec10
+--- /dev/null
++++ b/.vscode/extensions.json
+@@ -0,0 +1,9 @@
++{
++  "recommendations": [
++    "biomejs.biome"
++  ],
++  "unwantedRecommendations": [
++    "esbenp.prettier-vscode",
++    "dbaeumer.vscode-eslint"
++  ]
++}
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+new file mode 100644
+index 0000000..40d5808
+--- /dev/null
++++ b/.vscode/settings.json
+@@ -0,0 +1,41 @@
++{
++  // ── Biome as default formatter for TS/JS ──
++  "[typescript]": {
++    "editor.defaultFormatter": "biomejs.biome",
++    "editor.formatOnSave": true,
++    "editor.codeActionsOnSave": {
++      "quickfix.biome": "explicit",
++      "source.organizeImports.biome": "explicit"
++    }
++  },
++  "[typescriptreact]": {
++    "editor.defaultFormatter": "biomejs.biome",
++    "editor.formatOnSave": true,
++    "editor.codeActionsOnSave": {
++      "quickfix.biome": "explicit",
++      "source.organizeImports.biome": "explicit"
++    }
++  },
++  "[javascript]": {
++    "editor.defaultFormatter": "biomejs.biome",
++    "editor.formatOnSave": true,
++    "editor.codeActionsOnSave": {
++      "quickfix.biome": "explicit",
++      "source.organizeImports.biome": "explicit"
++    }
++  },
++  "[json]": {
++    "editor.defaultFormatter": "biomejs.biome",
++    "editor.formatOnSave": true
++  },
++
++  // ── General editor settings ──
++  "editor.tabSize": 2,
++  "editor.insertSpaces": true,
++  "files.trimTrailingWhitespace": true,
++  "files.insertFinalNewline": true,
++
++  // ── Disable conflicting formatters ──
++  "prettier.enable": false,
++  "eslint.enable": false
++}
+diff --git a/Taskfile.yml b/Taskfile.yml
+index 8044c57..040b999 100644
+--- a/Taskfile.yml
++++ b/Taskfile.yml
+@@ -473,3 +473,67 @@ tasks:
+       - 'test -d "$HOME/.pi/agent/extensions/xtdb-event-logger" && echo "xtdb-event-logger deployed" || (echo "xtdb-event-logger missing"; exit 1)'
+       - 'echo "Current XTDB event count:"'
+       - 'PGPASSWORD=xtdb psql -h localhost -p 5433 -U xtdb -d xtdb -Atqc "SELECT COUNT(*) FROM events"'
++
++  # ── Code Quality ─────────────────────────────────────────────────
++
++  check:
++    desc: Run all quality checks (format + lint + import sorting)
++    cmds:
++      - npx biome check .
++
++  fmt:
++    desc: Auto-fix formatting, imports, and safe lint fixes
++    cmds:
++      - npx biome check --write .
++
++  lint:
++    desc: Run linter only (no formatting)
++    cmds:
++      - npx biome lint .
++
++  'check:ci':
++    desc: Quality check for CI — exits non-zero on any issue
++    cmds:
++      - npx biome ci .
++
++  'hooks:install':
++    desc: Enable git pre-commit quality hook
++    cmds:
++      - git config core.hooksPath .githooks
++      - echo "✅ Git hooks enabled. Pre-commit will run quality checks on staged files."
++
++  # ── CI Runner ────────────────────────────────────────────────────
++
++  'ci:runner':
++    desc: Start the CI runner (watches queue, runs pipelines in Docker)
++    cmds:
++      - npx tsx ci-runner/runner.ts
++
++  'ci:run':
++    desc: Run CI pipeline on current repo (one-shot, no queue)
++    cmds:
++      - |
++        JOB=$(mktemp /tmp/ci-job-XXXXXX.json)
++        cat > "$JOB" << EOF
++        {
++          "id": "manual-$(date +%s)",
++          "repo": "$(basename $(pwd))",
++          "ref": "refs/heads/$(git branch --show-current)",
++          "commitHash": "$(git rev-parse HEAD)",
++          "commitMessage": "$(git log -1 --format=%s)",
++          "pusher": "$(whoami)",
++          "timestamp": $(date +%s000)
++        }
++        EOF
++        npx tsx ci-runner/runner.ts --once "$JOB"
++        rm -f "$JOB"
++
++  'ci:hook:install':
++    desc: Install Soft Serve post-receive hook for CI
++    vars:
++      SS_DATA: '{{.SOFT_SERVE_DATA_PATH | default "/var/local/lib/soft-serve"}}'
++    cmds:
++      - mkdir -p {{.SS_DATA}}/hooks
++      - cp ci-runner/hooks/post-receive {{.SS_DATA}}/hooks/post-receive
++      - chmod +x {{.SS_DATA}}/hooks/post-receive
++      - echo "✅ Soft Serve CI hook installed at {{.SS_DATA}}/hooks/post-receive"
+diff --git a/ci-runner/README.md b/ci-runner/README.md
+new file mode 100644
+index 0000000..ee2aded
+--- /dev/null
++++ b/ci-runner/README.md
+@@ -0,0 +1,165 @@
++# Harness CI Runner
++
++A minimal, harness-native CI/CD runner designed for Soft Serve.
++
++## Architecture
++
++```
++Developer pushes code
++       │
++       ▼
++Soft Serve (git server)
++       │
++       ├─ post-receive hook fires
++       │
++       ▼
++enqueue.sh
++       │  writes job JSON to ~/.ci-runner/queue/
++       │  developer sees "CI job queued" in terminal
++       │  push completes immediately (async)
++       │
++       ▼
++runner.ts (background process)
++       │  watches queue directory
++       │  picks up job file
++       │
++       ├─ 1. Checks out code at pushed commit
++       ├─ 2. Reads .ci.yaml OR auto-detects language
++       ├─ 3. Runs each step in a Docker container
++       ├─ 4. Writes results to XTDB as JSON-LD
++       └─ 5. Cleans up working directory
++              │
++              ▼
++         XTDB ci_runs table
++              │
++              ▼
++    export-xtdb-triples.ts → QLever → /graph page
++    (queryable via SPARQL alongside test results,
++     function lifecycle, decisions, requirements)
++```
++
++## Quick Start
++
++```bash
++# 1. Start the runner
++task ci:runner
++
++# 2. Run CI on current repo (one-shot, for testing)
++task ci:run
++
++# 3. Install the Soft Serve hook
++task ci:hook:install
++```
++
++## Pipeline Configuration
++
++### Option A: Explicit `.ci.yaml`
++
++Place a `.ci.yaml` in your repo root:
++
++```yaml
++steps:
++  - name: check
++    image: oven/bun:latest
++    commands:
++      - bun install --frozen-lockfile
++      - npx biome ci .
++
++  - name: test
++    image: oven/bun:latest
++    commands:
++      - bun test
++
++  - name: typecheck
++    image: oven/bun:latest
++    commands:
++      - bun install --frozen-lockfile
++      - npx tsc --noEmit
++```
++
++### Option B: Auto-detection
++
++If no `.ci.yaml` exists, the runner detects the language from manifest files and runs the canonical quality tools:
++
++| Detected file | Language | Steps |
++|---|---|---|
++| `package.json` + `biome.json` | TypeScript | biome ci, tests, tsc --noEmit |
++| `go.mod` | Go | gofmt, go vet, go test -race |
++| `Cargo.toml` | Rust | cargo fmt --check, cargo clippy, cargo test |
++| `pyproject.toml` | Python | ruff check, ruff format --check, pytest |
++| `mix.exs` | Elixir | mix format --check, mix credo, mix test |
++| `*.sh` only | Shell | shellcheck |
++
++## Environment Variables
++
++| Variable | Default | Description |
++|---|---|---|
++| `CI_QUEUE_DIR` | `~/.ci-runner/queue` | Where job files are written |
++| `CI_WORK_DIR` | `~/.ci-runner/work` | Temporary checkout directory |
++| `CI_REPOS_DIR` | — | Path to bare repos (Soft Serve repos dir) |
++| `SOFT_SERVE_DATA_PATH` | — | Soft Serve data path (repos at `$path/repos/`) |
++| `CI_POLL_MS` | `2000` | Queue poll interval (ms) |
++| `CI_DOCKER_TIMEOUT` | `300` | Max seconds per step |
++| `XTDB_EVENT_HOST` | `localhost` | XTDB host for recording results |
++| `XTDB_EVENT_PORT` | `5433` | XTDB port |
++
++## XTDB Integration
++
++CI results are stored in the `ci_runs` table as JSON-LD:
++
++```json
++{
++  "@type": "code:CIRun",
++  "code:repo": "harness",
++  "code:commitHash": "abc123...",
++  "schema:actionStatus": "schema:CompletedActionStatus",
++  "code:steps": [
++    { "@type": "code:CIStep", "schema:name": "check", "code:exitCode": 0 },
++    { "@type": "code:CIStep", "schema:name": "test", "code:exitCode": 0 }
++  ],
++  "code:durationMs": 4521
++}
++```
++
++### SPARQL Queries
++
++After adding `ci_runs` to `export-xtdb-triples.ts`, these queries work on `/graph`:
++
++```sparql
++# Recent CI runs
++SELECT ?run ?repo ?status ?duration WHERE {
++  ?run a code:CIRun ;
++       code:repo ?repo ;
++       schema:actionStatus ?status ;
++       code:durationMs ?duration .
++} ORDER BY DESC(?run) LIMIT 20
++
++# Failed runs with commit info
++SELECT ?repo ?commit ?message WHERE {
++  ?run a code:CIRun ;
++       code:repo ?repo ;
++       code:commitHash ?commit ;
++       code:commitMessage ?message ;
++       schema:actionStatus schema:FailedActionStatus .
++}
++
++# CI + test coverage: commits that failed CI AND touched untested functions
++# (requires function lifecycle + test coverage data)
++SELECT ?commit ?repo ?fn WHERE {
++  ?run a code:CIRun ;
++       code:commitHash ?commit ;
++       code:repo ?repo ;
++       schema:actionStatus schema:FailedActionStatus .
++  ?event a code:FunctionEvent ;
++         code:commitHash ?commit ;
++         code:functionName ?fn .
++  FILTER NOT EXISTS { ?test code:tests ?fn }
++}
++```
++
++## Integration TODO
++
++- [ ] Add `ci_runs` to `scripts/export-xtdb-triples.ts` table list
++- [ ] Add CI run query cards to `harness-ui/pages/graph.ts`
++- [ ] Add `ci: () => "ci:${randomUUID()}"` to `lib/jsonld/ids.ts`
++- [ ] Notification on failure (SSH message back to pusher, or Slack)
+diff --git a/ci-runner/enqueue.sh b/ci-runner/enqueue.sh
+new file mode 100755
+index 0000000..c580b83
+--- /dev/null
++++ b/ci-runner/enqueue.sh
+@@ -0,0 +1,59 @@
++#!/usr/bin/env bash
++# ─── CI Job Enqueue ───────────────────────────────────────────────
++# Called by Soft Serve's post-receive hook.
++# Writes a job file to the queue directory for the runner to pick up.
++#
++# Usage (from post-receive hook):
++#   enqueue.sh <repo> <oldrev> <newrev> <refname>
++#
++# Or pipe from stdin (standard post-receive format):
++#   while read oldrev newrev refname; do
++#     enqueue.sh "$REPO_NAME" "$oldrev" "$newrev" "$refname"
++#   done
++
++set -euo pipefail
++
++QUEUE_DIR="${CI_QUEUE_DIR:-${HOME}/.ci-runner/queue}"
++mkdir -p "$QUEUE_DIR"
++
++REPO="${1:-unknown}"
++OLDREV="${2:-0000000000000000000000000000000000000000}"
++NEWREV="${3:-HEAD}"
++REFNAME="${4:-refs/heads/main}"
++
++# Skip delete events
++ZERO="0000000000000000000000000000000000000000"
++if [ "$NEWREV" = "$ZERO" ]; then
++  exit 0
++fi
++
++# Skip non-branch refs (tags, etc.) — optionally remove this to CI on tags too
++case "$REFNAME" in
++  refs/heads/*) ;; # branches — run CI
++  refs/tags/*)  exit 0 ;; # tags — skip for now
++  *)            exit 0 ;; # other — skip
++esac
++
++# Generate job ID
++JOB_ID="$(date +%s)-$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 8)"
++
++# Try to get commit message
++COMMIT_MSG=""
++if command -v git &>/dev/null; then
++  COMMIT_MSG=$(git log -1 --format="%s" "$NEWREV" 2>/dev/null || echo "")
++fi
++
++# Write job file
++cat > "${QUEUE_DIR}/${JOB_ID}.json" << EOF
++{
++  "id": "${JOB_ID}",
++  "repo": "${REPO}",
++  "ref": "${REFNAME}",
++  "commitHash": "${NEWREV}",
++  "commitMessage": "${COMMIT_MSG}",
++  "pusher": "${USER:-unknown}",
++  "timestamp": $(date +%s000)
++}
++EOF
++
++>&2 echo "🏗️  CI job queued: ${JOB_ID} (${REPO}@${NEWREV:0:8})"
+diff --git a/ci-runner/hooks/post-receive b/ci-runner/hooks/post-receive
+new file mode 100755
+index 0000000..e21cb9a
+--- /dev/null
++++ b/ci-runner/hooks/post-receive
+@@ -0,0 +1,27 @@
++#!/usr/bin/env bash
++# ─── Soft Serve post-receive hook ─────────────────────────────────
++# Install: copy to $SOFT_SERVE_DATA_PATH/hooks/post-receive
++# Make executable: chmod +x $SOFT_SERVE_DATA_PATH/hooks/post-receive
++#
++# This hook fires after every push to any repo in Soft Serve.
++# It enqueues a CI job for the runner to pick up asynchronously.
++#
++# The pusher sees "CI job queued" in their terminal but doesn't
++# have to wait for the pipeline to finish.
++# ──────────────────────────────────────────────────────────────────
++
++# Path to the enqueue script
++ENQUEUE="${ENQUEUE_PATH:-/opt/harness/ci-runner/enqueue.sh}"
++
++# Derive repo name from GIT_DIR
++# Soft Serve sets GIT_DIR to something like /data/repos/myrepo.git
++REPO_NAME=$(basename "${GIT_DIR:-.}" .git)
++
++# Standard post-receive: reads lines of "oldrev newrev refname" from stdin
++while read -r oldrev newrev refname; do
++  if [ -x "$ENQUEUE" ]; then
++    "$ENQUEUE" "$REPO_NAME" "$oldrev" "$newrev" "$refname"
++  else
++    >&2 echo "⚠️  CI enqueue script not found at $ENQUEUE"
++  fi
++done
+diff --git a/ci-runner/pipeline.ts b/ci-runner/pipeline.ts
+new file mode 100644
+index 0000000..84a6fdc
+--- /dev/null
++++ b/ci-runner/pipeline.ts
+@@ -0,0 +1,266 @@
++// ─── Pipeline Resolver ───────────────────────────────────────────
++// Determines what steps to run for a given codebase.
++//
++// Priority:
++//   1. .ci.yaml in repo root (explicit pipeline)
++//   2. Auto-detect from language stack (using code-quality/registry)
++//
++// The .ci.yaml format is intentionally minimal:
++//
++//   steps:
++//     - name: check
++//       image: oven/bun:latest
++//       commands:
++//         - bun install --frozen-lockfile
++//         - npx biome ci .
++//     - name: test
++//       image: oven/bun:latest
++//       commands:
++//         - bun test
++
++import { existsSync, readFileSync, readdirSync } from "node:fs";
++import { join, extname } from "node:path";
++
++export interface PipelineStep {
++  name: string;
++  image: string;
++  commands: string[];
++}
++
++interface CIConfig {
++  steps: PipelineStep[];
++}
++
++// ─── Main resolver ───────────────────────────────────────────────
++
++export async function resolveSteps(workDir: string): Promise<PipelineStep[]> {
++  // 1. Check for explicit .ci.yaml
++  const ciFile = findCIConfig(workDir);
++  if (ciFile) {
++    return parseCIConfig(ciFile);
++  }
++
++  // 2. Auto-detect from codebase
++  return autoDetectSteps(workDir);
++}
++
++// ─── Explicit config ─────────────────────────────────────────────
++
++function findCIConfig(workDir: string): string | null {
++  const candidates = [".ci.yaml", ".ci.yml", "ci.yaml", "ci.yml"];
++  for (const name of candidates) {
++    const path = join(workDir, name);
++    if (existsSync(path)) return path;
++  }
++  return null;
++}
++
++function parseCIConfig(filePath: string): PipelineStep[] {
++  const content = readFileSync(filePath, "utf-8");
++
++  // Minimal YAML parser — handles the flat structure we need
++  // For production: use a real YAML parser
++  const steps: PipelineStep[] = [];
++  let current: Partial<PipelineStep> | null = null;
++  let inCommands = false;
++
++  for (const rawLine of content.split("\n")) {
++    const line = rawLine.trimEnd();
++    const trimmed = line.trim();
++
++    // Skip empty lines and comments
++    if (!trimmed || trimmed.startsWith("#")) {
++      continue;
++    }
++
++    // New step
++    if (trimmed.startsWith("- name:")) {
++      if (current?.name && current.image && current.commands) {
++        steps.push(current as PipelineStep);
++      }
++      current = { name: trimmed.replace("- name:", "").trim(), commands: [] };
++      inCommands = false;
++      continue;
++    }
++
++    if (current) {
++      if (trimmed.startsWith("image:")) {
++        current.image = trimmed.replace("image:", "").trim();
++        inCommands = false;
++      } else if (trimmed === "commands:") {
++        inCommands = true;
++      } else if (inCommands && trimmed.startsWith("- ")) {
++        current.commands!.push(trimmed.slice(2).trim());
++      } else {
++        inCommands = false;
++      }
++    }
++  }
++
++  // Push last step
++  if (current?.name && current.image && current.commands) {
++    steps.push(current as PipelineStep);
++  }
++
++  return steps;
++}
++
++// ─── Auto-detection ──────────────────────────────────────────────
++
++function autoDetectSteps(workDir: string): PipelineStep[] {
++  const steps: PipelineStep[] = [];
++  const files = listTopLevelFiles(workDir);
++
++  // ── TypeScript / JavaScript ─────────────────────────────────
++  if (files.includes("package.json")) {
++    const hasBiome = files.includes("biome.json");
++    const hasBunLock = files.includes("bun.lockb");
++    const hasPackageLock = files.includes("package-lock.json");
++
++    const installCmd = hasBunLock
++      ? "bun install --frozen-lockfile"
++      : "npm ci";
++
++    const image = hasBunLock ? "oven/bun:latest" : "node:22-slim";
++
++    if (hasBiome) {
++      steps.push({
++        name: "check",
++        image,
++        commands: [installCmd, "npx biome ci ."],
++      });
++    }
++
++    // Check for test script in package.json
++    try {
++      const pkg = JSON.parse(readFileSync(join(workDir, "package.json"), "utf-8"));
++      if (pkg.scripts?.test) {
++        steps.push({
++          name: "test",
++          image,
++          commands: [installCmd, hasBunLock ? "bun test" : "npm test"],
++        });
++      }
++    } catch {}
++
++    // TypeScript type checking
++    if (files.includes("tsconfig.json")) {
++      steps.push({
++        name: "typecheck",
++        image,
++        commands: [installCmd, "npx tsc --noEmit"],
++      });
++    }
++  }
++
++  // ── Go ──────────────────────────────────────────────────────
++  if (files.includes("go.mod")) {
++    steps.push({
++      name: "check",
++      image: "golang:1.23",
++      commands: [
++        "test -z \"$(gofmt -l . | tee /dev/stderr)\"",
++        "go vet ./...",
++      ],
++    });
++    steps.push({
++      name: "test",
++      image: "golang:1.23",
++      commands: ["go test -race -timeout 120s ./..."],
++    });
++  }
++
++  // ── Rust ────────────────────────────────────────────────────
++  if (files.includes("Cargo.toml")) {
++    steps.push({
++      name: "check",
++      image: "rust:1.80",
++      commands: [
++        "cargo fmt -- --check",
++        "cargo clippy -- -D warnings",
++      ],
++    });
++    steps.push({
++      name: "test",
++      image: "rust:1.80",
++      commands: ["cargo test"],
++    });
++  }
++
++  // ── Python ──────────────────────────────────────────────────
++  if (files.includes("pyproject.toml") || files.includes("requirements.txt") || files.includes("setup.py")) {
++    const hasRuff = files.includes("pyproject.toml"); // ruff config usually in pyproject.toml
++
++    if (hasRuff) {
++      steps.push({
++        name: "check",
++        image: "python:3.12-slim",
++        commands: [
++          "pip install ruff --quiet",
++          "ruff check .",
++          "ruff format --check .",
++        ],
++      });
++    }
++
++    steps.push({
++      name: "test",
++      image: "python:3.12-slim",
++      commands: [
++        "pip install -r requirements.txt --quiet 2>/dev/null || pip install -e '.[test]' --quiet 2>/dev/null || true",
++        "python -m pytest -x --tb=short 2>/dev/null || python -m unittest discover -s tests 2>/dev/null || echo 'No tests found'",
++      ],
++    });
++  }
++
++  // ── Elixir ──────────────────────────────────────────────────
++  if (files.includes("mix.exs")) {
++    steps.push({
++      name: "check",
++      image: "elixir:1.17",
++      commands: [
++        "mix deps.get",
++        "mix format --check-formatted",
++        "mix credo --strict 2>/dev/null || true",
++      ],
++    });
++    steps.push({
++      name: "test",
++      image: "elixir:1.17",
++      commands: ["mix deps.get", "mix test"],
++    });
++  }
++
++  // ── Shell scripts (if that's all there is) ──────────────────
++  const shellFiles = files.filter((f) => f.endsWith(".sh"));
++  if (shellFiles.length > 0 && steps.length === 0) {
++    steps.push({
++      name: "shellcheck",
++      image: "koalaman/shellcheck-alpine:stable",
++      commands: [`shellcheck ${shellFiles.join(" ")}`],
++    });
++  }
++
++  // ── Fallback: nothing detected ──────────────────────────────
++  if (steps.length === 0) {
++    steps.push({
++      name: "info",
++      image: "alpine:latest",
++      commands: [
++        "echo 'No .ci.yaml found and language not auto-detected.'",
++        "echo 'Create a .ci.yaml in your repo root to define CI steps.'",
++        "ls -la",
++      ],
++    });
++  }
++
++  return steps;
++}
++
++function listTopLevelFiles(dir: string): string[] {
++  try {
++    return readdirSync(dir);
++  } catch {
++    return [];
++  }
++}
+diff --git a/ci-runner/recorder.ts b/ci-runner/recorder.ts
+new file mode 100644
+index 0000000..1d8ce17
+--- /dev/null
++++ b/ci-runner/recorder.ts
+@@ -0,0 +1,115 @@
++// ─── CI Run Recorder ─────────────────────────────────────────────
++// Writes CI pipeline results to XTDB `ci_runs` table as JSON-LD.
++// Follows the same pattern as lib/test-recorder.ts.
++//
++// The JSON-LD makes CI runs queryable via SPARQL alongside:
++//   - test_runs (test results)
++//   - events (agent activity)
++//   - decisions (why changes were made)
++//   - function lifecycle (what functions changed)
++//
++// Example SPARQL: "Show me all failed CI runs for commits that
++// touched functions with fan-in > 10"
++
++import postgres from "postgres";
++import { randomUUID } from "node:crypto";
++
++const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
++const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
++
++let sql: ReturnType<typeof postgres> | null = null;
++
++function db() {
++  if (!sql) {
++    sql = postgres({
++      host: XTDB_HOST, port: XTDB_PORT,
++      database: "xtdb", user: "xtdb", password: "xtdb",
++      max: 2, idle_timeout: 30, connect_timeout: 5,
++    });
++  }
++  return sql;
++}
++
++// ─── Types ───────────────────────────────────────────────────────
++
++export interface CIRunInput {
++  repo: string;
++  ref: string;
++  commitHash: string;
++  commitMessage?: string;
++  pusher?: string;
++  status: "passed" | "failed" | "error";
++  steps: CIStepResult[];
++  durationMs: number;
++  projectId?: string;
++}
++
++export interface CIStepResult {
++  name: string;
++  status: "passed" | "failed" | "skipped";
++  durationMs: number;
++  exitCode: number;
++}
++
++// ─── Record a CI run ─────────────────────────────────────────────
++
++export async function recordCIRun(input: CIRunInput): Promise<string> {
++  const conn = db();
++  const t = (v: string | null) => conn.typed(v as any, 25); // text
++  const n = (v: number | null) => conn.typed(v as any, 20); // bigint
++
++  const id = `ci:${randomUUID()}`;
++  const now = Date.now();
++
++  const jsonld = JSON.stringify({
++    "@context": {
++      schema: "https://schema.org/",
++      prov: "http://www.w3.org/ns/prov#",
++      code: "https://pi.dev/code/",
++      xsd: "http://www.w3.org/2001/XMLSchema#",
++    },
++    "@id": `urn:pi:${id}`,
++    "@type": "code:CIRun",
++    "schema:name": `CI: ${input.repo}@${input.commitHash.slice(0, 8)}`,
++    "code:repo": input.repo,
++    "code:ref": input.ref,
++    "code:commitHash": input.commitHash,
++    "code:commitMessage": input.commitMessage ?? "",
++    "code:pusher": input.pusher ?? "",
++    "schema:actionStatus": input.status === "passed"
++      ? "schema:CompletedActionStatus"
++      : "schema:FailedActionStatus",
++    "code:steps": input.steps.map((s) => ({
++      "@type": "code:CIStep",
++      "schema:name": s.name,
++      "schema:actionStatus": s.status === "passed"
++        ? "schema:CompletedActionStatus"
++        : "schema:FailedActionStatus",
++      "code:exitCode": s.exitCode,
++      "code:durationMs": s.durationMs,
++    })),
++    "code:durationMs": input.durationMs,
++    "prov:generatedAtTime": { "@type": "xsd:long", "@value": now },
++  });
++
++  await conn`INSERT INTO ci_runs (
++    _id, repo, ref, commit_hash, commit_message, pusher,
++    status, steps_passed, steps_failed, duration_ms, ts, jsonld
++  ) VALUES (
++    ${t(id)}, ${t(input.repo)}, ${t(input.ref)},
++    ${t(input.commitHash)}, ${t(input.commitMessage ?? "")},
++    ${t(input.pusher ?? "")}, ${t(input.status)},
++    ${n(input.steps.filter((s) => s.status === "passed").length)},
++    ${n(input.steps.filter((s) => s.status === "failed").length)},
++    ${n(input.durationMs)}, ${n(now)}, ${t(jsonld)}
++  )`;
++
++  return id;
++}
++
++export async function closeRecorder(): Promise<void> {
++  if (sql) {
++    await sql.end();
++    sql = null;
++  }
++}
+diff --git a/ci-runner/runner.ts b/ci-runner/runner.ts
+new file mode 100644
+index 0000000..5882a63
+--- /dev/null
++++ b/ci-runner/runner.ts
+@@ -0,0 +1,301 @@
++// ─── Harness CI Runner ───────────────────────────────────────────
++// A minimal, harness-native CI runner that:
++//   1. Watches a job queue (file-based or XTDB)
++//   2. Checks out code at the pushed commit
++//   3. Detects language → picks quality tools (via code-quality/registry)
++//   4. Runs each step in a Docker container
++//   5. Stores results in XTDB as JSON-LD
++//
++// Triggered by: Soft Serve post-receive hook → writes job file
++// Runs as: background process (systemd, docker, or `task ci:runner`)
++//
++// Usage:
++//   bun run ci-runner/runner.ts                  # run the queue watcher
++//   bun run ci-runner/runner.ts --once <jobfile> # run a single job
++
++import { watch, readdirSync, readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
++import { join } from "node:path";
++import { execSync, spawn } from "node:child_process";
++import { randomUUID } from "node:crypto";
++import { recordCIRun, type CIRunInput } from "./recorder.ts";
++import { resolveSteps } from "./pipeline.ts";
++
++// ─── Configuration ───────────────────────────────────────────────
++
++const QUEUE_DIR = process.env.CI_QUEUE_DIR ?? join(process.env.HOME ?? "/tmp", ".ci-runner", "queue");
++const WORK_DIR = process.env.CI_WORK_DIR ?? join(process.env.HOME ?? "/tmp", ".ci-runner", "work");
++const REPOS_DIR = process.env.SOFT_SERVE_DATA_PATH
++  ? join(process.env.SOFT_SERVE_DATA_PATH, "repos")
++  : process.env.CI_REPOS_DIR ?? "";
++const POLL_INTERVAL_MS = Number(process.env.CI_POLL_MS ?? "2000");
++const DOCKER_TIMEOUT = Number(process.env.CI_DOCKER_TIMEOUT ?? "300"); // 5 min default
++
++// ─── Job types ───────────────────────────────────────────────────
++
++export interface CIJob {
++  id: string;
++  repo: string;        // repo name/path in Soft Serve
++  ref: string;         // refs/heads/main
++  commitHash: string;  // full SHA
++  commitMessage?: string;
++  pusher?: string;
++  timestamp: number;
++}
++
++export interface StepResult {
++  name: string;
++  image: string;
++  commands: string[];
++  exitCode: number;
++  stdout: string;
++  stderr: string;
++  durationMs: number;
++}
++
++// ─── Main loop ───────────────────────────────────────────────────
++
++async function main() {
++  // Single job mode
++  if (process.argv.includes("--once")) {
++    const jobFile = process.argv[process.argv.indexOf("--once") + 1];
++    if (!jobFile) { console.error("Usage: --once <jobfile>"); process.exit(1); }
++    const job = JSON.parse(readFileSync(jobFile, "utf-8")) as CIJob;
++    await runJob(job);
++    return;
++  }
++
++  // Queue watcher mode
++  mkdirSync(QUEUE_DIR, { recursive: true });
++  mkdirSync(WORK_DIR, { recursive: true });
++  console.log(`🏗️  CI Runner started`);
++  console.log(`   Queue: ${QUEUE_DIR}`);
++  console.log(`   Work:  ${WORK_DIR}`);
++  console.log(`   Repos: ${REPOS_DIR || "(will use git clone)"}`);
++  console.log(`   Polling every ${POLL_INTERVAL_MS}ms`);
++
++  // Process any existing jobs
++  await drainQueue();
++
++  // Watch for new jobs
++  const interval = setInterval(drainQueue, POLL_INTERVAL_MS);
++
++  // Also use fs.watch for faster response
++  try {
++    watch(QUEUE_DIR, async (eventType, filename) => {
++      if (filename?.endsWith(".json")) {
++        // Small delay to ensure file is fully written
++        setTimeout(drainQueue, 100);
++      }
++    });
++  } catch {
++    // fs.watch not available on all platforms, polling is the fallback
++  }
++
++  // Graceful shutdown
++  process.on("SIGTERM", () => { clearInterval(interval); process.exit(0); });
++  process.on("SIGINT", () => { clearInterval(interval); process.exit(0); });
++}
++
++async function drainQueue() {
++  let files: string[];
++  try {
++    files = readdirSync(QUEUE_DIR).filter((f) => f.endsWith(".json")).sort();
++  } catch {
++    return;
++  }
++
++  for (const file of files) {
++    const filePath = join(QUEUE_DIR, file);
++    try {
++      const job = JSON.parse(readFileSync(filePath, "utf-8")) as CIJob;
++      // Move to .running to prevent double-pickup
++      const runningPath = filePath.replace(".json", ".running");
++      writeFileSync(runningPath, JSON.stringify(job, null, 2));
++      unlinkSync(filePath);
++      await runJob(job);
++      unlinkSync(runningPath);
++    } catch (err) {
++      console.error(`❌ Failed to process ${file}:`, err);
++      // Move to .failed
++      try {
++        const failedPath = filePath.replace(".json", ".failed");
++        if (existsSync(filePath)) {
++          writeFileSync(failedPath, readFileSync(filePath, "utf-8"));
++          unlinkSync(filePath);
++        }
++      } catch {}
++    }
++  }
++}
++
++// ─── Job execution ───────────────────────────────────────────────
++
++async function runJob(job: CIJob): Promise<void> {
++  const startTime = Date.now();
++  console.log(`\n🔨 Job ${job.id}: ${job.repo}@${job.commitHash.slice(0, 8)}`);
++
++  // 1. Prepare working directory
++  const workDir = join(WORK_DIR, job.id);
++  mkdirSync(workDir, { recursive: true });
++
++  try {
++    // 2. Check out the code
++    checkout(job, workDir);
++
++    // 3. Resolve pipeline steps (from .ci.yaml or auto-detect)
++    const steps = await resolveSteps(workDir);
++    console.log(`   ${steps.length} step(s) to run`);
++
++    // 4. Execute each step
++    const results: StepResult[] = [];
++    let failed = false;
++
++    for (const step of steps) {
++      console.log(`   ▶ ${step.name} (${step.image})`);
++      const result = await executeStep(step, workDir, job);
++      results.push(result);
++
++      if (result.exitCode !== 0) {
++        console.log(`   ✗ ${step.name} failed (exit ${result.exitCode})`);
++        failed = true;
++        break; // Stop on first failure
++      } else {
++        console.log(`   ✓ ${step.name} (${result.durationMs}ms)`);
++      }
++    }
++
++    // 5. Record results in XTDB
++    const totalDuration = Date.now() - startTime;
++    const runInput: CIRunInput = {
++      repo: job.repo,
++      ref: job.ref,
++      commitHash: job.commitHash,
++      commitMessage: job.commitMessage,
++      pusher: job.pusher,
++      status: failed ? "failed" : "passed",
++      steps: results.map((r) => ({
++        name: r.name,
++        status: r.exitCode === 0 ? "passed" : "failed",
++        durationMs: r.durationMs,
++        exitCode: r.exitCode,
++      })),
++      durationMs: totalDuration,
++    };
++
++    try {
++      const runId = await recordCIRun(runInput);
++      console.log(`   📝 Recorded: ${runId} (${failed ? "FAILED" : "PASSED"}, ${totalDuration}ms)`);
++    } catch (err) {
++      console.error(`   ⚠️  XTDB write failed (results lost):`, err);
++    }
++
++  } finally {
++    // 6. Cleanup working directory
++    try {
++      execSync(`rm -rf ${workDir}`, { stdio: "pipe" });
++    } catch {}
++  }
++}
++
++function checkout(job: CIJob, workDir: string): void {
++  if (REPOS_DIR) {
++    // Soft Serve bare repo — use git --work-tree to checkout
++    const bareRepo = join(REPOS_DIR, job.repo + ".git");
++    if (!existsSync(bareRepo)) {
++      // Try without .git suffix
++      const altPath = join(REPOS_DIR, job.repo);
++      if (!existsSync(altPath)) {
++        throw new Error(`Repo not found: ${bareRepo} or ${altPath}`);
++      }
++      execSync(`git --git-dir="${altPath}" --work-tree="${workDir}" checkout ${job.commitHash} -f -- .`, {
++        stdio: "pipe",
++      });
++      return;
++    }
++    execSync(`git --git-dir="${bareRepo}" --work-tree="${workDir}" checkout ${job.commitHash} -f -- .`, {
++      stdio: "pipe",
++    });
++  } else {
++    // Clone from remote (fallback)
++    execSync(`git clone --depth=1 "${job.repo}" "${workDir}"`, { stdio: "pipe" });
++    execSync(`git -C "${workDir}" checkout ${job.commitHash}`, { stdio: "pipe" });
++  }
++}
++
++// ─── Docker execution ────────────────────────────────────────────
++
++interface PipelineStep {
++  name: string;
++  image: string;
++  commands: string[];
++}
++
++function executeStep(step: PipelineStep, workDir: string, job: CIJob): Promise<StepResult> {
++  return new Promise((resolve) => {
++    const startTime = Date.now();
++    const script = step.commands.join(" && ");
++
++    // Build docker run command
++    const args = [
++      "run", "--rm",
++      "--network=host",
++      "-v", `${workDir}:/workspace`,
++      "-w", "/workspace",
++      "-e", `CI=true`,
++      "-e", `CI_REPO=${job.repo}`,
++      "-e", `CI_COMMIT=${job.commitHash}`,
++      "-e", `CI_REF=${job.ref}`,
++      "-e", `CI_BRANCH=${job.ref.replace("refs/heads/", "")}`,
++      "--stop-timeout", String(DOCKER_TIMEOUT),
++      step.image,
++      "sh", "-c", script,
++    ];
++
++    let stdout = "";
++    let stderr = "";
++
++    const proc = spawn("docker", args, { stdio: "pipe" });
++
++    proc.stdout.on("data", (data) => { stdout += data.toString(); });
++    proc.stderr.on("data", (data) => { stderr += data.toString(); });
++
++    // Timeout
++    const timeout = setTimeout(() => {
++      proc.kill("SIGTERM");
++      stderr += `\n[CI RUNNER] Step timed out after ${DOCKER_TIMEOUT}s`;
++    }, DOCKER_TIMEOUT * 1000);
++
++    proc.on("close", (code) => {
++      clearTimeout(timeout);
++      resolve({
++        name: step.name,
++        image: step.image,
++        commands: step.commands,
++        exitCode: code ?? 1,
++        stdout: stdout.slice(-10000), // Cap at 10KB
++        stderr: stderr.slice(-10000),
++        durationMs: Date.now() - startTime,
++      });
++    });
++
++    proc.on("error", (err) => {
++      clearTimeout(timeout);
++      resolve({
++        name: step.name,
++        image: step.image,
++        commands: step.commands,
++        exitCode: 127,
++        stdout: "",
++        stderr: `Docker execution error: ${err.message}`,
++        durationMs: Date.now() - startTime,
++      });
++    });
++  });
++}
++
++// ─── Entry point ─────────────────────────────────────────────────
++
++main().catch((err) => {
++  console.error("CI Runner fatal error:", err);
++  process.exit(1);
++});
+-- 
+2.43.0
+
+
+From d6e85d09c0162f563c5e385364b457c8f89ea826 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sat, 21 Mar 2026 21:59:12 +0000
+Subject: [PATCH 5/6] fix: replace YAML pipeline config with JSON-LD
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The harness uses JSON-LD everywhere — decisions, test runs, events,
+function lifecycle, call graphs. The CI pipeline config was the only
+thing using YAML. That's an impedance mismatch: YAML needs a parser,
+a schema validator, and a translation step before it enters the graph.
+
+Changes:
+- .ci.yaml → .ci.jsonld (pipeline config is native JSON-LD)
+- Pipeline config stored as code:Pipeline in XTDB alongside run results
+- recorder.ts uses shared JSONLD_CONTEXT from lib/jsonld/context.ts
+- Auto-detected pipelines also emit JSON-LD (code:source: 'auto-detected')
+- Runner passes pipelineJsonLd through to recorder for storage
+- Removed unused randomUUID import from runner.ts
+
+The pipeline config IS a graph node now. SPARQL queries like
+'which repos use Biome?' work directly against code:Pipeline nodes
+without any translation layer.
+---
+ ci-runner/README.md   | 184 ++++++++++++++++++++++------------------
+ ci-runner/pipeline.ts | 189 +++++++++++++++++++++---------------------
+ ci-runner/recorder.ts |  37 ++++-----
+ ci-runner/runner.ts   |  11 +--
+ 4 files changed, 220 insertions(+), 201 deletions(-)
+
+diff --git a/ci-runner/README.md b/ci-runner/README.md
+index ee2aded..b6ef376 100644
+--- a/ci-runner/README.md
++++ b/ci-runner/README.md
+@@ -1,6 +1,8 @@
+ # Harness CI Runner
+ 
+ A minimal, harness-native CI/CD runner designed for Soft Serve.
++Everything is JSON-LD — pipeline configs, run results, step outcomes.
++No YAML. No translation layer. It's in the graph from the start.
+ 
+ ## Architecture
+ 
+@@ -24,13 +26,14 @@ runner.ts (background process)
+        │  picks up job file
+        │
+        ├─ 1. Checks out code at pushed commit
+-       ├─ 2. Reads .ci.yaml OR auto-detects language
++       ├─ 2. Reads .ci.jsonld OR auto-detects language
+        ├─ 3. Runs each step in a Docker container
+-       ├─ 4. Writes results to XTDB as JSON-LD
+-       └─ 5. Cleans up working directory
++       ├─ 4. Writes results to XTDB as JSON-LD (code:CIRun)
++       ├─ 5. Pipeline config itself stored as JSON-LD (code:Pipeline)
++       └─ 6. Cleans up working directory
+               │
+               ▼
+-         XTDB ci_runs table
++         XTDB ci_runs table (jsonld column)
+               │
+               ▼
+     export-xtdb-triples.ts → QLever → /graph page
+@@ -53,33 +56,53 @@ task ci:hook:install
+ 
+ ## Pipeline Configuration
+ 
+-### Option A: Explicit `.ci.yaml`
++### Option A: Explicit `.ci.jsonld`
+ 
+-Place a `.ci.yaml` in your repo root:
++Place a `.ci.jsonld` in your repo root. It's native JSON-LD — the same
++format as every other entity in the harness. No YAML to validate, no
++translation to get it into the graph. It IS the graph.
+ 
+-```yaml
+-steps:
+-  - name: check
+-    image: oven/bun:latest
+-    commands:
+-      - bun install --frozen-lockfile
+-      - npx biome ci .
+-
+-  - name: test
+-    image: oven/bun:latest
+-    commands:
+-      - bun test
+-
+-  - name: typecheck
+-    image: oven/bun:latest
+-    commands:
+-      - bun install --frozen-lockfile
+-      - npx tsc --noEmit
++```json
++{
++  "@context": {
++    "schema": "https://schema.org/",
++    "code": "https://pi.dev/code/"
++  },
++  "@type": "code:Pipeline",
++  "schema:name": "harness CI",
++  "code:steps": [
++    {
++      "@type": "code:PipelineStep",
++      "schema:name": "check",
++      "code:image": "oven/bun:latest",
++      "code:commands": [
++        "bun install --frozen-lockfile",
++        "npx biome ci ."
++      ]
++    },
++    {
++      "@type": "code:PipelineStep",
++      "schema:name": "test",
++      "code:image": "oven/bun:latest",
++      "code:commands": ["bun test"]
++    },
++    {
++      "@type": "code:PipelineStep",
++      "schema:name": "typecheck",
++      "code:image": "oven/bun:latest",
++      "code:commands": [
++        "bun install --frozen-lockfile",
++        "npx tsc --noEmit"
++      ]
++    }
++  ]
++}
+ ```
+ 
+ ### Option B: Auto-detection
+ 
+-If no `.ci.yaml` exists, the runner detects the language from manifest files and runs the canonical quality tools:
++If no `.ci.jsonld` exists, the runner detects the language from manifest
++files and generates the pipeline as JSON-LD on the fly:
+ 
+ | Detected file | Language | Steps |
+ |---|---|---|
+@@ -90,76 +113,77 @@ If no `.ci.yaml` exists, the runner detects the language from manifest files and
+ | `mix.exs` | Elixir | mix format --check, mix credo, mix test |
+ | `*.sh` only | Shell | shellcheck |
+ 
+-## Environment Variables
++The auto-detected pipeline is converted to `code:Pipeline` JSON-LD and
++stored alongside the run results. SPARQL can query both explicit and
++auto-detected pipelines the same way.
+ 
+-| Variable | Default | Description |
+-|---|---|---|
+-| `CI_QUEUE_DIR` | `~/.ci-runner/queue` | Where job files are written |
+-| `CI_WORK_DIR` | `~/.ci-runner/work` | Temporary checkout directory |
+-| `CI_REPOS_DIR` | — | Path to bare repos (Soft Serve repos dir) |
+-| `SOFT_SERVE_DATA_PATH` | — | Soft Serve data path (repos at `$path/repos/`) |
+-| `CI_POLL_MS` | `2000` | Queue poll interval (ms) |
+-| `CI_DOCKER_TIMEOUT` | `300` | Max seconds per step |
+-| `XTDB_EVENT_HOST` | `localhost` | XTDB host for recording results |
+-| `XTDB_EVENT_PORT` | `5433` | XTDB port |
+-
+-## XTDB Integration
++## Why JSON-LD, not YAML
+ 
+-CI results are stored in the `ci_runs` table as JSON-LD:
++Every entity in the harness is JSON-LD:
++- Decisions → `prov:Activity`
++- Test runs → `schema:AssessAction`
++- Functions → `schema:DefinedTerm`
++- Events → `ev:*`
++- Deployments → `schema:DeployAction`
++- **CI runs → `code:CIRun`**
++- **CI pipelines → `code:Pipeline`**
+ 
+-```json
+-{
+-  "@type": "code:CIRun",
+-  "code:repo": "harness",
+-  "code:commitHash": "abc123...",
+-  "schema:actionStatus": "schema:CompletedActionStatus",
+-  "code:steps": [
+-    { "@type": "code:CIStep", "schema:name": "check", "code:exitCode": 0 },
+-    { "@type": "code:CIStep", "schema:name": "test", "code:exitCode": 0 }
+-  ],
+-  "code:durationMs": 4521
+-}
+-```
++If the pipeline config were YAML, it would need to be parsed, validated
++against a schema, and translated into JSON-LD before it could enter the
++graph. That's three steps of lossy transformation. With `.ci.jsonld`,
++the config file IS the graph node. Zero translation.
+ 
+-### SPARQL Queries
+-
+-After adding `ci_runs` to `export-xtdb-triples.ts`, these queries work on `/graph`:
++This means SPARQL queries like these work directly:
+ 
+ ```sparql
+-# Recent CI runs
+-SELECT ?run ?repo ?status ?duration WHERE {
+-  ?run a code:CIRun ;
+-       code:repo ?repo ;
+-       schema:actionStatus ?status ;
+-       code:durationMs ?duration .
+-} ORDER BY DESC(?run) LIMIT 20
++# Which repos use Biome?
++SELECT ?repo WHERE {
++  ?pipeline a code:Pipeline ;
++            code:repo ?repo ;
++            code:steps ?step .
++  ?step code:commands ?cmd .
++  FILTER(CONTAINS(?cmd, "biome"))
++}
+ 
+-# Failed runs with commit info
+-SELECT ?repo ?commit ?message WHERE {
+-  ?run a code:CIRun ;
+-       code:repo ?repo ;
+-       code:commitHash ?commit ;
+-       code:commitMessage ?message ;
+-       schema:actionStatus schema:FailedActionStatus .
++# What images does the harness CI use?
++SELECT DISTINCT ?image WHERE {
++  ?pipeline a code:Pipeline ;
++            code:repo "harness" ;
++            code:steps ?step .
++  ?step code:image ?image .
+ }
+ 
+-# CI + test coverage: commits that failed CI AND touched untested functions
+-# (requires function lifecycle + test coverage data)
+-SELECT ?commit ?repo ?fn WHERE {
++# Failed CI runs where the pipeline had no test step
++SELECT ?run ?repo ?commit WHERE {
+   ?run a code:CIRun ;
+-       code:commitHash ?commit ;
+        code:repo ?repo ;
+-       schema:actionStatus schema:FailedActionStatus .
+-  ?event a code:FunctionEvent ;
+-         code:commitHash ?commit ;
+-         code:functionName ?fn .
+-  FILTER NOT EXISTS { ?test code:tests ?fn }
++       code:commitHash ?commit ;
++       schema:actionStatus schema:FailedActionStatus ;
++       code:pipeline ?pipeline .
++  ?pipeline code:steps ?step .
++  FILTER NOT EXISTS {
++    ?pipeline code:steps ?testStep .
++    ?testStep schema:name "test" .
++  }
+ }
+ ```
+ 
++## Environment Variables
++
++| Variable | Default | Description |
++|---|---|---|
++| `CI_QUEUE_DIR` | `~/.ci-runner/queue` | Where job files are written |
++| `CI_WORK_DIR` | `~/.ci-runner/work` | Temporary checkout directory |
++| `CI_REPOS_DIR` | — | Path to bare repos (Soft Serve repos dir) |
++| `SOFT_SERVE_DATA_PATH` | — | Soft Serve data path (repos at `$path/repos/`) |
++| `CI_POLL_MS` | `2000` | Queue poll interval (ms) |
++| `CI_DOCKER_TIMEOUT` | `300` | Max seconds per step |
++| `XTDB_EVENT_HOST` | `localhost` | XTDB host for recording results |
++| `XTDB_EVENT_PORT` | `5433` | XTDB port |
++
+ ## Integration TODO
+ 
+ - [ ] Add `ci_runs` to `scripts/export-xtdb-triples.ts` table list
+-- [ ] Add CI run query cards to `harness-ui/pages/graph.ts`
++- [ ] Add CI query cards to `harness-ui/pages/graph.ts`
+ - [ ] Add `ci: () => "ci:${randomUUID()}"` to `lib/jsonld/ids.ts`
+-- [ ] Notification on failure (SSH message back to pusher, or Slack)
++- [ ] SSH notification on failure (message back to pusher via Soft Serve)
+diff --git a/ci-runner/pipeline.ts b/ci-runner/pipeline.ts
+index 84a6fdc..7a8d78e 100644
+--- a/ci-runner/pipeline.ts
++++ b/ci-runner/pipeline.ts
+@@ -2,24 +2,44 @@
+ // Determines what steps to run for a given codebase.
+ //
+ // Priority:
+-//   1. .ci.yaml in repo root (explicit pipeline)
+-//   2. Auto-detect from language stack (using code-quality/registry)
++//   1. .ci.jsonld in repo root (explicit pipeline — already in the graph)
++//   2. Auto-detect from language stack (generates JSON-LD on the fly)
+ //
+-// The .ci.yaml format is intentionally minimal:
++// The .ci.jsonld format is native JSON-LD — no YAML, no translation.
++// The pipeline config IS a graph node. It links to steps, images,
++// and tools. When stored in XTDB, it's queryable: "which repos use
++// Biome?", "which repos have no CI?", "what steps does repo X run?"
+ //
+-//   steps:
+-//     - name: check
+-//       image: oven/bun:latest
+-//       commands:
+-//         - bun install --frozen-lockfile
+-//         - npx biome ci .
+-//     - name: test
+-//       image: oven/bun:latest
+-//       commands:
+-//         - bun test
++// Example .ci.jsonld:
++//
++//   {
++//     "@context": {
++//       "schema": "https://schema.org/",
++//       "code": "https://pi.dev/code/"
++//     },
++//     "@type": "code:Pipeline",
++//     "schema:name": "harness CI",
++//     "code:steps": [
++//       {
++//         "@type": "code:PipelineStep",
++//         "schema:name": "check",
++//         "code:image": "oven/bun:latest",
++//         "code:commands": [
++//           "bun install --frozen-lockfile",
++//           "npx biome ci ."
++//         ]
++//       },
++//       {
++//         "@type": "code:PipelineStep",
++//         "schema:name": "test",
++//         "code:image": "oven/bun:latest",
++//         "code:commands": ["bun test"]
++//       }
++//     ]
++//   }
+ 
+ import { existsSync, readFileSync, readdirSync } from "node:fs";
+-import { join, extname } from "node:path";
++import { join } from "node:path";
+ 
+ export interface PipelineStep {
+   name: string;
+@@ -27,27 +47,35 @@ export interface PipelineStep {
+   commands: string[];
+ }
+ 
+-interface CIConfig {
+-  steps: PipelineStep[];
+-}
+-
+ // ─── Main resolver ───────────────────────────────────────────────
+ 
+ export async function resolveSteps(workDir: string): Promise<PipelineStep[]> {
+-  // 1. Check for explicit .ci.yaml
++  // 1. Check for explicit .ci.jsonld
+   const ciFile = findCIConfig(workDir);
+   if (ciFile) {
+-    return parseCIConfig(ciFile);
++    return parseCIJsonLd(ciFile);
+   }
+ 
+   // 2. Auto-detect from codebase
+   return autoDetectSteps(workDir);
+ }
+ 
+-// ─── Explicit config ─────────────────────────────────────────────
++// Also export the full JSON-LD pipeline (for storing in XTDB)
++export function resolvePipelineJsonLd(workDir: string, repo: string): object {
++  const ciFile = findCIConfig(workDir);
++  if (ciFile) {
++    return JSON.parse(readFileSync(ciFile, "utf-8"));
++  }
++
++  // Auto-detected: generate JSON-LD
++  const steps = autoDetectSteps(workDir);
++  return stepsToJsonLd(steps, repo, "auto-detected");
++}
++
++// ─── Explicit JSON-LD config ─────────────────────────────────────
+ 
+ function findCIConfig(workDir: string): string | null {
+-  const candidates = [".ci.yaml", ".ci.yml", "ci.yaml", "ci.yml"];
++  const candidates = [".ci.jsonld", "ci.jsonld"];
+   for (const name of candidates) {
+     const path = join(workDir, name);
+     if (existsSync(path)) return path;
+@@ -55,56 +83,46 @@ function findCIConfig(workDir: string): string | null {
+   return null;
+ }
+ 
+-function parseCIConfig(filePath: string): PipelineStep[] {
+-  const content = readFileSync(filePath, "utf-8");
+-
+-  // Minimal YAML parser — handles the flat structure we need
+-  // For production: use a real YAML parser
++function parseCIJsonLd(filePath: string): PipelineStep[] {
++  const doc = JSON.parse(readFileSync(filePath, "utf-8"));
+   const steps: PipelineStep[] = [];
+-  let current: Partial<PipelineStep> | null = null;
+-  let inCommands = false;
+-
+-  for (const rawLine of content.split("\n")) {
+-    const line = rawLine.trimEnd();
+-    const trimmed = line.trim();
+-
+-    // Skip empty lines and comments
+-    if (!trimmed || trimmed.startsWith("#")) {
+-      continue;
+-    }
+ 
+-    // New step
+-    if (trimmed.startsWith("- name:")) {
+-      if (current?.name && current.image && current.commands) {
+-        steps.push(current as PipelineStep);
+-      }
+-      current = { name: trimmed.replace("- name:", "").trim(), commands: [] };
+-      inCommands = false;
+-      continue;
+-    }
++  // Handle both single pipeline and array of steps
++  const rawSteps = doc["code:steps"] ?? doc.steps ?? [];
+ 
+-    if (current) {
+-      if (trimmed.startsWith("image:")) {
+-        current.image = trimmed.replace("image:", "").trim();
+-        inCommands = false;
+-      } else if (trimmed === "commands:") {
+-        inCommands = true;
+-      } else if (inCommands && trimmed.startsWith("- ")) {
+-        current.commands!.push(trimmed.slice(2).trim());
+-      } else {
+-        inCommands = false;
+-      }
+-    }
+-  }
+-
+-  // Push last step
+-  if (current?.name && current.image && current.commands) {
+-    steps.push(current as PipelineStep);
++  for (const step of rawSteps) {
++    steps.push({
++      name: step["schema:name"] ?? step.name ?? "unnamed",
++      image: step["code:image"] ?? step.image ?? "alpine:latest",
++      commands: step["code:commands"] ?? step.commands ?? [],
++    });
+   }
+ 
+   return steps;
+ }
+ 
++// ─── Convert steps to JSON-LD ────────────────────────────────────
++
++export function stepsToJsonLd(steps: PipelineStep[], repo: string, source: string): object {
++  return {
++    "@context": {
++      schema: "https://schema.org/",
++      code: "https://pi.dev/code/",
++      prov: "http://www.w3.org/ns/prov#",
++    },
++    "@type": "code:Pipeline",
++    "schema:name": `CI: ${repo}`,
++    "code:repo": repo,
++    "code:source": source,
++    "code:steps": steps.map((s) => ({
++      "@type": "code:PipelineStep",
++      "schema:name": s.name,
++      "code:image": s.image,
++      "code:commands": s.commands,
++    })),
++  };
++}
++
+ // ─── Auto-detection ──────────────────────────────────────────────
+ 
+ function autoDetectSteps(workDir: string): PipelineStep[] {
+@@ -115,12 +133,7 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
+   if (files.includes("package.json")) {
+     const hasBiome = files.includes("biome.json");
+     const hasBunLock = files.includes("bun.lockb");
+-    const hasPackageLock = files.includes("package-lock.json");
+-
+-    const installCmd = hasBunLock
+-      ? "bun install --frozen-lockfile"
+-      : "npm ci";
+-
++    const installCmd = hasBunLock ? "bun install --frozen-lockfile" : "npm ci";
+     const image = hasBunLock ? "oven/bun:latest" : "node:22-slim";
+ 
+     if (hasBiome) {
+@@ -131,7 +144,6 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
+       });
+     }
+ 
+-    // Check for test script in package.json
+     try {
+       const pkg = JSON.parse(readFileSync(join(workDir, "package.json"), "utf-8"));
+       if (pkg.scripts?.test) {
+@@ -141,9 +153,8 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
+           commands: [installCmd, hasBunLock ? "bun test" : "npm test"],
+         });
+       }
+-    } catch {}
++    } catch { /* no package.json or parse error */ }
+ 
+-    // TypeScript type checking
+     if (files.includes("tsconfig.json")) {
+       steps.push({
+         name: "typecheck",
+@@ -159,7 +170,7 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
+       name: "check",
+       image: "golang:1.23",
+       commands: [
+-        "test -z \"$(gofmt -l . | tee /dev/stderr)\"",
++        'test -z "$(gofmt -l . | tee /dev/stderr)"',
+         "go vet ./...",
+       ],
+     });
+@@ -175,10 +186,7 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
+     steps.push({
+       name: "check",
+       image: "rust:1.80",
+-      commands: [
+-        "cargo fmt -- --check",
+-        "cargo clippy -- -D warnings",
+-      ],
++      commands: ["cargo fmt -- --check", "cargo clippy -- -D warnings"],
+     });
+     steps.push({
+       name: "test",
+@@ -189,20 +197,13 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
+ 
+   // ── Python ──────────────────────────────────────────────────
+   if (files.includes("pyproject.toml") || files.includes("requirements.txt") || files.includes("setup.py")) {
+-    const hasRuff = files.includes("pyproject.toml"); // ruff config usually in pyproject.toml
+-
+-    if (hasRuff) {
++    if (files.includes("pyproject.toml")) {
+       steps.push({
+         name: "check",
+         image: "python:3.12-slim",
+-        commands: [
+-          "pip install ruff --quiet",
+-          "ruff check .",
+-          "ruff format --check .",
+-        ],
++        commands: ["pip install ruff --quiet", "ruff check .", "ruff format --check ."],
+       });
+     }
+-
+     steps.push({
+       name: "test",
+       image: "python:3.12-slim",
+@@ -218,11 +219,7 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
+     steps.push({
+       name: "check",
+       image: "elixir:1.17",
+-      commands: [
+-        "mix deps.get",
+-        "mix format --check-formatted",
+-        "mix credo --strict 2>/dev/null || true",
+-      ],
++      commands: ["mix deps.get", "mix format --check-formatted", "mix credo --strict 2>/dev/null || true"],
+     });
+     steps.push({
+       name: "test",
+@@ -231,7 +228,7 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
+     });
+   }
+ 
+-  // ── Shell scripts (if that's all there is) ──────────────────
++  // ── Shell scripts ───────────────────────────────────────────
+   const shellFiles = files.filter((f) => f.endsWith(".sh"));
+   if (shellFiles.length > 0 && steps.length === 0) {
+     steps.push({
+@@ -241,14 +238,14 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
+     });
+   }
+ 
+-  // ── Fallback: nothing detected ──────────────────────────────
++  // ── Fallback ────────────────────────────────────────────────
+   if (steps.length === 0) {
+     steps.push({
+       name: "info",
+       image: "alpine:latest",
+       commands: [
+-        "echo 'No .ci.yaml found and language not auto-detected.'",
+-        "echo 'Create a .ci.yaml in your repo root to define CI steps.'",
++        "echo 'No .ci.jsonld found and language not auto-detected.'",
++        "echo 'Create a .ci.jsonld in your repo root to define CI steps.'",
+         "ls -la",
+       ],
+     });
+diff --git a/ci-runner/recorder.ts b/ci-runner/recorder.ts
+index 1d8ce17..8d0ffda 100644
+--- a/ci-runner/recorder.ts
++++ b/ci-runner/recorder.ts
+@@ -2,17 +2,12 @@
+ // Writes CI pipeline results to XTDB `ci_runs` table as JSON-LD.
+ // Follows the same pattern as lib/test-recorder.ts.
+ //
+-// The JSON-LD makes CI runs queryable via SPARQL alongside:
+-//   - test_runs (test results)
+-//   - events (agent activity)
+-//   - decisions (why changes were made)
+-//   - function lifecycle (what functions changed)
+-//
+-// Example SPARQL: "Show me all failed CI runs for commits that
+-// touched functions with fan-in > 10"
++// Uses the shared JSONLD_CONTEXT — same namespaces as every other
++// entity in the harness. No separate context, no translation.
+ 
+-import postgres from "postgres";
+ import { randomUUID } from "node:crypto";
++import postgres from "postgres";
++import { JSONLD_CONTEXT, piId } from "../lib/jsonld/context.ts";
+ 
+ const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
+ const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
+@@ -22,9 +17,14 @@ let sql: ReturnType<typeof postgres> | null = null;
+ function db() {
+   if (!sql) {
+     sql = postgres({
+-      host: XTDB_HOST, port: XTDB_PORT,
+-      database: "xtdb", user: "xtdb", password: "xtdb",
+-      max: 2, idle_timeout: 30, connect_timeout: 5,
++      host: XTDB_HOST,
++      port: XTDB_PORT,
++      database: "xtdb",
++      user: "xtdb",
++      password: "xtdb",
++      max: 2,
++      idle_timeout: 30,
++      connect_timeout: 5,
+     });
+   }
+   return sql;
+@@ -42,6 +42,7 @@ export interface CIRunInput {
+   steps: CIStepResult[];
+   durationMs: number;
+   projectId?: string;
++  pipelineJsonLd?: object; // the resolved pipeline config (already JSON-LD)
+ }
+ 
+ export interface CIStepResult {
+@@ -55,20 +56,15 @@ export interface CIStepResult {
+ 
+ export async function recordCIRun(input: CIRunInput): Promise<string> {
+   const conn = db();
+-  const t = (v: string | null) => conn.typed(v as any, 25); // text
++  const t = (v: string | null) => conn.typed(v as any, 25); // text — matches lib/db.ts pattern
+   const n = (v: number | null) => conn.typed(v as any, 20); // bigint
+ 
+   const id = `ci:${randomUUID()}`;
+   const now = Date.now();
+ 
+   const jsonld = JSON.stringify({
+-    "@context": {
+-      schema: "https://schema.org/",
+-      prov: "http://www.w3.org/ns/prov#",
+-      code: "https://pi.dev/code/",
+-      xsd: "http://www.w3.org/2001/XMLSchema#",
+-    },
+-    "@id": `urn:pi:${id}`,
++    "@context": JSONLD_CONTEXT,
++    "@id": piId(id),
+     "@type": "code:CIRun",
+     "schema:name": `CI: ${input.repo}@${input.commitHash.slice(0, 8)}`,
+     "code:repo": input.repo,
+@@ -89,6 +85,7 @@ export async function recordCIRun(input: CIRunInput): Promise<string> {
+       "code:durationMs": s.durationMs,
+     })),
+     "code:durationMs": input.durationMs,
++    "code:pipeline": input.pipelineJsonLd ?? null,
+     "prov:generatedAtTime": { "@type": "xsd:long", "@value": now },
+   });
+ 
+diff --git a/ci-runner/runner.ts b/ci-runner/runner.ts
+index 5882a63..c767b67 100644
+--- a/ci-runner/runner.ts
++++ b/ci-runner/runner.ts
+@@ -16,9 +16,8 @@
+ import { watch, readdirSync, readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
+ import { join } from "node:path";
+ import { execSync, spawn } from "node:child_process";
+-import { randomUUID } from "node:crypto";
+-import { recordCIRun, type CIRunInput } from "./recorder.ts";
+-import { resolveSteps } from "./pipeline.ts";
++import { type CIRunInput, recordCIRun } from "./recorder.ts";
++import { resolveSteps, resolvePipelineJsonLd } from "./pipeline.ts";
+ 
+ // ─── Configuration ───────────────────────────────────────────────
+ 
+@@ -142,8 +141,9 @@ async function runJob(job: CIJob): Promise<void> {
+     // 2. Check out the code
+     checkout(job, workDir);
+ 
+-    // 3. Resolve pipeline steps (from .ci.yaml or auto-detect)
++    // 3. Resolve pipeline steps (from .ci.jsonld or auto-detect)
+     const steps = await resolveSteps(workDir);
++    const pipelineJsonLd = resolvePipelineJsonLd(workDir, job.repo);
+     console.log(`   ${steps.length} step(s) to run`);
+ 
+     // 4. Execute each step
+@@ -164,7 +164,7 @@ async function runJob(job: CIJob): Promise<void> {
+       }
+     }
+ 
+-    // 5. Record results in XTDB
++    // 5. Record results in XTDB (the run AND the pipeline config are both JSON-LD)
+     const totalDuration = Date.now() - startTime;
+     const runInput: CIRunInput = {
+       repo: job.repo,
+@@ -180,6 +180,7 @@ async function runJob(job: CIJob): Promise<void> {
+         exitCode: r.exitCode,
+       })),
+       durationMs: totalDuration,
++      pipelineJsonLd,
+     };
+ 
+     try {
+-- 
+2.43.0
+
+
+From a559c66b3981374c3922a0559e2cdfeeb5b92eee Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sun, 22 Mar 2026 07:03:37 +0000
+Subject: [PATCH 6/6] =?UTF-8?q?docs:=20add=20RDF=20enforcement=20plan=20?=
+ =?UTF-8?q?=E2=80=94=20kill=20string-soup=20JSON-LD?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The harness already has correct RDF tooling in xtdb-event-logger/rdf/:
+N3.js DataFactory, namedNode(), literal(), triple(), JsonLdSerializer.
+Every other module ignores it and hand-crafts JSON objects with string
+keys. This is not RDF — it's string soup that happens to look like JSON-LD.
+
+Problems with current approach:
+- Typo 'schema:naem' silently creates a new predicate (no validation)
+- Anyone can invent 'ev:whatever' (43 ev: predicates, no formal definition)
+- Most ev: predicates duplicate standard vocabulary terms:
+  ev:ts = prov:generatedAtTime, ev:status = schema:actionStatus,
+  ev:agentName = prov:wasAssociatedWith, etc.
+- No compile-time checking of predicate names
+
+Solution: move xtdb-event-logger/rdf/ pattern to lib/rdf/ (shared),
+define every predicate as a NamedNode constant in vocab.ts, provide
+builder functions, ban raw JSONLD_CONTEXT imports via Biome.
+
+Result: TypeScript compiler prevents inventing predicates. If
+SCHEMA.naem doesn't exist in vocab.ts, you get a compile error.
+The vocabulary IS the TypeScript type system.
+---
+ docs/RDF_ENFORCEMENT.md | 283 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 283 insertions(+)
+ create mode 100644 docs/RDF_ENFORCEMENT.md
+
+diff --git a/docs/RDF_ENFORCEMENT.md b/docs/RDF_ENFORCEMENT.md
+new file mode 100644
+index 0000000..243da9f
+--- /dev/null
++++ b/docs/RDF_ENFORCEMENT.md
+@@ -0,0 +1,283 @@
++# RDF Enforcement: Kill the String Soup
++
++> The harness already has correct RDF tooling in `xtdb-event-logger/rdf/`.
++> Every other module ignores it and hand-crafts JSON objects with string keys.
++> This document describes how to fix that permanently.
++
++## The Problem
++
++```typescript
++// THIS IS NOT RDF. This is a JSON object with strings that look like RDF.
++const jsonld = JSON.stringify({
++  "@context": JSONLD_CONTEXT,
++  "@type": "schema:AssessAction",      // ← just a string, no validation
++  "schema:name": input.suiteName,      // ← typo "schema:naem" would silently create a new predicate
++  "ev:passed": input.passed,           // ← ev: namespace has no formal definition
++});
++```
++
++```typescript
++// THIS IS RDF. Proper terms, typed literals, validated structure.
++const s = namedNode(`urn:pi:${id}`);
++out.push(triple(s, namedNode(`${RDF}type`), namedNode(`${SCHEMA}AssessAction`)));
++out.push(triple(s, namedNode(`${SCHEMA}name`), literal(input.suiteName)));
++out.push(triple(s, namedNode(`${SCHEMA}result`), literal(String(input.passed), namedNode(`${XSD}integer`))));
++```
++
++The first version creates whatever the developer types. Typos, invented predicates, wrong
++types — all silently accepted. The second version uses `namedNode()` which is a proper RDF
++term. The namespace URI is resolved at construction time. The serializer validates structure.
++
++## The Correct Pattern (already exists)
++
++`xtdb-event-logger/rdf/` has three files that form the complete pattern:
++
++1. **`namespaces.ts`** — imports from shared `lib/jsonld/context.ts`, exports URI constants
++2. **`triples.ts`** — uses N3.js `DataFactory` (`namedNode`, `literal`, `blankNode`, `triple`)
++3. **`serialize.ts`** — uses `jsonld-streaming-serializer` to produce JSON-LD from triples
++
++Dependencies: `n3` (RDF.js spec-compliant), `jsonld-streaming-serializer`
++
++## What Needs to Change
++
++### 1. Move RDF builders to `lib/rdf/` (shared, not per-extension)
++
++The N3.js-based builders should live in `lib/rdf/`, not inside `xtdb-event-logger/rdf/`.
++Every extension and module imports from `lib/rdf/`. Nobody builds JSON-LD by hand.
++
++```
++lib/rdf/
++  namespaces.ts    — all namespace URIs (from lib/jsonld/context.ts)
++  factory.ts       — re-exports N3 DataFactory + typed literal helpers
++  vocab.ts         — EVERY allowed predicate as a NamedNode constant
++  serialize.ts     — triples → JSON-LD string (for XTDB jsonld column)
++  validate.ts      — checks triples against the vocabulary (optional but powerful)
++```
++
++### 2. Define the vocabulary as NamedNode constants
++
++Instead of string keys that anyone can invent, predicates are TypeScript constants:
++
++```typescript
++// lib/rdf/vocab.ts
++import { DataFactory } from "n3";
++const { namedNode } = DataFactory;
++
++// ─── Standard vocabularies ─────────────────────────────────────
++// These are real, published, dereferenceable vocabularies.
++
++export const RDF = {
++  type: namedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"),
++} as const;
++
++export const SCHEMA = {
++  name: namedNode("https://schema.org/name"),
++  description: namedNode("https://schema.org/description"),
++  actionStatus: namedNode("https://schema.org/actionStatus"),
++  CompletedActionStatus: namedNode("https://schema.org/CompletedActionStatus"),
++  FailedActionStatus: namedNode("https://schema.org/FailedActionStatus"),
++  AssessAction: namedNode("https://schema.org/AssessAction"),
++  SoftwareSourceCode: namedNode("https://schema.org/SoftwareSourceCode"),
++  SoftwareApplication: namedNode("https://schema.org/SoftwareApplication"),
++  // ... every schema.org term actually used
++} as const;
++
++export const PROV = {
++  Activity: namedNode("http://www.w3.org/ns/prov#Activity"),
++  Entity: namedNode("http://www.w3.org/ns/prov#Entity"),
++  SoftwareAgent: namedNode("http://www.w3.org/ns/prov#SoftwareAgent"),
++  generatedAtTime: namedNode("http://www.w3.org/ns/prov#generatedAtTime"),
++  wasAssociatedWith: namedNode("http://www.w3.org/ns/prov#wasAssociatedWith"),
++  used: namedNode("http://www.w3.org/ns/prov#used"),
++  // ... every prov term actually used
++} as const;
++
++export const DOAP = {
++  Project: namedNode("http://usefulinc.com/ns/doap#Project"),
++  GitRepository: namedNode("http://usefulinc.com/ns/doap#GitRepository"),
++  name: namedNode("http://usefulinc.com/ns/doap#name"),
++  revision: namedNode("http://usefulinc.com/ns/doap#revision"),
++} as const;
++
++export const FOAF = {
++  Person: namedNode("http://xmlns.com/foaf/0.1/Person"),
++  Agent: namedNode("http://xmlns.com/foaf/0.1/Agent"),
++  name: namedNode("http://xmlns.com/foaf/0.1/name"),
++} as const;
++
++// ─── Custom vocabulary (harness-specific) ──────────────────────
++// These are terms that have NO equivalent in standard vocabularies.
++// Every term here must have a comment explaining why no standard term fits.
++
++export const CODE = {
++  // Code structure (no standard covers function-level AST relationships)
++  Function: namedNode("https://pi.dev/code/Function"),
++  calls: namedNode("https://pi.dev/code/calls"),
++  definedIn: namedNode("https://pi.dev/code/definedIn"),
++  exports: namedNode("https://pi.dev/code/exports"),
++  tests: namedNode("https://pi.dev/code/tests"),
++  filePath: namedNode("https://pi.dev/code/filePath"),
++  line: namedNode("https://pi.dev/code/line"),
++  isExported: namedNode("https://pi.dev/code/isExported"),
++  isAsync: namedNode("https://pi.dev/code/isAsync"),
++  parameters: namedNode("https://pi.dev/code/parameters"),
++  isTestFile: namedNode("https://pi.dev/code/isTestFile"),
++  isTestFunction: namedNode("https://pi.dev/code/isTestFunction"),
++
++  // CI (schema:Action covers the run, but step-level details are custom)
++  CIRun: namedNode("https://pi.dev/code/CIRun"),
++  CIStep: namedNode("https://pi.dev/code/CIStep"),
++  Pipeline: namedNode("https://pi.dev/code/Pipeline"),
++  PipelineStep: namedNode("https://pi.dev/code/PipelineStep"),
++  commitHash: namedNode("https://pi.dev/code/commitHash"),
++  image: namedNode("https://pi.dev/code/image"),
++  commands: namedNode("https://pi.dev/code/commands"),
++  steps: namedNode("https://pi.dev/code/steps"),
++  repo: namedNode("https://pi.dev/code/repo"),
++  ref: namedNode("https://pi.dev/code/ref"),
++  exitCode: namedNode("https://pi.dev/code/exitCode"),
++  durationMs: namedNode("https://pi.dev/code/durationMs"),
++} as const;
++```
++
++**The key enforcement:** If a predicate is not in this file, it does not exist. TypeScript
++will give you a compile error if you try to use `CODE.whateverIJustInvented`.
++
++### 3. Kill the ev: namespace (migrate to standard predicates)
++
++Most `ev:` predicates are reinventions of standard vocabulary terms:
++
++| Current `ev:` predicate | Standard equivalent | Action |
++|---|---|---|
++| `ev:ts` | `prov:generatedAtTime` | Replace |
++| `ev:status` | `schema:actionStatus` | Replace |
++| `ev:durationMs` | `schema:duration` (ISO 8601) or keep as `code:durationMs` | Migrate |
++| `ev:projectId` | `prov:used` (link to project entity) | Replace with reference |
++| `ev:sessionId` | `prov:wasAssociatedWith` (link to session) | Replace with reference |
++| `ev:agentName` | `prov:wasAssociatedWith` → `schema:name` | Replace |
++| `ev:exitCode` | `code:exitCode` | Move to code: |
++| `ev:passed` / `ev:failed` / `ev:skipped` | `schema:result` sub-properties | Restructure |
++| `ev:goal` | `schema:description` | Replace |
++| `ev:what` / `ev:why` / `ev:outcome` | `schema:description` / `prov:generated` | Replace |
++| `ev:path` | `schema:url` or `code:filePath` | Replace |
++| `ev:sizeBytes` | `schema:contentSize` | Replace |
++| `ev:version` | `schema:version` or `doap:revision` | Replace |
++
++The remaining `ev:` predicates that are truly harness-specific (event capture fields
++like `toolName`, `toolCallId`, `turnIndex`, `compactTokens`, etc.) should move to a
++properly defined `ev:` vocabulary with `rdfs:label` and `rdfs:range` for each term.
++These go into `lib/rdf/vocab.ts` as `EV.toolName`, `EV.turnIndex`, etc.
++
++### 4. Builder functions that enforce structure
++
++Instead of every module assembling triples by hand, provide builder functions:
++
++```typescript
++// lib/rdf/builders.ts
++import { DataFactory } from "n3";
++import { SCHEMA, PROV, CODE, RDF } from "./vocab.ts";
++import { xsdLong, xsdString } from "./factory.ts";
++
++const { namedNode, triple } = DataFactory;
++
++export function buildCIRun(id: string, input: CIRunInput) {
++  const s = namedNode(`urn:pi:${id}`);
++  const triples = [
++    triple(s, RDF.type, CODE.CIRun),
++    triple(s, SCHEMA.name, xsdString(`CI: ${input.repo}@${input.commitHash.slice(0, 8)}`)),
++    triple(s, CODE.repo, xsdString(input.repo)),
++    triple(s, CODE.commitHash, xsdString(input.commitHash)),
++    triple(s, SCHEMA.actionStatus, input.status === "passed" ? SCHEMA.CompletedActionStatus : SCHEMA.FailedActionStatus),
++    triple(s, CODE.durationMs, xsdLong(input.durationMs)),
++    triple(s, PROV.generatedAtTime, xsdLong(Date.now())),
++  ];
++  return triples;
++}
++
++export function buildTestRun(id: string, input: TestRunInput) {
++  const s = namedNode(`urn:pi:${id}`);
++  return [
++    triple(s, RDF.type, SCHEMA.AssessAction),
++    triple(s, SCHEMA.name, xsdString(input.suiteName)),
++    triple(s, SCHEMA.actionStatus, input.status === "passed" ? SCHEMA.CompletedActionStatus : SCHEMA.FailedActionStatus),
++    triple(s, PROV.generatedAtTime, xsdLong(Date.now())),
++    // ... properly typed, no string-key invention possible
++  ];
++}
++```
++
++### 5. Biome rule to ban raw JSON-LD construction
++
++Add to `biome.json` restricted imports:
++
++```json
++{
++  "linter": {
++    "rules": {
++      "style": {
++        "noRestrictedImports": {
++          "level": "error",
++          "options": {
++            "paths": {
++              "../lib/jsonld/context.ts": {
++                "importNames": ["JSONLD_CONTEXT"],
++                "message": "Do not use JSONLD_CONTEXT directly. Use lib/rdf/builders.ts to construct RDF. Raw JSON-LD construction is banned."
++              }
++            }
++          }
++        }
++      }
++    }
++  }
++}
++```
++
++This makes it a lint error to import `JSONLD_CONTEXT` for hand-crafting JSON objects.
++The only allowed consumer of `JSONLD_CONTEXT` is `lib/rdf/serialize.ts`.
++
++### 6. Agent instructions (CODE_QUALITY_STANDARD.md update)
++
++Add to the standard:
++
++```
++## RDF Rules
++
++1. NEVER construct JSON-LD by hand. Use lib/rdf/builders.ts.
++2. NEVER invent new predicates. If you need a new predicate:
++   a. Check if a standard vocabulary already has it (schema.org, PROV-O, DOAP, FOAF)
++   b. If not, add it to lib/rdf/vocab.ts with a comment explaining why
++   c. Get it reviewed — new custom predicates are a code smell
++3. ALWAYS use N3.js DataFactory (namedNode, literal, triple) for RDF construction.
++4. NEVER use string keys like "ev:whatever" or "code:newThing" in JSON objects.
++5. The jsonld-streaming-serializer produces the JSON-LD string. You produce triples.
++```
++
++## Migration Order
++
++1. **Create `lib/rdf/`** — move and generalize from `xtdb-event-logger/rdf/`
++2. **Create `lib/rdf/vocab.ts`** — define every predicate as a NamedNode constant
++3. **Migrate `lib/test-recorder.ts`** — replace JSON object with builder
++4. **Migrate `decision-log/rdf.ts`** — replace JSON object with builder
++5. **Migrate `project-registry/rdf.ts`** — replace JSON object with builder
++6. **Migrate `ci-runner/recorder.ts`** — replace JSON object with builder
++7. **Migrate `scripts/parse-call-graph.ts`** — replace JSON-LD assembly with triples
++8. **Migrate `scripts/export-xtdb-triples.ts`** — it reads JSON-LD, should validate
++9. **Add Biome restriction** — ban direct JSONLD_CONTEXT imports
++10. **Kill `ev:` duplicates** — replace with standard vocabulary terms
++11. **Update `xtdb-event-logger/rdf/`** — import from `lib/rdf/` instead of local copy
++
++## Dependencies
++
++Already in the codebase (used by xtdb-event-logger):
++- `n3` — RDF.js spec-compliant library (DataFactory, Store, Parser, Writer)
++- `jsonld-streaming-serializer` — triples → JSON-LD
++
++No new dependencies needed. The tooling exists. It just needs to be the only path.
++
++## What This Prevents
++
++- Typos in predicates (`"schema:naem"` → compile error: `SCHEMA.naem` doesn't exist)
++- Invented predicates (`"ev:myNewThing"` → must be added to vocab.ts and reviewed)
++- Wrong types (`literal(42)` vs `xsdString("42")` — the DataFactory enforces types)
++- Duplicate predicates (`ev:status` vs `schema:actionStatus` — one source of truth)
++- Orphan predicates (grep `vocab.ts` to see every predicate; unused ones are dead code)
+-- 
+2.43.0
+
