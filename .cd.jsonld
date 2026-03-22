@@ -1,56 +1,66 @@
 {
   "@context": {
     "schema": "https://schema.org/",
-    "code": "https://pi.dev/code/"
+    "code": "https://pi.dev/code/",
+    "oci": "https://opencontainers.org/"
   },
   "@type": "code:DeployPipeline",
   "schema:name": "harness CD",
   "code:strategy": "rolling",
+  "code:registry": "localhost:5050",
+  "code:namespace": "harness",
+  "code:composeFile": "docker-compose.yml",
   "code:services": [
     {
-      "@type": "code:Service",
+      "@type": "code:ContainerService",
       "schema:name": "event-api",
-      "code:command": "npx jiti server.ts",
-      "code:workingDir": "xtdb-event-logger-ui",
+      "oci:image": "harness/event-api",
+      "code:dockerfile": "xtdb-event-logger-ui/Dockerfile",
       "code:port": 3333,
       "code:healthPath": "/api/stats",
-      "code:dependsOn": []
+      "code:dependsOn": ["xtdb-primary"],
+      "code:networks": ["default"]
     },
     {
-      "@type": "code:Service",
+      "@type": "code:ContainerService",
       "schema:name": "chat-ws",
-      "code:command": "npx jiti server.ts",
-      "code:workingDir": "web-chat",
+      "oci:image": "harness/chat-ws",
+      "code:dockerfile": "web-chat/Dockerfile",
       "code:port": 3334,
       "code:healthPath": "/",
-      "code:dependsOn": []
+      "code:dependsOn": [],
+      "code:networks": ["default"]
     },
     {
-      "@type": "code:Service",
+      "@type": "code:ContainerService",
       "schema:name": "ops-api",
-      "code:command": "npx jiti server.ts",
-      "code:workingDir": "xtdb-ops-api",
+      "oci:image": "harness/ops-api",
+      "code:dockerfile": "xtdb-ops-api/Dockerfile",
       "code:port": 3335,
       "code:healthPath": "/api/health",
-      "code:dependsOn": []
+      "code:dependsOn": ["xtdb-primary", "redpanda"],
+      "code:networks": ["default"]
     },
     {
-      "@type": "code:Service",
+      "@type": "code:ContainerService",
       "schema:name": "harness-ui",
-      "code:command": "npx jiti server.ts",
-      "code:workingDir": "harness-ui",
+      "oci:image": "harness/harness-ui",
+      "code:dockerfile": "harness-ui/Dockerfile",
       "code:port": 3336,
       "code:healthPath": "/",
-      "code:dependsOn": ["event-api"]
+      "code:dependsOn": ["event-api", "ops-api", "chat-ws"],
+      "code:networks": ["default"]
     },
     {
-      "@type": "code:Service",
+      "@type": "code:ContainerService",
       "schema:name": "ci-runner",
-      "code:command": "npx jiti server.ts",
-      "code:workingDir": "ci-runner",
+      "oci:image": "harness/ci-runner",
+      "code:dockerfile": "ci-runner/Dockerfile",
       "code:port": 3337,
       "code:healthPath": "/api/health",
-      "code:dependsOn": []
+      "code:dependsOn": ["xtdb-primary", "soft-serve"],
+      "code:volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+      "code:networks": ["default"]
     }
   ]
 }

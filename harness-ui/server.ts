@@ -293,6 +293,55 @@ app.get("/api/pc/logs/:name", async (c) => {
   } catch { return c.json({ error: "process-compose not reachable" }, 503); }
 });
 
+// Deploy API — trigger rolling container deploy
+app.post("/api/deploy", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const { commitHash, service, trigger = "manual" } = body as any;
+    console.log(`[Deploy] Triggered by ${trigger}${commitHash ? ` for ${commitHash.slice(0, 8)}` : ""}${service ? ` (service: ${service})` : ""}`);
+
+    // Read service definitions from embedded config
+    const services = service
+      ? [service]
+      : ["event-api", "chat-ws", "ops-api", "harness-ui", "ci-runner"];
+
+    const results: { name: string; ok: boolean; error?: string }[] = [];
+
+    for (const svcName of services) {
+      try {
+        // Pull latest image and recreate container
+        execSync(`docker compose up -d --no-deps --pull always ${svcName}`, {
+          timeout: 120_000,
+          encoding: "utf-8",
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        results.push({ name: svcName, ok: true });
+        console.log(`[Deploy] ✅ ${svcName} deployed`);
+      } catch (e: any) {
+        results.push({ name: svcName, ok: false, error: e.stderr?.slice(0, 200) ?? String(e).slice(0, 200) });
+        console.error(`[Deploy] ❌ ${svcName} failed: ${e.stderr?.slice(0, 100)}`);
+      }
+    }
+
+    const allOk = results.every(r => r.ok);
+    return c.json({ success: allOk, trigger, commitHash, services: results }, allOk ? 200 : 207);
+  } catch (e: any) {
+    return c.json({ error: e.message }, 500);
+  }
+});
+
+// Deploy history
+app.get("/api/deploy/history", async (c) => {
+  try {
+    const { readFileSync, existsSync } = await import("node:fs");
+    const historyPath = join(__dirname, "..", "data", "deploy-history.json");
+    if (!existsSync(historyPath)) return c.json({ deploys: [] });
+    return c.json(JSON.parse(readFileSync(historyPath, "utf-8")));
+  } catch {
+    return c.json({ deploys: [] });
+  }
+});
+
 // CI notification
 app.post("/api/ci/notify", async (c) => {
   try {
