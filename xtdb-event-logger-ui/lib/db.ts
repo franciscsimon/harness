@@ -78,14 +78,6 @@ export interface SessionSummary {
 /**
  * Get events with optional filters. Returns newest first by default.
  */
-// Compact column list for event queries — avoids loading huge payload/jsonld columns
-// that cause XTDB OOM on 22K+ rows. Includes core + display fields used by compactEvent().
-const EVENT_COLS = `_id, event_name, category, can_intercept, seq, ts, session_id, cwd,
-  tool_name, tool_call_id, is_error, message_role, model_provider, model_id,
-  turn_index, bash_command, input_source, compact_tokens, provider_payload_bytes,
-  switch_reason, switch_target, agent_end_msg_count, turn_end_tool_count,
-  context_msg_count, stream_delta_type, stream_delta_len`;
-
 export async function getEvents(opts: {
   category?: string;
   eventName?: string;
@@ -95,43 +87,63 @@ export async function getEvents(opts: {
 } = {}): Promise<EventRow[]> {
   const limit = opts.limit ?? 100;
 
-  // Build WHERE dynamically — XTDB doesn't support all PG features,
-  // so we use simple parameterized queries
+  // Use typed helpers (t/n) with tagged templates for XTDB compatibility.
+  // Select only needed columns to avoid OOM on 22K+ rows with large text blobs.
   if (opts.afterSeq != null) {
-    const rows = await sql.unsafe(
-      `SELECT ${EVENT_COLS} FROM events WHERE seq > $1 ORDER BY seq ASC LIMIT 200`,
-      [opts.afterSeq]
-    );
+    const rows = await sql`
+      SELECT _id, event_name, category, can_intercept, seq, ts, session_id, cwd,
+        tool_name, tool_call_id, is_error, message_role, model_provider, model_id,
+        turn_index, input_source, compact_tokens, provider_payload_bytes,
+        switch_reason, switch_target, agent_end_msg_count, turn_end_tool_count,
+        context_msg_count, stream_delta_type, stream_delta_len
+      FROM events WHERE seq > ${n(opts.afterSeq)} ORDER BY seq ASC LIMIT ${n(200)}
+    `;
     return rows as unknown as EventRow[];
   }
 
   if (opts.sessionId) {
-    const rows = await sql.unsafe(
-      `SELECT ${EVENT_COLS} FROM events WHERE session_id = $1 ORDER BY seq DESC LIMIT $2`,
-      [opts.sessionId, limit]
-    );
+    const rows = await sql`
+      SELECT _id, event_name, category, can_intercept, seq, ts, session_id, cwd,
+        tool_name, tool_call_id, is_error, message_role, model_provider, model_id,
+        turn_index, input_source, compact_tokens, provider_payload_bytes,
+        switch_reason, switch_target, agent_end_msg_count, turn_end_tool_count,
+        context_msg_count, stream_delta_type, stream_delta_len
+      FROM events WHERE session_id = ${t(opts.sessionId)} ORDER BY seq DESC LIMIT ${n(limit)}
+    `;
     return rows as unknown as EventRow[];
   }
 
   if (opts.eventName) {
-    const rows = await sql.unsafe(
-      `SELECT ${EVENT_COLS} FROM events WHERE event_name = $1 ORDER BY seq DESC LIMIT $2`,
-      [opts.eventName, limit]
-    );
+    const rows = await sql`
+      SELECT _id, event_name, category, can_intercept, seq, ts, session_id, cwd,
+        tool_name, tool_call_id, is_error, message_role, model_provider, model_id,
+        turn_index, input_source, compact_tokens, provider_payload_bytes,
+        switch_reason, switch_target, agent_end_msg_count, turn_end_tool_count,
+        context_msg_count, stream_delta_type, stream_delta_len
+      FROM events WHERE event_name = ${t(opts.eventName)} ORDER BY seq DESC LIMIT ${n(limit)}
+    `;
     return rows as unknown as EventRow[];
   }
 
   if (opts.category) {
-    const rows = await sql.unsafe(
-      `SELECT ${EVENT_COLS} FROM events WHERE category = $1 ORDER BY seq DESC LIMIT $2`,
-      [opts.category, limit]
-    );
+    const rows = await sql`
+      SELECT _id, event_name, category, can_intercept, seq, ts, session_id, cwd,
+        tool_name, tool_call_id, is_error, message_role, model_provider, model_id,
+        turn_index, input_source, compact_tokens, provider_payload_bytes,
+        switch_reason, switch_target, agent_end_msg_count, turn_end_tool_count,
+        context_msg_count, stream_delta_type, stream_delta_len
+      FROM events WHERE category = ${t(opts.category)} ORDER BY seq DESC LIMIT ${n(limit)}
+    `;
     return rows as unknown as EventRow[];
   }
 
-  const rows = await sql.unsafe(
-    `SELECT ${EVENT_COLS} FROM events ORDER BY seq DESC LIMIT $1`,
-    [limit]
+  const rows = await sql`
+    SELECT _id, event_name, category, can_intercept, seq, ts, session_id, cwd,
+      tool_name, tool_call_id, is_error, message_role, model_provider, model_id,
+      turn_index, input_source, compact_tokens, provider_payload_bytes,
+      switch_reason, switch_target, agent_end_msg_count, turn_end_tool_count,
+      context_msg_count, stream_delta_type, stream_delta_len
+    FROM events ORDER BY seq DESC LIMIT ${n(limit)}
   );
   return rows as unknown as EventRow[];
 }
@@ -140,10 +152,14 @@ export async function getEvents(opts: {
  * Get events newer than a given seq (for SSE polling).
  */
 export async function getEventsSince(afterSeq: number): Promise<EventRow[]> {
-  const rows = await sql.unsafe(
-    `SELECT ${EVENT_COLS} FROM events WHERE seq > $1 ORDER BY seq ASC LIMIT 200`,
-    [afterSeq]
-  );
+  const rows = await sql`
+    SELECT _id, event_name, category, can_intercept, seq, ts, session_id, cwd,
+      tool_name, tool_call_id, is_error, message_role, model_provider, model_id,
+      turn_index, input_source, compact_tokens, provider_payload_bytes,
+      switch_reason, switch_target, agent_end_msg_count, turn_end_tool_count,
+      context_msg_count, stream_delta_type, stream_delta_len
+    FROM events WHERE seq > ${n(afterSeq)} ORDER BY seq ASC LIMIT ${n(200)}
+  `;
   return rows as unknown as EventRow[];
 }
 
