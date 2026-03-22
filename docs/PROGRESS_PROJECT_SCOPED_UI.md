@@ -58,10 +58,10 @@ All other pages (sessions, stream, dashboard, decisions, artifacts, errors, CI, 
 - [ ] 2.3 Update harness-ui API calls to pass project_id from URL
 - [ ] 2.4 Ensure session_projects table links sessions → projects correctly
 
-### Phase 3: Home page as project list (~30m)
-- [ ] 3.1 Rewrite home page: list all projects with summary cards
-- [ ] 3.2 Each card shows: name, session count, last activity, error count, CI status
-- [ ] 3.3 Click project card → /projects/:id/overview
+### Phase 3: Home page as project list ✅
+- [x] 3.1 Rewrite home page: list all projects with summary cards
+- [x] 3.2 Each card shows: name, lifecycle phase, session count, last activity
+- [x] 3.3 Click project card → /projects/:id/overview
 
 ### Phase 4: Cleanup (~30m)
 - [ ] 4.1 Remove old flat nav items
@@ -82,4 +82,8 @@ All other pages (sessions, stream, dashboard, decisions, artifacts, errors, CI, 
 - Project ID in URL is the project `name` (e.g., "harness"), not the XTDB `_id`
 - Need to resolve name → _id for API queries (or query by name directly)
 
-## Status: Planning complete, ready to implement
+## Status
+- Phase 1 ✅ Route restructuring (nav, layout, server.ts, page signatures, CSS)
+- Phase 2 ⬜ API project scoping (filter queries by project_id)
+- Phase 3 ✅ Home page as project list
+- Phase 4 ⬜ Cleanup (remaining internal links, contract tests)
