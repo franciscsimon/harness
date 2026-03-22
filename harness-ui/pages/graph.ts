@@ -108,6 +108,20 @@ SELECT ?name ?file ?tested WHERE {
 }
 ORDER BY DESC(?tested) ?file ?name`,
   },
+  ci: {
+    label: "CI Runs",
+    icon: "🏗️",
+    desc: "CI pipeline runs with status, duration, and step results",
+    query: `PREFIX code: <https://pi.dev/code/>
+PREFIX schema: <https://schema.org/>
+SELECT ?run ?repo ?status ?duration WHERE {
+  ?run a code:CIRun ;
+       code:repo ?repo ;
+       schema:actionStatus ?status ;
+       code:durationMs ?duration .
+}
+ORDER BY DESC(?duration)`,
+  },
   untested: {
     label: "Untested Functions",
     icon: "🚨",

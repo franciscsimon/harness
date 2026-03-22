@@ -39,6 +39,7 @@ const TABLES = [
   "backup_records",
   "incidents",
   "errors",
+  "ci_runs",
 ];
 
 // Namespace prefixes for Turtle
