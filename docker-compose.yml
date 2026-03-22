@@ -177,6 +177,17 @@ services:
       SOFT_SERVE_DATA_PATH: /soft-serve
       SOFT_SERVE_INITIAL_ADMIN_KEYS: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOmJmcsP1uIiTFfTkavjEmDr4W+9iTecbPU4KTJi0efv opunix@fs.evalgo.org"
 
+  # ── OCI Registry (Zot) ──────────────────────────────────────────
+  zot:
+    image: ghcr.io/project-zot/zot-minimal-linux-arm64:latest
+    container_name: zot
+    restart: unless-stopped
+    ports:
+      - "5050:5000"
+    volumes:
+      - zot-data:/var/lib/zot
+      - ./zot-config.json:/etc/zot/config.json:ro
+
 volumes:
   redpanda-data:
   xtdb-primary-data:
@@ -184,3 +195,4 @@ volumes:
   garage-data:
   qlever-data:
   soft-serve-data:
+  zot-data:

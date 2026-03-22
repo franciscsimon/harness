@@ -1,0 +1,12 @@
+**/node_modules
+**/.git
+**/data
+**/backups
+**/*.log
+.pi
+.cd.jsonld
+.ci.jsonld
+docs/
+test/
+scripts/
+*.md
