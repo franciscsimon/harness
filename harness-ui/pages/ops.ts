@@ -154,9 +154,9 @@ export async function renderOps(projectId?: string): Promise<string> {
     extraHead: `<script src="/static/modal.js" defer></script><script src="/static/ops.js" defer></script>
 <script>
 // ── Container Services ──
-const APP_SERVICES = ["event-api", "chat-ws", "ops-api", "harness-ui", "ci-runner"];
-const SVC_PORTS = { "event-api": 3333, "chat-ws": 3334, "ops-api": 3335, "harness-ui": 3336, "ci-runner": 3337 };
-const SVC_HEALTH = { "event-api": "/api/stats", "chat-ws": "/", "ops-api": "/api/health", "harness-ui": "/", "ci-runner": "/api/health" };
+const APP_SERVICES = ["event-api", "chat-ws", "ops-api", "harness-ui", "ci-runner", "docker-event-collector"];
+const SVC_PORTS = { "event-api": 3333, "chat-ws": 3334, "ops-api": 3335, "harness-ui": 3336, "ci-runner": 3337, "docker-event-collector": 3338 };
+const SVC_HEALTH = { "event-api": "/api/stats", "chat-ws": "/", "ops-api": "/api/health", "harness-ui": "/", "ci-runner": "/api/health", "docker-event-collector": "/api/health" };
 
 async function loadContainerServices() {
   const el = document.getElementById("container-services");
