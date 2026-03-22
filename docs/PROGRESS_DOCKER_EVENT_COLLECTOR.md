@@ -1,6 +1,6 @@
 # Docker Event Collector — Progress
 
-## Status: Phase 1 — Not Started
+## Status: Phase 3 Complete — Phase 4 Remaining
 
 ## Decisions
 - **Architecture**: Standalone service (`docker-event-collector/`)
@@ -11,7 +11,7 @@
 
 ## Phases
 
-### Phase 1: Core Collector ⬜
+### Phase 1: Core Collector ✅
 - [ ] `docker-event-collector/package.json` + `server.ts`
 - [ ] `collector.ts`: Connect to Docker socket, stream `/events` API (NDJSON)
 - [ ] `transform.ts`: Raw Docker event → JSON-LD (`docker:ContainerEvent`)
@@ -22,13 +22,13 @@
 - [ ] Add to docker-compose.yml with docker socket mount
 - [ ] Add `docker_events` table to `scripts/seed-schema.ts`
 
-### Phase 2: API + QLever ⬜
+### Phase 2: API + QLever ✅
 - [ ] `/api/docker-events` endpoint on event-logger-ui (filters: severity, service, action, time range)
 - [ ] `/api/docker-events/summary` (counts by severity, top crashing services)
 - [ ] Add `docker_events` to `scripts/export-xtdb-triples.ts` for QLever
 - [ ] SPARQL query cards: "services that crashed this week", "OOM frequency", "restart loops"
 
-### Phase 3: UI ⬜
+### Phase 3: UI ✅
 - [ ] Docker Events page (`/projects/:id/docker-events`) in harness-ui
 - [ ] Real-time event feed via SSE (collector → harness-ui)
 - [ ] Severity-colored event cards (red=crash, yellow=warning, green=healthy)
