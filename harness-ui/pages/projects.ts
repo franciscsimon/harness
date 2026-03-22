@@ -89,7 +89,7 @@ export async function renderProjectDetail(projectId: string): Promise<string> {
       </table></section>
       <p class="empty-msg">Full project data unavailable. Showing derived data from decisions/artifacts.</p>
     `;
-    return layout(content, { title: name, activePath: "/projects" });
+    return layout(content, { title: name, activePath: "/projects", projectId, activeSection: "overview" });
   }
 
   // Fetch additional data in parallel
@@ -205,5 +205,5 @@ export async function renderProjectDetail(projectId: string): Promise<string> {
     </section>` : ""}
   `;
 
-  return layout(content, { title: p.name || name, activePath: "/projects" });
+  return layout(content, { title: p.name || name, activePath: "/projects", projectId, activeSection: "overview" });
 }

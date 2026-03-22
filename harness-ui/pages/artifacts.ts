@@ -21,7 +21,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-export async function renderArtifacts(): Promise<string> {
+export async function renderArtifacts(projectId?: string): Promise<string> {
   const artifacts = (await fetchArtifacts()) ?? [];
 
   // Group by path — most recent first
@@ -85,12 +85,12 @@ export async function renderArtifacts(): Promise<string> {
     </script>
   `;
 
-  return layout(content, { title: "Artifacts", activePath: "/artifacts" });
+  return layout(content, { title: "Artifacts", activePath: projectId ? `/projects/${projectId}/artifacts` : "/artifacts", projectId, activeSection: "artifacts" });
 }
 
 // ─── Artifact Versions Page ────────────────────────────────────
 
-export async function renderArtifactVersions(path: string): Promise<string> {
+export async function renderArtifactVersions(path: string, projectId?: string): Promise<string> {
   // Use artifact_versions API (has correct IDs for content links)
   const versions = (await fetchArtifactVersions(path)) ?? [];
   const fileName = path.split("/").pop() ?? path;
@@ -122,5 +122,5 @@ export async function renderArtifactVersions(path: string): Promise<string> {
     </div>
   `;
 
-  return layout(content, { title: fileName + " versions", activePath: "/artifacts" });
+  return layout(content, { title: fileName + " versions", activePath: projectId ? `/projects/${projectId}/artifacts` : "/artifacts", projectId, activeSection: "artifacts" });
 }

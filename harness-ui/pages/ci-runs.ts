@@ -1,7 +1,7 @@
 import { layout } from "../components/layout.ts";
 import { relativeTime, formatDuration } from "../lib/format.ts";
 
-export async function renderCIRuns(): Promise<string> {
+export async function renderCIRuns(projectId?: string): Promise<string> {
   let runs: any[] = [];
   try {
     const r = await fetch("http://localhost:3333/api/ci-runs");
@@ -39,7 +39,7 @@ export async function renderCIRuns(): Promise<string> {
     }
 
     const rowId = encodeURIComponent(run._id ?? "");
-    return `<tr style="cursor:pointer" onclick="location.href='/ci/${rowId}'">
+    return `<tr style="cursor:pointer" onclick="location.href='${projectId ? `/projects/${projectId}/ci/${rowId}` : `/ci/${rowId}`}'">
       <td><span style="color:${run.status === "passed" ? "#238636" : "#da3633"}">${status}</span></td>
       <td>${run.repo ?? "—"}</td>
       <td><code>${hash}</code></td>
@@ -66,5 +66,5 @@ export async function renderCIRuns(): Promise<string> {
       }
     </main>`;
 
-  return layout(content, { title: "CI Runs", activePath: "/ci" });
+  return layout(content, { title: "CI Runs", activePath: projectId ? `/projects/${projectId}/ci` : "/ci", projectId, activeSection: "ci" });
 }

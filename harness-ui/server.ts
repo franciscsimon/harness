@@ -57,30 +57,93 @@ app.get("/static/:file", (c) => {
   }
 });
 
-// ── Pages ──────────────────────────────────────────────────────────
+// ── Global pages (main nav) ────────────────────────────────────────
 
 app.get("/", async (c) => c.html(await renderHome()));
-app.get("/sessions", async (c) => c.html(await renderSessions()));
-app.get("/dashboard", async (c) => c.html(await renderDashboard()));
-app.get("/decisions", async (c) => c.html(await renderDecisions()));
-app.get("/artifacts", async (c) => c.html(await renderArtifacts()));
 app.get("/projects", async (c) => c.html(await renderProjects()));
-app.get("/errors", async (c) => {
-  const severity = c.req.query("severity") || undefined;
-  const component = c.req.query("component") || undefined;
-  return c.html(await renderErrors({ severity, component }));
-});
-app.get("/stream", async (c) => c.html(await renderStream()));
-app.get("/ops", async (c) => c.html(await renderOps()));
 app.get("/chat", async (c) => c.html(await renderChat()));
-app.get("/ci", async (c) => c.html(await renderCIRuns()));
-app.get("/ci/:id", async (c) => c.html(await renderCIRunDetail(decodeURIComponent(c.req.param("id")))));
-app.get("/git", async (c) => c.html(await renderGitRepos()));
-app.get("/graph", async (c) => {
-  const q = c.req.query("q") || undefined;
-  const sparql = c.req.query("sparql") || undefined;
-  return c.html(await renderGraph(q, sparql));
+
+// ── Project-scoped pages ───────────────────────────────────────────
+// All pages live under /projects/:projectId/:section
+// The catch-all route dispatches to the correct page renderer.
+
+app.get("/projects/:projectId/sessions/:sid{.+}", async (c) => {
+  const projectId = decodeURIComponent(c.req.param("projectId"));
+  const raw = c.req.param("sid");
+  if (raw.endsWith("/flow")) {
+    const sessionId = decodeURIComponent(raw.slice(0, -5));
+    return c.html(await renderFlow(sessionId, projectId));
+  }
+  if (raw.endsWith("/knowledge")) {
+    const sessionId = decodeURIComponent(raw.slice(0, -10));
+    return c.html(await renderKnowledgePage(sessionId, projectId));
+  }
+  return c.html(await renderSessionDetail(raw, projectId));
 });
+
+app.get("/projects/:projectId/ci/:runId{.+}", async (c) => {
+  const projectId = decodeURIComponent(c.req.param("projectId"));
+  const runId = decodeURIComponent(c.req.param("runId"));
+  return c.html(await renderCIRunDetail(runId, projectId));
+});
+
+app.get("/projects/:projectId/events/:eventId{.+}", async (c) => {
+  const projectId = decodeURIComponent(c.req.param("projectId"));
+  const eventId = c.req.param("eventId");
+  return c.html(await renderEventDetail(eventId, projectId));
+});
+
+app.get("/projects/:projectId/artifacts/versions", async (c) => {
+  const projectId = decodeURIComponent(c.req.param("projectId"));
+  const path = c.req.query("path") ?? "";
+  return c.html(await renderArtifactVersions(path, projectId));
+});
+
+app.get("/projects/:projectId/:section", async (c) => {
+  const projectId = decodeURIComponent(c.req.param("projectId"));
+  const section = c.req.param("section");
+
+  switch (section) {
+    case "overview":
+      return c.html(await renderProjectDetail(projectId));
+    case "sessions":
+      return c.html(await renderSessions(projectId));
+    case "stream":
+      return c.html(await renderStream(projectId));
+    case "dashboard":
+      return c.html(await renderDashboard(projectId));
+    case "decisions":
+      return c.html(await renderDecisions(projectId));
+    case "artifacts":
+      return c.html(await renderArtifacts(projectId));
+    case "errors": {
+      const severity = c.req.query("severity") || undefined;
+      const component = c.req.query("component") || undefined;
+      return c.html(await renderErrors({ severity, component }, projectId));
+    }
+    case "ci":
+      return c.html(await renderCIRuns(projectId));
+    case "git":
+      return c.html(await renderGitRepos(projectId));
+    case "graph": {
+      const q = c.req.query("q") || undefined;
+      const sparql = c.req.query("sparql") || undefined;
+      return c.html(await renderGraph(q, sparql, projectId));
+    }
+    case "ops":
+      return c.html(await renderOps(projectId));
+    default:
+      return c.text("Not found", 404);
+  }
+});
+
+// Bare project route → redirect to overview
+app.get("/projects/:projectId", async (c) => {
+  const projectId = c.req.param("projectId");
+  return c.redirect(`/projects/${encodeURIComponent(projectId)}/overview`);
+});
+
+// ── API endpoints ──────────────────────────────────────────────────
 
 // SPARQL proxy to QLever
 app.post("/api/sparql", async (c) => {
@@ -144,7 +207,6 @@ app.post("/api/git/backup", async (c) => {
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
     const filename = `git-repos-${ts}.tar.gz`;
     const hostPath = pathJoin(backupDir, filename);
-    // Tar repos inside container, copy out
     execSync(`docker exec soft-serve tar czf /tmp/repos-backup.tar.gz -C /soft-serve repos`, { timeout: 60000 });
     execSync(`docker cp soft-serve:/tmp/repos-backup.tar.gz "${hostPath}"`, { timeout: 30000 });
     execSync(`docker exec soft-serve rm -f /tmp/repos-backup.tar.gz`, { timeout: 5000 });
@@ -179,11 +241,9 @@ app.post("/api/git/restore", async (c) => {
     const { existsSync } = await import("node:fs");
     const hostPath = pathJoin(__dirname, "..", "data", "backups", filename);
     if (!existsSync(hostPath)) return c.json({ error: "Backup not found" }, 404);
-    // Copy into container and extract
     execSync(`docker cp "${hostPath}" soft-serve:/tmp/repos-restore.tar.gz`, { timeout: 30000 });
     execSync(`docker exec soft-serve tar xzf /tmp/repos-restore.tar.gz -C /soft-serve`, { timeout: 60000 });
     execSync(`docker exec soft-serve rm -f /tmp/repos-restore.tar.gz`, { timeout: 5000 });
-    // Restart Soft Serve to pick up restored repos
     execSync(`docker restart soft-serve`, { timeout: 30000 });
     return c.json({ success: true, restored: filename });
   } catch (e) {
@@ -235,7 +295,7 @@ app.get("/api/pc/logs/:name", async (c) => {
   } catch { return c.json({ error: "process-compose not reachable" }, 503); }
 });
 
-// CI notification — receives POST from runner, logs to console
+// CI notification
 app.post("/api/ci/notify", async (c) => {
   try {
     const body = await c.req.json();
@@ -247,7 +307,7 @@ app.post("/api/ci/notify", async (c) => {
   }
 });
 
-// Graph refresh — runs the full pipeline: parse AST → export triples → re-index QLever
+// Graph refresh
 app.post("/api/graph/refresh", async (c) => {
   const root = join(__dirname, "..");
   const steps: { name: string; cmd: string }[] = [
@@ -263,36 +323,14 @@ app.post("/api/graph/refresh", async (c) => {
       results.push({ step: name, ok: true, duration: Date.now() - t0, output: out.slice(-200) });
     } catch (e: any) {
       results.push({ step: name, ok: false, duration: Date.now() - t0, output: (e.stderr || e.message || "").slice(-300) });
-      break; // stop on first failure
+      break;
     }
   }
   const allOk = results.every((r) => r.ok);
   return c.json({ success: allOk, steps: results }, allOk ? 200 : 500);
 });
 
-// Routes with path params (IDs contain slashes — need {.+} wildcard)
-// Hono's {.+} is greedy — /sessions/:id{.+}/flow doesn't work because {.+} consumes /flow.
-// So we use a single catch-all and dispatch based on suffix.
-app.get("/sessions/:id{.+}", async (c) => {
-  const raw = c.req.param("id");
-  if (raw.endsWith("/flow")) {
-    const sessionId = decodeURIComponent(raw.slice(0, -5));
-    return c.html(await renderFlow(sessionId));
-  }
-  if (raw.endsWith("/knowledge")) {
-    const sessionId = decodeURIComponent(raw.slice(0, -10));
-    return c.html(await renderKnowledgePage(sessionId));
-  }
-  return c.html(await renderSessionDetail(raw));
-});
-app.get("/event/:id{.+}", async (c) => c.html(await renderEventDetail(c.req.param("id"))));
-app.get("/projects/:id{.+}", async (c) => c.html(await renderProjectDetail(c.req.param("id"))));
-app.get("/artifacts/versions", async (c) => {
-  const path = c.req.query("path") ?? "";
-  return c.html(await renderArtifactVersions(path));
-});
-
-// Proxy artifact content from :3333 so users stay on :3336
+// Proxy artifact content from :3333
 app.get("/artifacts/content/:id{.+}", async (c) => {
   const id = c.req.param("id");
   try {

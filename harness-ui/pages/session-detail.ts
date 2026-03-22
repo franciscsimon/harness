@@ -130,7 +130,7 @@ function flattenEvent(ev: any): any {
   };
 }
 
-export async function renderSessionDetail(sessionId: string): Promise<string> {
+export async function renderSessionDetail(sessionId: string, projectId?: string): Promise<string> {
   const rawEvents = (await fetchSessionEvents(sessionId)) ?? [];
   const events = rawEvents.map(flattenEvent);
   const name = sessionId.split("/").pop() ?? sessionId;
@@ -198,7 +198,7 @@ export async function renderSessionDetail(sessionId: string): Promise<string> {
   const content = `
     <div class="page-header">
       <h1>
-        <a href="/sessions" class="back-link">← Sessions</a>
+        <a href="${projectId ? `/projects/${projectId}/sessions` : `/sessions`}" class="back-link">← Sessions</a>
         <span class="header-sep">·</span>
         📂 ${escapeHtml(name)}
       </h1>
@@ -212,8 +212,8 @@ export async function renderSessionDetail(sessionId: string): Promise<string> {
     <div class="ses-detail-actions">
       <button class="btn" id="btn-expand-all">Expand All</button>
       <button class="btn" id="btn-collapse-all">Collapse All</button>
-      <a class="btn" href="/sessions/${encodeURIComponent(sessionId)}/flow">🔀 Flow</a>
-      <a class="btn" href="/sessions/${encodeURIComponent(sessionId)}/knowledge">📝 Knowledge</a>
+      <a class="btn" href="${projectId ? `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/flow` : `/sessions/${encodeURIComponent(sessionId)}/flow`}">🔀 Flow</a>
+      <a class="btn" href="${projectId ? `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}/knowledge` : `/sessions/${encodeURIComponent(sessionId)}/knowledge`}">📝 Knowledge</a>
       <a class="btn" href="/chat?session=${encodeURIComponent(sessionId)}" target="_blank">💬 Open in Chat</a>
     </div>
     ${sparkline}
@@ -224,8 +224,10 @@ export async function renderSessionDetail(sessionId: string): Promise<string> {
 
   return layout(content, {
     title: name,
-    activePath: "/sessions",
+    activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions",
     extraHead: `<script src="/static/session.js" defer></script>`,
+    projectId,
+    activeSection: "sessions",
   });
 }
 

@@ -7,7 +7,7 @@
 import { layout } from "../components/layout.ts";
 import { checkAllContainers } from "../lib/api.ts";
 
-export async function renderOps(): Promise<string> {
+export async function renderOps(projectId?: string): Promise<string> {
   // Fetch container status server-side
   const containers = await checkAllContainers().catch(() => []);
   const up = containers.filter((c) => c.ok).length;
@@ -145,7 +145,9 @@ export async function renderOps(): Promise<string> {
 
   return layout(content, {
     title: "Operations",
-    activePath: "/ops",
+    activePath: projectId ? `/projects/${projectId}/ops` : "/ops",
+    projectId,
+    activeSection: "ops",
     extraHead: `<script src="/static/modal.js" defer></script><script src="/static/ops.js" defer></script>
 <script>
 // ── Process Compose ──

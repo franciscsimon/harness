@@ -9,7 +9,7 @@ import { computeHealthScore, healthColor, healthLabel } from "../lib/health.ts";
 
 const CATEGORIES = ["session", "compaction", "agent", "message", "tool", "input", "model", "resource"];
 
-export async function renderSessions(): Promise<string> {
+export async function renderSessions(projectId?: string): Promise<string> {
   const sessions = (await fetchSessionList()) ?? [];
 
   const cards = sessions.map((s: any) => {
@@ -33,7 +33,7 @@ export async function renderSessions(): Promise<string> {
     const hColor = healthColor(score);
     const hLabel = healthLabel(score);
 
-    return `<a class="ses-card" href="/sessions/${encodeURIComponent(s.sessionId)}">
+    return `<a class="ses-card" href="${projectId ? `/projects/${projectId}/sessions/${encodeURIComponent(s.sessionId)}` : `/sessions/${encodeURIComponent(s.sessionId)}`}">
       <div class="ses-card-top">
         <span class="ses-card-name">${escapeHtml(name)}</span>
         <span class="health-badge health-badge-${hColor}">${score} ${hLabel}</span>
@@ -61,7 +61,7 @@ export async function renderSessions(): Promise<string> {
     </main>
   `;
 
-  return layout(content, { title: "Sessions", activePath: "/sessions" });
+  return layout(content, { title: "Sessions", activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions", projectId, activeSection: "sessions" });
 }
 
 // ─── Helpers ───────────────────────────────────────────────────

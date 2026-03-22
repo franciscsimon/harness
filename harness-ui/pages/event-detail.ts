@@ -14,10 +14,10 @@ function prettyPrint(val: string): string {
   try { return JSON.stringify(JSON.parse(val), null, 2); } catch { return val; }
 }
 
-export async function renderEventDetail(eventId: string): Promise<string> {
+export async function renderEventDetail(eventId: string, projectId?: string): Promise<string> {
   const row = await fetchEvent(eventId);
   if (!row) {
-    return layout(`<div class="page-header"><h1>Event Not Found</h1></div><p class="empty-msg">No event with ID <code>${escapeHtml(eventId)}</code></p>`, { title: "Event Not Found", activePath: "/sessions" });
+    return layout(`<div class="page-header"><h1>Event Not Found</h1></div><p class="empty-msg">No event with ID <code>${escapeHtml(eventId)}</code></p>`, { title: "Event Not Found", activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions", projectId, activeSection: "sessions" });
   }
 
   const color = CATEGORY_COLORS[row.category] ?? "#999";
@@ -48,12 +48,12 @@ export async function renderEventDetail(eventId: string): Promise<string> {
 
   const content = `
     <div class="page-header">
-      <h1><a href="/sessions" class="back-link">← Sessions</a> <span class="header-sep">·</span> ${sessionLink} <span style="color:${color}">●</span> ${escapeHtml(row.event_name ?? "unknown")}</h1>
+      <h1><a href="${projectId ? `/projects/${projectId}/sessions` : `/sessions`}" class="back-link">← Sessions</a> <span class="header-sep">·</span> ${sessionLink} <span style="color:${color}">●</span> ${escapeHtml(row.event_name ?? "unknown")}</h1>
       <span class="total-badge">#${row.seq ?? "?"}</span>
     </div>
     <div class="card" style="margin-bottom:1rem"><h3 style="margin:0 0 8px">Core</h3><table class="data-table">${coreRows}</table></div>
     ${scalarRows.length > 0 ? `<div class="card" style="margin-bottom:1rem"><h3 style="margin:0 0 8px">Fields</h3><table class="data-table">${scalarRows.join("\n")}</table></div>` : ""}
     ${contentBlocks.length > 0 ? `<div class="card" style="margin-bottom:1rem"><h3 style="margin:0 0 8px">Content</h3>${contentBlocks.join("\n")}</div>` : ""}
   `;
-  return layout(content, { title: `${row.event_name} #${row.seq}`, activePath: "/sessions" });
+  return layout(content, { title: `${row.event_name} #${row.seq}`, activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions", projectId, activeSection: "sessions" });
 }

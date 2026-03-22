@@ -1,7 +1,7 @@
 import { layout } from "../components/layout.ts";
 import { relativeTime, formatDuration, escapeHtml } from "../lib/format.ts";
 
-export async function renderCIRunDetail(id: string): Promise<string> {
+export async function renderCIRunDetail(id: string, projectId?: string): Promise<string> {
   let run: any = null;
   try {
     const r = await fetch(`http://localhost:3333/api/ci-runs/${encodeURIComponent(id)}`);
@@ -9,7 +9,7 @@ export async function renderCIRunDetail(id: string): Promise<string> {
   } catch {}
 
   if (!run) {
-    return layout(`<main class="container"><h1>CI Run Not Found</h1><p>No run with ID <code>${escapeHtml(id)}</code></p><a href="/ci">← Back to CI Runs</a></main>`, { title: "CI Run Not Found", activePath: "/ci" });
+    return layout(`<main class="container"><h1>CI Run Not Found</h1><p>No run with ID <code>${escapeHtml(id)}</code></p><a href="${projectId ? `/projects/${projectId}/ci` : `/ci`}">← Back to CI Runs</a></main>`, { title: "CI Run Not Found", activePath: projectId ? `/projects/${projectId}/ci` : "/ci", projectId, activeSection: "ci" });
   }
 
   const statusEmoji = run.status === "passed" ? "✅" : "❌";
@@ -42,7 +42,7 @@ export async function renderCIRunDetail(id: string): Promise<string> {
 
   const content = `
     <main class="container">
-      <p><a href="/ci">← Back to CI Runs</a></p>
+      <p><a href="${projectId ? `/projects/${projectId}/ci` : `/ci`}">← Back to CI Runs</a></p>
       <h1>${statusEmoji} CI Run: ${escapeHtml(run.repo ?? "unknown")}@${hash}</h1>
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:1.5rem 0">
@@ -79,5 +79,5 @@ export async function renderCIRunDetail(id: string): Promise<string> {
       ${stepsHtml}
     </main>`;
 
-  return layout(content, { title: `CI: ${run.repo}@${hash}`, activePath: "/ci" });
+  return layout(content, { title: `CI: ${run.repo}@${hash}`, activePath: projectId ? `/projects/${projectId}/ci` : "/ci", projectId, activeSection: "ci" });
 }

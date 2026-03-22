@@ -23,7 +23,7 @@ function mdToHtml(md: string): string {
     .replace(/\n\n/g, "\n<br>\n");
 }
 
-export async function renderKnowledgePage(sessionId: string): Promise<string> {
+export async function renderKnowledgePage(sessionId: string, projectId?: string): Promise<string> {
   const name = sessionId.split("/").pop() ?? sessionId;
   const md = await fetchKnowledge(sessionId);
 
@@ -32,7 +32,7 @@ export async function renderKnowledgePage(sessionId: string): Promise<string> {
       <div class="page-header"><h1>📝 Knowledge</h1></div>
       <p class="empty-msg">No knowledge data for this session.</p>
     `;
-    return layout(content, { title: "Knowledge", activePath: "/sessions" });
+    return layout(content, { title: "Knowledge", activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions", projectId, activeSection: "sessions" });
   }
 
   const html = mdToHtml(md);
@@ -40,9 +40,9 @@ export async function renderKnowledgePage(sessionId: string): Promise<string> {
   const content = `
     <div class="page-header">
       <h1>
-        <a href="/sessions" class="back-link">← Sessions</a>
+        <a href="${projectId ? `/projects/${projectId}/sessions` : `/sessions`}" class="back-link">← Sessions</a>
         <span class="header-sep">·</span>
-        <a href="/sessions/${encodeURIComponent(sessionId)}" class="back-link">📂 ${escapeHtml(name)}</a>
+        <a href="${projectId ? `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}` : `/sessions/${encodeURIComponent(sessionId)}`}" class="back-link">📂 ${escapeHtml(name)}</a>
         <span class="header-sep">·</span>
         📝 Knowledge
       </h1>
@@ -55,5 +55,5 @@ export async function renderKnowledgePage(sessionId: string): Promise<string> {
     </div>
   `;
 
-  return layout(content, { title: `Knowledge — ${name}`, activePath: "/sessions" });
+  return layout(content, { title: `Knowledge — ${name}`, activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions", projectId, activeSection: "sessions" });
 }

@@ -18,7 +18,7 @@ const OUTCOME_ICONS: Record<string, string> = {
   deferred: "⏸️",
 };
 
-export async function renderDecisions(): Promise<string> {
+export async function renderDecisions(projectId?: string): Promise<string> {
   const decisions = (await fetchDecisions(200)) ?? [];
 
   const rows = decisions.map((d: any) => {
@@ -55,5 +55,5 @@ export async function renderDecisions(): Promise<string> {
     </main>
   `;
 
-  return layout(content, { title: "Decisions", activePath: "/decisions" });
+  return layout(content, { title: "Decisions", activePath: projectId ? `/projects/${projectId}/decisions` : "/decisions", projectId, activeSection: "decisions" });
 }

@@ -79,7 +79,7 @@ function hasContent(p: any): boolean {
   }
 }
 
-export async function renderFlow(sessionId: string): Promise<string> {
+export async function renderFlow(sessionId: string, projectId?: string): Promise<string> {
   const projections = (await fetchProjections(sessionId)) ?? [];
   const name = sessionId.split("/").pop() ?? sessionId;
 
@@ -106,9 +106,9 @@ export async function renderFlow(sessionId: string): Promise<string> {
   const content = `
     <div class="page-header">
       <h1>
-        <a href="/sessions" class="back-link">← Sessions</a>
+        <a href="${projectId ? `/projects/${projectId}/sessions` : `/sessions`}" class="back-link">← Sessions</a>
         <span class="header-sep">·</span>
-        <a href="/sessions/${encodeURIComponent(sessionId)}" class="back-link">📂 ${escapeHtml(name)}</a>
+        <a href="${projectId ? `/projects/${projectId}/sessions/${encodeURIComponent(sessionId)}` : `/sessions/${encodeURIComponent(sessionId)}`}" class="back-link">📂 ${escapeHtml(name)}</a>
         <span class="header-sep">·</span>
         🔀 Flow
       </h1>
@@ -120,5 +120,5 @@ export async function renderFlow(sessionId: string): Promise<string> {
     </main>
   `;
 
-  return layout(content, { title: `Flow — ${name}`, activePath: "/sessions" });
+  return layout(content, { title: `Flow — ${name}`, activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions", projectId, activeSection: "sessions" });
 }

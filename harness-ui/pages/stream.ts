@@ -5,7 +5,7 @@ import { escapeHtml, CATEGORY_COLORS } from "../lib/format.ts";
 
 const CATEGORIES = ["session", "compaction", "agent", "message", "tool", "input", "model", "resource"];
 
-export async function renderStream(): Promise<string> {
+export async function renderStream(projectId?: string): Promise<string> {
   const [stats, sessions] = await Promise.all([
     fetchStats().catch(() => null),
     fetchSessionList().catch(() => null),
@@ -68,7 +68,9 @@ export async function renderStream(): Promise<string> {
 
   return layout(content, {
     title: "Event Stream",
-    activePath: "/stream",
+    activePath: projectId ? `/projects/${projectId}/stream` : "/stream",
     extraHead: `<script>window.EVENT_API = "http://localhost:3333";</script><script src="/static/stream.js" defer></script>`,
+    projectId,
+    activeSection: "stream",
   });
 }

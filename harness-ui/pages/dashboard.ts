@@ -7,11 +7,11 @@ import { fetchDashboard } from "../lib/api.ts";
 import { computeHealthScore, healthColor, healthLabel } from "../lib/health.ts";
 import { relativeTime, escapeHtml } from "../lib/format.ts";
 
-export async function renderDashboard(): Promise<string> {
+export async function renderDashboard(projectId?: string): Promise<string> {
   const data = await fetchDashboard();
   if (!data) {
     return layout('<p class="empty-msg">Dashboard unavailable — cannot reach event logger API.</p>',
-      { title: "Dashboard", activePath: "/dashboard" });
+      { title: "Dashboard", activePath: projectId ? `/projects/${projectId}/dashboard` : "/dashboard", projectId, activeSection: "dashboard" });
   }
 
   // The API pre-computes some stats, but we re-derive what we need
@@ -51,7 +51,7 @@ export async function renderDashboard(): Promise<string> {
 
   const sessionRows = ranked.map((s: any) => {
     const name = s.sessionId.split("/").pop() ?? s.sessionId;
-    return `<a class="dash-session-row" href="/sessions/${encodeURIComponent(s.sessionId)}">
+    return `<a class="dash-session-row" href="${projectId ? `/projects/${projectId}/sessions/${encodeURIComponent(s.sessionId)}` : `/sessions/${encodeURIComponent(s.sessionId)}`}">
       <span class="health-score" style="color:${colorHex(s.color)}">${s.score}</span>
       <span class="health-badge health-badge-${s.color}">${s.label}</span>
       <span class="dash-session-name" title="${escapeHtml(s.sessionId)}">${escapeHtml(name)}</span>
@@ -113,7 +113,7 @@ export async function renderDashboard(): Promise<string> {
     </div>
   `;
 
-  return layout(content, { title: "Dashboard", activePath: "/dashboard" });
+  return layout(content, { title: "Dashboard", activePath: projectId ? `/projects/${projectId}/dashboard` : "/dashboard", projectId, activeSection: "dashboard" });
 }
 
 function fmtDuration(ms: number): string {

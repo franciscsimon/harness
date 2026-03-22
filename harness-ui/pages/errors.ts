@@ -7,7 +7,7 @@ const SEVERITY_COLORS: Record<string, string> = { data_loss: "#ef4444", degraded
 const SEVERITY_ICONS: Record<string, string> = { data_loss: "🔴", degraded: "🟠", transient: "🟡", cosmetic: "🔵" };
 const SEVERITY_ORDER = ["data_loss", "degraded", "transient", "cosmetic"];
 
-export async function renderErrors(query?: { severity?: string; component?: string }): Promise<string> {
+export async function renderErrors(query?: { severity?: string; component?: string }, projectId?: string): Promise<string> {
   const [errors, summary] = await Promise.all([
     fetchErrors({ severity: query?.severity, component: query?.component, limit: 200 }),
     fetchErrorSummary(),
@@ -80,5 +80,5 @@ export async function renderErrors(query?: { severity?: string; component?: stri
       ${errorList.length === 0 ? '<p class="empty-msg">No errors captured yet.</p>' : rows}
     </main>
   `;
-  return layout(content, { title: "Errors", activePath: "/errors" });
+  return layout(content, { title: "Errors", activePath: projectId ? `/projects/${projectId}/errors` : "/errors", projectId, activeSection: "errors" });
 }

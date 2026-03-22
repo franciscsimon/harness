@@ -5,24 +5,14 @@ export interface NavItem {
   href: string;
 }
 
-const NAV_ITEMS: NavItem[] = [
+const MAIN_NAV: NavItem[] = [
   { label: "Home", href: "/" },
-  { label: "Stream", href: "/stream" },
-  { label: "Dashboard", href: "/dashboard" },
-  { label: "Sessions", href: "/sessions" },
   { label: "Projects", href: "/projects" },
-  { label: "Decisions", href: "/decisions" },
-  { label: "Artifacts", href: "/artifacts" },
-  { label: "Errors", href: "/errors" },
-  { label: "Graph", href: "/graph" },
-  { label: "CI", href: "/ci" },
-  { label: "Git", href: "/git" },
   { label: "Chat", href: "/chat" },
-  { label: "Ops", href: "/ops" },
 ];
 
 export function renderNav(activePath: string = "/"): string {
-  const links = NAV_ITEMS.map((item) => {
+  const links = MAIN_NAV.map((item) => {
     const isActive = activePath === item.href ||
       (item.href !== "/" && activePath.startsWith(item.href));
     const cls = isActive ? "nav-link active" : "nav-link";
@@ -37,4 +27,41 @@ export function renderNav(activePath: string = "/"): string {
     <div class="nav-links">${links}</div>
   </div>
 </nav>`;
+}
+
+// ─── Project Sub-Navigation ────────────────────────────────────
+
+export interface ProjectSubNavItem {
+  label: string;
+  section: string;
+}
+
+const PROJECT_SUB_NAV: ProjectSubNavItem[] = [
+  { label: "Overview", section: "overview" },
+  { label: "Sessions", section: "sessions" },
+  { label: "Stream", section: "stream" },
+  { label: "Dashboard", section: "dashboard" },
+  { label: "Decisions", section: "decisions" },
+  { label: "Artifacts", section: "artifacts" },
+  { label: "Errors", section: "errors" },
+  { label: "CI", section: "ci" },
+  { label: "Git", section: "git" },
+  { label: "Graph", section: "graph" },
+  { label: "Ops", section: "ops" },
+];
+
+export function renderProjectSubNav(projectId: string, activeSection: string = "overview"): string {
+  const links = PROJECT_SUB_NAV.map((item) => {
+    const href = `/projects/${encodeURIComponent(projectId)}/${item.section}`;
+    const isActive = activeSection === item.section;
+    const cls = isActive ? "project-nav-link active" : "project-nav-link";
+    return `<a href="${href}" class="${cls}">${item.label}</a>`;
+  }).join("");
+
+  return `<div class="project-sub-nav">
+  <div class="project-nav-header">
+    <span class="project-nav-name">📂 ${projectId}</span>
+  </div>
+  <div class="project-nav-links">${links}</div>
+</div>`;
 }

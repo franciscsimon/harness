@@ -1,7 +1,7 @@
 import { layout } from "../components/layout.ts";
 import { execSync } from "node:child_process";
 
-export async function renderGitRepos(): Promise<string> {
+export async function renderGitRepos(projectId?: string): Promise<string> {
   let repos: { name: string; description: string; isPrivate: boolean; defaultBranch: string }[] = [];
 
   try {
@@ -57,5 +57,5 @@ export async function renderGitRepos(): Promise<string> {
       }
     </main>`;
 
-  return layout(content, { title: "Git Repos", activePath: "/git" });
+  return layout(content, { title: "Git Repos", activePath: projectId ? `/projects/${projectId}/git` : "/git", projectId, activeSection: "git" });
 }

@@ -1,16 +1,22 @@
 // ─── Shared Layout ─────────────────────────────────────────────
 // Wraps page content in a full HTML shell with nav, theme, htmx.
 
-import { renderNav } from "./nav.ts";
+import { renderNav, renderProjectSubNav } from "./nav.ts";
 
 export interface LayoutOptions {
   title: string;
   activePath?: string;
   extraHead?: string;
+  projectId?: string;
+  activeSection?: string;
 }
 
 export function layout(content: string, opts: LayoutOptions): string {
-  const { title, activePath = "/", extraHead = "" } = opts;
+  const { title, activePath = "/", extraHead = "", projectId, activeSection } = opts;
+
+  const projectNav = projectId
+    ? renderProjectSubNav(projectId, activeSection ?? "overview")
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -25,7 +31,8 @@ export function layout(content: string, opts: LayoutOptions): string {
 </head>
 <body>
   ${renderNav(activePath)}
-  <div class="container">
+  ${projectNav}
+  <div class="container${projectId ? " project-container" : ""}">
     ${content}
   </div>
 </body>

@@ -145,7 +145,7 @@ ORDER BY ?file ?name`,
   },
 };
 
-export async function renderGraph(queryKey?: string, customQuery?: string): Promise<string> {
+export async function renderGraph(queryKey?: string, customQuery?: string, projectId?: string): Promise<string> {
   const activeQuery = customQuery || (queryKey && CANNED_QUERIES[queryKey]?.query) || CANNED_QUERIES.modules.query;
   const activeKey = customQuery ? "" : (queryKey || "modules");
 
@@ -435,5 +435,5 @@ export async function renderGraph(queryKey?: string, customQuery?: string): Prom
     </script>
   `;
 
-  return layout(content, { title: "Graph", activePath: "/graph" });
+  return layout(content, { title: "Graph", activePath: projectId ? `/projects/${projectId}/graph` : "/graph", projectId, activeSection: "graph" });
 }
