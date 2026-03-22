@@ -160,9 +160,27 @@ services:
       - qlever-data:/data
     working_dir: /data
 
+  # ── Soft Serve (Git Server) ───────────────────────────────────────
+  # Self-hosted Git server. Repos pushed here trigger CI via post-receive hook.
+  # Admin access via SSH key configured in SOFT_SERVE_INITIAL_ADMIN_KEYS.
+  soft-serve:
+    image: charmcli/soft-serve:latest
+    container_name: soft-serve
+    restart: unless-stopped
+    ports:
+      - "23231:23231"   # SSH (git clone/push/pull)
+      - "23232:23232"   # HTTP (web UI)
+      - "23233:23233"   # Stats
+    volumes:
+      - soft-serve-data:/soft-serve
+    environment:
+      SOFT_SERVE_DATA_PATH: /soft-serve
+      SOFT_SERVE_INITIAL_ADMIN_KEYS: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOmJmcsP1uIiTFfTkavjEmDr4W+9iTecbPU4KTJi0efv opunix@fs.evalgo.org"
+
 volumes:
   redpanda-data:
   xtdb-primary-data:
   xtdb-replica-data:
   garage-data:
   qlever-data:
+  soft-serve-data:

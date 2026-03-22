@@ -153,6 +153,7 @@ export async function checkAllContainers(): Promise<ContainerStatus[]> {
     { name: "Ops API", port: "3335", role: "Operations", check: probeHttp("http://localhost:3335/api/health") },
     { name: "Chat WS", port: "3334", role: "Chat service", check: checkChatHealth() },
     { name: "Harness UI", port: "3336", role: "This UI", check: Promise.resolve(true) },
+    { name: "Soft Serve", port: "23232", role: "Git server", check: probeHttp("http://localhost:23232") },
   ];
 
   const results = await Promise.all(checks.map(async (c) => ({

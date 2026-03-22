@@ -1,0 +1,19 @@
+{
+  "@context": {
+    "schema": "https://schema.org/",
+    "code": "https://pi.dev/code/"
+  },
+  "@type": "code:Pipeline",
+  "schema:name": "harness CI",
+  "code:steps": [
+    {
+      "@type": "code:PipelineStep",
+      "schema:name": "test",
+      "code:image": "node:22-slim",
+      "code:commands": [
+        "npm ci --ignore-scripts",
+        "npx jiti test/pure-functions.ts"
+      ]
+    }
+  ]
+}

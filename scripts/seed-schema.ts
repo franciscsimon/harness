@@ -502,6 +502,23 @@ const schema: TableDef[] = [
       ts: "bigint",
     },
   },
+  {
+    table: "ci_runs",
+    columns: {
+      _id: "text",
+      repo: "text",
+      ref: "text",
+      commit_hash: "text",
+      commit_message: "text",
+      pusher: "text",
+      status: "text",
+      steps_passed: "bigint",
+      steps_failed: "bigint",
+      duration_ms: "bigint",
+      ts: "bigint",
+      jsonld: "text",
+    },
+  },
 ];
 
 // ─── Seed logic ────────────────────────────────────────────────────
