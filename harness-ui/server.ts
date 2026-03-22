@@ -11,7 +11,7 @@ import { renderSessionDetail } from "./pages/session-detail.ts";
 import { renderDashboard } from "./pages/dashboard.ts";
 import { renderDecisions } from "./pages/decisions.ts";
 import { renderArtifacts, renderArtifactVersions } from "./pages/artifacts.ts";
-import { renderProjects, renderProjectDetail } from "./pages/projects.ts";
+import { renderProjectDetail } from "./pages/projects.ts";
 import { renderOps } from "./pages/ops.ts";
 import { renderChat } from "./pages/chat.ts";
 import { renderErrors } from "./pages/errors.ts";
@@ -60,7 +60,7 @@ app.get("/static/:file", (c) => {
 // ── Global pages (main nav) ────────────────────────────────────────
 
 app.get("/", async (c) => c.html(await renderHome()));
-app.get("/projects", async (c) => c.html(await renderProjects()));
+app.get("/projects", (c) => c.redirect("/"));
 app.get("/chat", async (c) => c.html(await renderChat()));
 
 // ── Project-scoped pages ───────────────────────────────────────────

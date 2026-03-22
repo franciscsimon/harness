@@ -18,6 +18,7 @@ import {
   getProjections,
   getProjects,
   getProject,
+  resolveProjectId,
   getProjectSessions,
   getDecisions,
   getProjectDecisions,
@@ -107,7 +108,8 @@ app.get("/api/events", async (c) => {
 });
 
 app.get("/api/sessions/list", async (c) => {
-  const projectId = c.req.query("project_id");
+  const rawProjectId = c.req.query("project_id");
+  const projectId = rawProjectId ? await resolveProjectId(rawProjectId) : undefined;
   let sessions = await getSessionList();
   if (projectId) {
     const projSessions = await getProjectSessions(projectId);
@@ -168,7 +170,8 @@ app.get("/api/sessions/:id{.+}/knowledge", async (c) => {
 
 app.get("/api/decisions", async (c) => {
   const sessionId = c.req.query("session_id");
-  const projectId = c.req.query("project_id");
+  const rawProjectId = c.req.query("project_id");
+  const projectId = rawProjectId ? await resolveProjectId(rawProjectId) : undefined;
   const decisions = projectId ? await getProjectDecisions(projectId) : await getDecisions();
   const filtered = sessionId ? decisions.filter(d => d.session_id === sessionId) : decisions;
   return c.json(filtered);
@@ -176,7 +179,8 @@ app.get("/api/decisions", async (c) => {
 
 app.get("/api/artifacts", async (c) => {
   const sessionId = c.req.query("session_id");
-  const projectId = c.req.query("project_id");
+  const rawProjectId = c.req.query("project_id");
+  const projectId = rawProjectId ? await resolveProjectId(rawProjectId) : undefined;
   const artifacts = projectId ? await getProjectArtifacts(projectId) : await getArtifacts();
   const filtered = sessionId ? artifacts.filter(a => a.session_id === sessionId) : artifacts;
   return c.json(filtered);

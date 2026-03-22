@@ -81,7 +81,7 @@ export async function renderProjectDetail(projectId: string): Promise<string> {
     const projArt = (artifacts ?? []).filter((a: any) => a.project_id === projectId);
 
     const content = `
-      <div class="page-header"><h1><a href="/projects" class="back-link">← Projects</a> · 📁 ${escapeHtml(name)}</h1></div>
+      <div class="page-header"><h1>📁 ${escapeHtml(name)}</h1></div>
       <section class="proj-info"><table class="proj-info-table">
         <tr><td class="proj-label">ID</td><td><code>${escapeHtml(projectId)}</code></td></tr>
         <tr><td class="proj-label">Decisions</td><td>${projDec.length}</td></tr>
@@ -127,7 +127,7 @@ export async function renderProjectDetail(projectId: string): Promise<string> {
   const sessionRows = sessions.map((s: any) => {
     const sName = (s.session_id || "").split("/").pop() || s._id;
     return `<tr>
-      <td><a href="/sessions/${encodeURIComponent(s.session_id || s._id)}">${escapeHtml(sName)}</a></td>
+      <td><a href="/projects/${encodeURIComponent(projectId)}/sessions/${encodeURIComponent(s.session_id || s._id)}">${escapeHtml(sName)}</a></td>
       <td><code>${escapeHtml(s.cwd || "—")}</code></td>
       <td>${relativeTime(s.ts)}</td>
     </tr>`;
@@ -152,7 +152,7 @@ export async function renderProjectDetail(projectId: string): Promise<string> {
   ).join("\n");
 
   const content = `
-    <div class="page-header"><h1><a href="/projects" class="back-link">← Projects</a> · 📁 ${escapeHtml(p.name || name)}</h1></div>
+    <div class="page-header"><h1>📁 ${escapeHtml(p.name || name)}</h1></div>
 
     <section class="proj-info"><table class="proj-info-table">${infoRows}</table></section>
 

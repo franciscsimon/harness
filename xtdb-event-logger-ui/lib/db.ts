@@ -606,6 +606,19 @@ export async function getProject(id: string): Promise<ProjectRow | null> {
 }
 
 /**
+ * Resolve a project name (e.g. "harness") to its XTDB _id (e.g. "proj:ac75514059c1").
+ * Returns the name unchanged if no matching project is found.
+ */
+export async function resolveProjectId(nameOrId: string): Promise<string> {
+  if (nameOrId.startsWith("proj:")) return nameOrId;
+  await _tablesReady;
+  const rows = await sql`
+    SELECT _id FROM projects WHERE name = ${t(nameOrId)}
+  `;
+  return (rows[0] as any)?._id ?? nameOrId;
+}
+
+/**
  * Get all session links for a project, most recent first.
  */
 export async function getProjectSessions(projectId: string): Promise<SessionProjectRow[]> {
