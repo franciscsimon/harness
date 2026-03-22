@@ -1,51 +1,52 @@
-/* ─── Event Stream Client ──────────────────────────────────────── */
+/* ─── Event Stream Client (Hybrid: live + paginated history) ──── */
 
 (function () {
   "use strict";
 
-  // ── Category colors (must match server) ──
   const COLORS = {
     session: "#3b82f6", compaction: "#8b5cf6", agent: "#22c55e", message: "#06b6d4",
     tool: "#f97316", input: "#eab308", model: "#ec4899", resource: "#6b7280",
   };
 
-  // ── State ──
   let paused = false;
   let pendingWhilePaused = [];
   let activeCategories = new Set(Object.keys(COLORS));
   let searchText = "";
   let sessionFilter = "";
+  let liveCount = 0;
 
-  // ── DOM refs ──
-  const stream = document.getElementById("stream");
+  const liveStream = document.getElementById("live-stream");
+  const historyList = document.getElementById("history-list");
   const btnPause = document.getElementById("btn-pause");
+  const btnLoadMore = document.getElementById("btn-load-more");
   const searchInput = document.getElementById("search");
   const sessionPicker = document.getElementById("session-picker");
   const connStatus = document.getElementById("conn-status");
+  const liveCounter = document.getElementById("live-counter");
 
-  // ── SSE connection ──
+  // ── SSE: live-only (no backfill) ──
+
   let evtSource = null;
-  let maxSeenSeq = -1;
 
   function connect() {
     if (evtSource) evtSource.close();
-    var apiBase = window.EVENT_API || "";
+    const apiBase = window.EVENT_API || "";
     evtSource = new EventSource(apiBase + "/api/events/stream");
 
     evtSource.addEventListener("event", function (e) {
       const ev = JSON.parse(e.data);
-      if (ev.seq > maxSeenSeq) maxSeenSeq = ev.seq;
       if (paused) {
         pendingWhilePaused.push(ev);
         btnPause.textContent = "▶ Resume (" + pendingWhilePaused.length + ")";
         return;
       }
-      addCard(ev);
+      addLiveCard(ev);
     });
 
     evtSource.addEventListener("stats", function (e) {
       const stats = JSON.parse(e.data);
-      updateStats(stats);
+      const el = document.getElementById("stat-total");
+      if (el) el.textContent = "Total: " + stats.total;
     });
 
     evtSource.addEventListener("open", function () {
@@ -61,71 +62,134 @@
     });
   }
 
-  // ── Card rendering ──
-
-  function addCard(ev) {
+  function addLiveCard(ev) {
     if (!passesFilter(ev)) return;
+    liveCount++;
+    if (liveCounter) liveCounter.textContent = liveCount;
 
+    const card = makeCard(ev);
+    card.classList.add("card-enter");
+    liveStream.prepend(card);
+    requestAnimationFrame(function () { card.classList.remove("card-enter"); });
+
+    // Cap live cards at 200
+    while (liveStream.children.length > 200) {
+      liveStream.removeChild(liveStream.lastChild);
+    }
+  }
+
+  // ── History: paginated via API ──
+
+  let historyOffset = 0;
+  const PAGE_SIZE = 50;
+  let loading = false;
+
+  async function loadHistory() {
+    if (loading) return;
+    loading = true;
+    btnLoadMore.textContent = "Loading...";
+    btnLoadMore.disabled = true;
+
+    try {
+      const apiBase = window.EVENT_API || "";
+      let url = apiBase + "/api/events?limit=" + PAGE_SIZE;
+      if (sessionFilter) url += "&session_id=" + encodeURIComponent(sessionFilter);
+
+      // Use offset via fetching events before the oldest we have
+      if (historyOffset > 0) {
+        // We need events older than the oldest shown
+        const oldest = historyList.lastElementChild;
+        const oldestSeq = oldest ? oldest.dataset.seq : null;
+        // Fetch the next page — API returns newest first, so we use limit
+        // XTDB doesn't support OFFSET easily, so we fetch by limit with skip
+        url = apiBase + "/api/events?limit=" + (PAGE_SIZE + historyOffset);
+      }
+
+      const r = await fetch(url);
+      if (!r.ok) throw new Error("API error");
+      let events = await r.json();
+
+      // Skip already-shown events
+      if (historyOffset > 0) {
+        events = events.slice(historyOffset);
+      }
+
+      if (events.length === 0) {
+        btnLoadMore.textContent = "No more events";
+        btnLoadMore.disabled = true;
+        loading = false;
+        return;
+      }
+
+      for (const ev of events) {
+        if (passesFilter(ev)) {
+          const card = makeCard(ev);
+          historyList.appendChild(card);
+        }
+      }
+
+      historyOffset += events.length;
+      btnLoadMore.textContent = "Load More (" + historyOffset + " loaded)";
+      btnLoadMore.disabled = false;
+    } catch (e) {
+      btnLoadMore.textContent = "Error — retry";
+      btnLoadMore.disabled = false;
+    }
+    loading = false;
+  }
+
+  // ── Shared card renderer ──
+
+  function makeCard(ev) {
     const card = document.createElement("div");
     card.className = "event-card";
     card.dataset.category = ev.category;
     card.dataset.eventName = ev.eventName;
     card.dataset.id = ev.id;
+    if (ev.seq) card.dataset.seq = ev.seq;
 
     const color = COLORS[ev.category] || "#999";
 
-    // Header line
     let html = '<div class="card-header">';
     html += '<span class="cat-dot" style="background:' + color + '"></span>';
     html += '<span class="card-name">' + esc(ev.eventName) + '</span>';
     html += '<span class="cat-badge" style="background:' + color + '">' + esc(ev.category) + '</span>';
-    html += '<span class="card-seq">#' + ev.seq + '</span>';
+    if (ev.seq) html += '<span class="card-seq">#' + ev.seq + '</span>';
     html += '<span class="card-time">' + relativeTime(ev.ts) + '</span>';
     html += '</div>';
 
-    // Fields line
-    var fields = ev.fields || {};
-    var keys = Object.keys(fields);
+    const fields = ev.fields || {};
+    const keys = Object.keys(fields);
     if (keys.length > 0) {
       html += '<div class="card-fields">';
-      for (var i = 0; i < keys.length; i++) {
-        var val = fields[keys[i]];
+      for (let i = 0; i < Math.min(keys.length, 5); i++) {
+        let val = fields[keys[i]];
         if (val && String(val).length > 60) val = String(val).slice(0, 57) + "...";
         html += '<span class="field-pair"><span class="field-k">' + esc(keys[i]) + ':</span> ' + esc(String(val)) + '</span>';
       }
+      if (keys.length > 5) html += '<span class="field-pair">+' + (keys.length - 5) + ' more</span>';
       html += '</div>';
     }
 
-    // Detail link
-    html += '<div class="card-detail-link"><a href="/event/' + encodeURIComponent(ev.id) + '" target="_blank">View detail →</a></div>';
+    html += '<div class="card-detail-link"><a href="/event/' + encodeURIComponent(ev.id) + '">View detail →</a></div>';
 
     card.innerHTML = html;
     card.style.borderLeftColor = color;
-
-    // Animate in
-    card.classList.add("card-enter");
-    stream.prepend(card);
-    requestAnimationFrame(function () { card.classList.remove("card-enter"); });
-
-    // Cap at 500 cards in DOM
-    while (stream.children.length > 500) {
-      stream.removeChild(stream.lastChild);
-    }
+    return card;
   }
 
   // ── Filters ──
 
   function passesFilter(ev) {
     if (!activeCategories.has(ev.category)) return false;
-    if (searchText && ev.eventName.indexOf(searchText) === -1) return false;
+    if (searchText && (ev.eventName || "").toLowerCase().indexOf(searchText) === -1) return false;
     if (sessionFilter && ev.sessionId !== sessionFilter) return false;
     return true;
   }
 
-  // Category pill toggles
   document.querySelectorAll(".cat-pill").forEach(function (pill) {
     pill.addEventListener("click", function () {
-      var cat = this.dataset.category;
+      const cat = this.dataset.category;
       if (activeCategories.has(cat)) {
         activeCategories.delete(cat);
         this.classList.remove("active");
@@ -133,43 +197,28 @@
         activeCategories.add(cat);
         this.classList.add("active");
       }
-      refilterCards();
     });
   });
 
-  // Search
-  searchInput.addEventListener("input", function () {
+  if (searchInput) searchInput.addEventListener("input", function () {
     searchText = this.value.toLowerCase();
-    refilterCards();
   });
 
-  // Session picker
-  sessionPicker.addEventListener("change", function () {
+  if (sessionPicker) sessionPicker.addEventListener("change", function () {
     sessionFilter = this.value;
-    refilterCards();
+    // Reset history when session changes
+    historyList.innerHTML = "";
+    historyOffset = 0;
+    loadHistory();
   });
-
-  function refilterCards() {
-    var cards = stream.querySelectorAll(".event-card");
-    cards.forEach(function (card) {
-      var cat = card.dataset.category;
-      var name = card.dataset.eventName;
-      var show = activeCategories.has(cat);
-      if (show && searchText) show = name.indexOf(searchText) !== -1;
-      card.style.display = show ? "" : "none";
-    });
-  }
 
   // ── Pause/Resume ──
 
-  btnPause.addEventListener("click", function () {
+  if (btnPause) btnPause.addEventListener("click", function () {
     if (paused) {
       paused = false;
       btnPause.textContent = "⏸ Pause";
-      // Flush pending
-      for (var i = 0; i < pendingWhilePaused.length; i++) {
-        addCard(pendingWhilePaused[i]);
-      }
+      for (const ev of pendingWhilePaused) addLiveCard(ev);
       pendingWhilePaused = [];
     } else {
       paused = true;
@@ -177,26 +226,14 @@
     }
   });
 
-  // ── Stats ──
+  // ── Load More ──
 
-  function updateStats(stats) {
-    var el = document.getElementById("stat-total");
-    if (el) el.textContent = "Total: " + stats.total;
-    var cats = Object.keys(COLORS);
-    for (var i = 0; i < cats.length; i++) {
-      var c = cats[i];
-      var val = stats.byCategory[c] || 0;
-      var el1 = document.getElementById("stat-" + c);
-      if (el1) el1.textContent = val;
-      var el2 = document.getElementById("stat-bar-" + c);
-      if (el2) el2.textContent = val;
-    }
-  }
+  if (btnLoadMore) btnLoadMore.addEventListener("click", loadHistory);
 
   // ── Helpers ──
 
   function relativeTime(ts) {
-    var diff = Date.now() - ts;
+    const diff = Date.now() - ts;
     if (diff < 1000) return "now";
     if (diff < 60000) return Math.floor(diff / 1000) + "s ago";
     if (diff < 3600000) return Math.floor(diff / 60000) + "m ago";
@@ -209,37 +246,8 @@
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
-  // ── Update times every 10s ──
-  setInterval(function () {
-    stream.querySelectorAll(".card-time").forEach(function (el) {
-      // We'd need the ts stored — skip for now, times are set at render
-    });
-  }, 10000);
+  // ── Init ──
 
-  // ── Wipe DB button ──
-  var btnWipe = document.getElementById("btn-wipe");
-  if (btnWipe) {
-    btnWipe.addEventListener("click", function () {
-      modal.confirm("Wipe Database", "This will permanently erase ALL events from the database.\n\nAre you sure?", "danger").then(function (ok) {
-        if (!ok) return;
-        btnWipe.disabled = true;
-        btnWipe.textContent = "Wiping...";
-        fetch((window.EVENT_API || "") + "/api/wipe", { method: "POST" })
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
-            modal.alert("Database Wiped", data.message, "success").then(function () {
-              window.location.reload();
-            });
-          })
-          .catch(function (err) {
-            modal.alert("Wipe Failed", String(err), "danger");
-            btnWipe.disabled = false;
-            btnWipe.textContent = "Wipe DB";
-          });
-      });
-    });
-  }
-
-  // ── Start ──
   connect();
+  loadHistory(); // Load first page of history
 })();

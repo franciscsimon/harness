@@ -1,7 +1,4 @@
-// ─── Live Event Stream Page ────────────────────────────────────
-// Ported from xtdb-event-logger-ui/pages/index.ts
-// Client-side: stream.js handles SSE + card rendering.
-
+// ─── Live Event Stream Page (Hybrid: live + paginated history) ──
 import { layout } from "../components/layout.ts";
 import { fetchStats, fetchSessionList } from "../lib/api.ts";
 import { escapeHtml, CATEGORY_COLORS } from "../lib/format.ts";
@@ -22,7 +19,7 @@ export async function renderStream(): Promise<string> {
     const count = byCategory[c] ?? 0;
     return `<button class="cat-pill active" data-category="${c}" style="--cat-color:${color}">
       <span class="cat-dot" style="background:${color}"></span>${c}
-      <span class="cat-count" id="stat-${c}">${count}</span>
+      <span class="cat-count">${count}</span>
     </button>`;
   }).join("\n");
 
@@ -32,23 +29,16 @@ export async function renderStream(): Promise<string> {
     return `<option value="${escapeHtml(String(id))}">${escapeHtml(String(label))}</option>`;
   }).join("\n");
 
-  const statsBar = CATEGORIES.map((c) => {
-    const color = CATEGORY_COLORS[c] ?? "#999";
-    return `<span class="stat-item" style="--cat-color:${color}">
-      <span class="cat-dot" style="background:${color}"></span>
-      ${c}: <b id="stat-bar-${c}">${byCategory[c] ?? 0}</b>
-    </span>`;
-  }).join("");
-
   const content = `
     <div class="page-header">
-      <h1>📊 Live Event Stream</h1>
+      <h1>📊 Event Stream</h1>
       <div style="display:flex;gap:8px;align-items:center">
         <span class="total-badge" id="stat-total">Total: ${total}</span>
         <span class="conn-status" id="conn-status" title="SSE connection">●</span>
         <button class="btn" id="btn-pause">⏸ Pause</button>
       </div>
     </div>
+
     <div class="filter-bar">
       <input type="text" id="search" placeholder="🔍 Filter event name..." autocomplete="off">
       <select id="session-picker">
@@ -57,12 +47,27 @@ export async function renderStream(): Promise<string> {
       </select>
     </div>
     <div class="cat-bar">${catPills}</div>
-    <div class="stats-bar" id="stats-bar">${statsBar}</div>
-    <main id="stream"></main>
+
+    <div style="margin:1.5rem 0">
+      <h2 style="margin-bottom:0.5rem">🔴 Live <span id="live-counter" style="color:#8b949e;font-size:0.85rem">0</span></h2>
+      <p style="color:#8b949e;font-size:0.85rem;margin-bottom:0.75rem">New events appear here in real-time</p>
+      <div id="live-stream"></div>
+    </div>
+
+    <hr style="border-color:#30363d;margin:1.5rem 0">
+
+    <div>
+      <h2 style="margin-bottom:0.5rem">📋 History</h2>
+      <p style="color:#8b949e;font-size:0.85rem;margin-bottom:0.75rem">Recent events loaded in pages of 50</p>
+      <div id="history-list"></div>
+      <div style="text-align:center;margin:1rem 0">
+        <button class="btn" id="btn-load-more">Load More</button>
+      </div>
+    </div>
   `;
 
   return layout(content, {
-    title: "Live Stream",
+    title: "Event Stream",
     activePath: "/stream",
     extraHead: `<script>window.EVENT_API = "http://localhost:3333";</script><script src="/static/stream.js" defer></script>`,
   });
