@@ -188,6 +188,83 @@ services:
       - zot-data:/var/lib/zot
       - ./zot-config.json:/etc/zot/config.json:ro
 
+  # ── App Services ────────────────────────────────────────────────
+  event-api:
+    build: { context: ., dockerfile: xtdb-event-logger-ui/Dockerfile }
+    image: localhost:5050/harness/event-api:latest
+    container_name: event-api
+    restart: unless-stopped
+    ports: ["3333:3333"]
+    environment:
+      UI_PORT: "3333"
+      XTDB_EVENT_HOST: xtdb-primary
+      XTDB_EVENT_PORT: "5432"
+    depends_on: [xtdb-primary]
+
+  chat-ws:
+    build: { context: ., dockerfile: web-chat/Dockerfile }
+    image: localhost:5050/harness/chat-ws:latest
+    container_name: chat-ws
+    restart: unless-stopped
+    ports: ["3334:3334"]
+    environment:
+      PORT: "3334"
+
+  ops-api:
+    build: { context: ., dockerfile: xtdb-ops-api/Dockerfile }
+    image: localhost:5050/harness/ops-api:latest
+    container_name: ops-api
+    restart: unless-stopped
+    ports: ["3335:3335"]
+    environment:
+      OPS_PORT: "3335"
+      XTDB_EVENT_HOST: xtdb-primary
+      XTDB_EVENT_PORT: "5432"
+      XTDB_REPLICA_HOST: xtdb-replica
+      XTDB_REPLICA_PORT: "5432"
+    depends_on: [xtdb-primary, redpanda]
+
+  harness-ui:
+    build: { context: ., dockerfile: harness-ui/Dockerfile }
+    image: localhost:5050/harness/harness-ui:latest
+    container_name: harness-ui
+    restart: unless-stopped
+    ports: ["3336:3336"]
+    environment:
+      PORT: "3336"
+      EVENT_API_URL: http://event-api:3333
+      OPS_API_URL: http://ops-api:3335
+      CHAT_WS_URL: ws://chat-ws:3334/ws
+      CHAT_HTTP_URL: http://chat-ws:3334
+      QLEVER_URL: http://qlever:7001
+      REDPANDA_HOST: redpanda
+      REDPANDA_PORT: "9092"
+      GARAGE_URL: http://garage:3900
+      XTDB_PRIMARY_HEALTH: http://xtdb-primary:8080
+      XTDB_REPLICA_HEALTH: http://xtdb-replica:8080
+      KEYCLOAK_URL: http://keycloak:8180
+      SOFT_SERVE_HTTP: http://soft-serve:23232
+      ZOT_URL: http://zot:5000
+    depends_on: [event-api, ops-api, chat-ws]
+
+  ci-runner:
+    build: { context: ., dockerfile: ci-runner/Dockerfile }
+    image: localhost:5050/harness/ci-runner:latest
+    container_name: ci-runner
+    restart: unless-stopped
+    ports: ["3337:3337"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ci-queue:/app/ci-queue
+    environment:
+      PORT: "3337"
+      XTDB_EVENT_HOST: xtdb-primary
+      XTDB_EVENT_PORT: "5432"
+      SOFT_SERVE_SSH: ssh://soft-serve:23231
+      CI_QUEUE_DIR: /app/ci-queue
+      HARNESS_UI_URL: http://harness-ui:3336
+    depends_on: [xtdb-primary, soft-serve]
+
 volumes:
   redpanda-data:
   xtdb-primary-data:
@@ -196,3 +273,4 @@ volumes:
   qlever-data:
   soft-serve-data:
   zot-data:
+  ci-queue:

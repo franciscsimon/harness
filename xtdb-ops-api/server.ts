@@ -61,20 +61,17 @@ app.get("/api/health/redpanda", async (c) => {
 
 app.get("/api/replication", async (c) => {
   try {
-    const [primaryResult, replicaResult] = await Promise.all([
-      exec("docker", [
-        "run", "--rm", "--network", "host", "postgres:16-alpine",
-        "psql", "-h", "localhost", "-p", "5433", "-U", "xtdb", "-d", "xtdb",
-        "-Atqc", "SELECT COUNT(*) FROM events",
-      ], { timeout: 10_000 }),
-      exec("docker", [
-        "run", "--rm", "--network", "host", "postgres:16-alpine",
-        "psql", "-h", "localhost", "-p", "5434", "-U", "xtdb", "-d", "xtdb",
-        "-Atqc", "SELECT COUNT(*) FROM events",
-      ], { timeout: 10_000 }),
+    const { default: postgres } = await import("postgres");
+    const primaryDb = postgres({ host: process.env.XTDB_EVENT_HOST ?? "localhost", port: Number(process.env.XTDB_EVENT_PORT ?? "5433"), database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 5 });
+    const replicaDb = postgres({ host: process.env.XTDB_REPLICA_HOST ?? (process.env.XTDB_EVENT_HOST ?? "localhost"), port: Number(process.env.XTDB_REPLICA_PORT ?? "5434"), database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 5 });
+    const [primaryRows, replicaRows] = await Promise.all([
+      primaryDb`SELECT COUNT(*) AS cnt FROM events`,
+      replicaDb`SELECT COUNT(*) AS cnt FROM events`,
     ]);
-    const primary = parseInt(primaryResult.stdout.trim(), 10) || 0;
-    const replica = parseInt(replicaResult.stdout.trim(), 10) || 0;
+    await primaryDb.end();
+    await replicaDb.end();
+    const primary = Number(primaryRows[0]?.cnt ?? 0);
+    const replica = Number(replicaRows[0]?.cnt ?? 0);
     return c.json({ primary, replica, lag: primary - replica, synced: primary === replica });
   } catch (err: unknown) {
     return c.json({ error: String(err) }, 500);

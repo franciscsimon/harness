@@ -152,14 +152,14 @@ export interface ContainerStatus {
 
 export async function checkAllContainers(): Promise<ContainerStatus[]> {
   const checks: Array<{ name: string; port: string; role: string; check: Promise<boolean> }> = [
-    { name: "Redpanda", port: "19092", role: "Kafka broker", check: probeTcp("localhost", 19092) },
-    { name: "Garage S3", port: "3900", role: "Object store", check: probeHttp("http://localhost:3900/health") },
-    { name: "XTDB Primary", port: "5433", role: "Database (write)", check: probeHttp("http://localhost:8083/healthz/alive") },
-    { name: "XTDB Replica", port: "5434", role: "Database (read)", check: probeHttp("http://localhost:8084/healthz/alive") },
-    { name: "Keycloak", port: "8180", role: "Auth server", check: probeHttp("http://localhost:8180/health/ready") },
+    { name: "Redpanda", port: "9092", role: "Kafka broker", check: probeTcp(process.env.REDPANDA_HOST ?? "localhost", Number(process.env.REDPANDA_PORT ?? "19092")) },
+    { name: "Garage S3", port: "3900", role: "Object store", check: probeHttp(`${process.env.GARAGE_URL ?? "http://localhost:3900"}/health`) },
+    { name: "XTDB Primary", port: "5432", role: "Database (write)", check: probeHttp(`${process.env.XTDB_PRIMARY_HEALTH ?? "http://localhost:8083"}/healthz/alive`) },
+    { name: "XTDB Replica", port: "5432", role: "Database (read)", check: probeHttp(`${process.env.XTDB_REPLICA_HEALTH ?? "http://localhost:8084"}/healthz/alive`) },
+    { name: "Keycloak", port: "8180", role: "Auth server", check: probeHttp(`${process.env.KEYCLOAK_URL ?? "http://localhost:8180"}/health/ready`) },
     { name: "QLever", port: "7001", role: "SPARQL endpoint", check: checkQleverHealth() },
-    { name: "Soft Serve", port: "23232", role: "Git server", check: probeHttp("http://localhost:23232") },
-    { name: "Process Compose", port: "8080", role: "Service orchestrator", check: probeHttp("http://localhost:8080/liveness") },
+    { name: "Soft Serve", port: "23232", role: "Git server", check: probeHttp(process.env.SOFT_SERVE_HTTP ?? "http://localhost:23232") },
+    { name: "Zot Registry", port: "5000", role: "OCI registry", check: probeHttp(`${process.env.ZOT_URL ?? "http://localhost:5050"}/v2/`) },
   ];
 
   const results = await Promise.all(checks.map(async (c) => ({

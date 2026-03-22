@@ -229,7 +229,7 @@ async function runJob(job: CIJob): Promise<void> {
 
       // Notify harness-ui via SSE-compatible event (shows in /stream)
       try {
-        await fetch("http://localhost:3336/api/ci/notify", {
+        await fetch(`${process.env.HARNESS_UI_URL ?? "http://localhost:3336"}/api/ci/notify`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

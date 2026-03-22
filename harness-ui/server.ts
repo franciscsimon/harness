@@ -332,7 +332,7 @@ app.post("/api/graph/refresh", async (c) => {
 app.get("/artifacts/content/:id{.+}", async (c) => {
   const id = c.req.param("id");
   try {
-    const upstream = `http://localhost:3333/artifacts/content/${encodeURIComponent(id)}`;
+    const upstream = `${process.env.EVENT_API_URL ?? "http://localhost:3333"}/artifacts/content/${encodeURIComponent(id)}`;
     const resp = await fetch(upstream);
     if (!resp.ok) return c.html(`<h1>Version not found</h1>`, 404);
     const html = await resp.text();
