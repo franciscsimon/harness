@@ -520,6 +520,25 @@ const schema: TableDef[] = [
       jsonld: "text",
     },
   },
+  {
+    table: "docker_events",
+    columns: {
+      _id: "text",
+      event_type: "text",
+      action: "text",
+      container_id: "text",
+      container_name: "text",
+      service_name: "text",
+      compose_project: "text",
+      image: "text",
+      exit_code: "bigint",
+      severity: "text",
+      attributes: "text",
+      ts: "bigint",
+      ts_nano: "bigint",
+      jsonld: "text",
+    },
+  },
 ];
 
 // ─── Seed logic ────────────────────────────────────────────────────
