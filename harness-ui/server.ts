@@ -191,6 +191,50 @@ app.post("/api/git/restore", async (c) => {
   }
 });
 
+// ── Process Compose proxy ────────────────────────────────────────
+const PC_API = process.env.PC_API ?? "http://localhost:8080";
+
+app.get("/api/pc/processes", async (c) => {
+  try {
+    const r = await fetch(`${PC_API}/processes`, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return c.json({ error: `PC returned ${r.status}` }, 502);
+    return c.json(await r.json());
+  } catch { return c.json({ error: "process-compose not reachable" }, 503); }
+});
+
+app.post("/api/pc/restart/:name", async (c) => {
+  try {
+    const name = c.req.param("name");
+    const r = await fetch(`${PC_API}/process/restart/${name}`, { method: "POST", signal: AbortSignal.timeout(10000) });
+    return c.json({ success: r.ok, status: r.status });
+  } catch { return c.json({ error: "process-compose not reachable" }, 503); }
+});
+
+app.post("/api/pc/stop/:name", async (c) => {
+  try {
+    const name = c.req.param("name");
+    const r = await fetch(`${PC_API}/process/stop/${name}`, { method: "PATCH", signal: AbortSignal.timeout(10000) });
+    return c.json({ success: r.ok, status: r.status });
+  } catch { return c.json({ error: "process-compose not reachable" }, 503); }
+});
+
+app.post("/api/pc/start/:name", async (c) => {
+  try {
+    const name = c.req.param("name");
+    const r = await fetch(`${PC_API}/process/start/${name}`, { method: "POST", signal: AbortSignal.timeout(10000) });
+    return c.json({ success: r.ok, status: r.status });
+  } catch { return c.json({ error: "process-compose not reachable" }, 503); }
+});
+
+app.get("/api/pc/logs/:name", async (c) => {
+  try {
+    const name = c.req.param("name");
+    const r = await fetch(`${PC_API}/process/logs/${name}?limit=100`, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return c.json({ error: `PC returned ${r.status}` }, 502);
+    return c.json(await r.json());
+  } catch { return c.json({ error: "process-compose not reachable" }, 503); }
+});
+
 // CI notification — receives POST from runner, logs to console
 app.post("/api/ci/notify", async (c) => {
   try {

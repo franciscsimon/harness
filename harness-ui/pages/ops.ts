@@ -26,6 +26,14 @@ export async function renderOps(): Promise<string> {
 
       <div class="ops-section">
         <div class="ops-section-header">
+          <h2>⚙️ Process Compose</h2>
+          <button class="btn" onclick="loadPCProcesses()">🔄 Refresh</button>
+        </div>
+        <div id="pc-processes"><p class="empty-msg">Loading...</p></div>
+      </div>
+
+      <div class="ops-section">
+        <div class="ops-section-header">
           <h2>🐳 Docker Containers</h2>
           <span class="ops-refresh-badge">${up}/${containers.length} up</span>
         </div>
@@ -140,6 +148,48 @@ export async function renderOps(): Promise<string> {
     activePath: "/ops",
     extraHead: `<script src="/static/modal.js" defer></script><script src="/static/ops.js" defer></script>
 <script>
+// ── Process Compose ──
+async function loadPCProcesses() {
+  const el = document.getElementById("pc-processes");
+  try {
+    const r = await fetch("/api/pc/processes");
+    const data = await r.json();
+    if (data.error) { el.innerHTML = '<p class="empty-msg">' + data.error + '</p>'; return; }
+    const procs = data.data || data || [];
+    if (!Array.isArray(procs) || procs.length === 0) { el.innerHTML = '<p class="empty-msg">No processes (is process-compose running?)</p>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Process</th><th>Status</th><th>PID</th><th>Ready</th><th>Uptime</th><th>Restarts</th><th>Actions</th></tr></thead><tbody>' +
+      procs.map(function(p) {
+        var name = p.name || "?";
+        var status = p.status || "Unknown";
+        var isUp = (status === "Running");
+        var color = isUp ? "#238636" : status === "Completed" ? "#8b949e" : "#da3633";
+        var pid = p.pid || "—";
+        var ready = p.is_ready ? "✅" : "❌";
+        var uptime = p.system_time ? p.system_time : "—";
+        var restarts = p.restarts || 0;
+        return '<tr><td><strong>' + name + '</strong></td>' +
+          '<td style="color:' + color + '">' + status + '</td>' +
+          '<td>' + pid + '</td><td>' + ready + '</td>' +
+          '<td>' + uptime + '</td><td>' + restarts + '</td>' +
+          '<td><button class="btn" onclick="pcAction(\\'restart\\',\\'' + name + '\\')">🔄</button> ' +
+          (isUp ? '<button class="btn" onclick="pcAction(\\'stop\\',\\'' + name + '\\')">⏹</button>' :
+                  '<button class="btn" onclick="pcAction(\\'start\\',\\'' + name + '\\')">▶️</button>') +
+          '</td></tr>';
+      }).join("") +
+      '</tbody></table>';
+  } catch(e) { el.innerHTML = '<p class="empty-msg">Failed to load: ' + e.message + '</p>'; }
+}
+async function pcAction(action, name) {
+  try {
+    const r = await fetch("/api/pc/" + action + "/" + name, { method: "POST" });
+    const d = await r.json();
+    if (d.success) { setTimeout(loadPCProcesses, 2000); }
+    else { alert("Action failed: " + JSON.stringify(d)); }
+  } catch(e) { alert("Error: " + e.message); }
+}
+document.addEventListener("DOMContentLoaded", loadPCProcesses);
+
+// ── Git Backup ──
 async function gitBackup() {
   const btn = document.getElementById("btn-git-backup");
   const status = document.getElementById("git-backup-status");
