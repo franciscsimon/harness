@@ -1,0 +1,60 @@
+{
+  "deploys": [
+    {
+      "timestamp": "2026-03-22T17:51:08.870Z",
+      "commitHash": "ca2ea30",
+      "commitFull": "ca2ea303251594b754e8a25574bc3277fee679d2",
+      "commitMessage": "Phase 3: Image-based deploy pipeline",
+      "status": "success",
+      "services": [
+        {
+          "name": "event-api",
+          "success": true,
+          "phase": "health",
+          "durationMs": 5207
+        },
+        {
+          "name": "chat-ws",
+          "success": true,
+          "phase": "health",
+          "durationMs": 7147
+        },
+        {
+          "name": "ops-api",
+          "success": true,
+          "phase": "health",
+          "durationMs": 6582
+        },
+        {
+          "name": "harness-ui",
+          "success": true,
+          "phase": "health",
+          "durationMs": 5677
+        },
+        {
+          "name": "ci-runner",
+          "success": true,
+          "phase": "health",
+          "durationMs": 5489
+        }
+      ],
+      "durationMs": 41518
+    },
+    {
+      "timestamp": "2026-03-22T17:50:22.283Z",
+      "commitHash": "ca2ea30",
+      "commitFull": "ca2ea303251594b754e8a25574bc3277fee679d2",
+      "commitMessage": "Phase 3: Image-based deploy pipeline",
+      "status": "success",
+      "services": [
+        {
+          "name": "ops-api",
+          "success": true,
+          "phase": "health",
+          "durationMs": 7403
+        }
+      ],
+      "durationMs": 10611
+    }
+  ]
+}

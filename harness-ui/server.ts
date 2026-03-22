@@ -310,7 +310,7 @@ app.post("/api/deploy", async (c) => {
     for (const svcName of services) {
       try {
         // Pull latest image and recreate container
-        execSync(`docker compose up -d --no-deps --pull always ${svcName}`, {
+        execSync(`docker compose -p harness -f /app/docker-compose.yml up -d --no-deps --pull always ${svcName}`, {
           timeout: 120_000,
           encoding: "utf-8",
           stdio: ["pipe", "pipe", "pipe"],
