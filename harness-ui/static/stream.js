@@ -95,24 +95,12 @@
       let url = apiBase + "/api/events?limit=" + PAGE_SIZE;
       if (sessionFilter) url += "&session_id=" + encodeURIComponent(sessionFilter);
 
-      // Use offset via fetching events before the oldest we have
-      if (historyOffset > 0) {
-        // We need events older than the oldest shown
-        const oldest = historyList.lastElementChild;
-        const oldestSeq = oldest ? oldest.dataset.seq : null;
-        // Fetch the next page — API returns newest first, so we use limit
-        // XTDB doesn't support OFFSET easily, so we fetch by limit with skip
-        url = apiBase + "/api/events?limit=" + (PAGE_SIZE + historyOffset);
-      }
-
-      const r = await fetch(url);
-      if (!r.ok) throw new Error("API error");
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+      const r = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!r.ok) throw new Error("API returned " + r.status);
       let events = await r.json();
-
-      // Skip already-shown events
-      if (historyOffset > 0) {
-        events = events.slice(historyOffset);
-      }
 
       if (events.length === 0) {
         btnLoadMore.textContent = "No more events";
@@ -121,6 +109,8 @@
         return;
       }
 
+      // Clear and re-render (since we fetch with increasing limit)
+      historyList.innerHTML = "";
       for (const ev of events) {
         if (passesFilter(ev)) {
           const card = makeCard(ev);
@@ -128,8 +118,8 @@
         }
       }
 
-      historyOffset += events.length;
-      btnLoadMore.textContent = "Load More (" + historyOffset + " loaded)";
+      historyOffset = events.length;
+      btnLoadMore.textContent = "Load More (" + historyOffset + " shown)";
       btnLoadMore.disabled = false;
     } catch (e) {
       btnLoadMore.textContent = "Error — retry";
