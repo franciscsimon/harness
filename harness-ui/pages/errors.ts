@@ -9,8 +9,9 @@ const SEVERITY_ORDER = ["data_loss", "degraded", "transient", "cosmetic"];
 
 export async function renderErrors(query?: { severity?: string; component?: string }, projectId?: string): Promise<string> {
   const [errors, summary] = await Promise.all([
-    fetchErrors({ severity: query?.severity, component: query?.component, limit: 200, projectId }),
-    fetchErrorSummary(projectId),
+    // Note: errors don't have project_id yet — show all errors regardless of project
+    fetchErrors({ severity: query?.severity, component: query?.component, limit: 200 }),
+    fetchErrorSummary(),
   ]);
   const errorList = errors ?? [];
   const sum = summary ?? { total: 0, bySeverity: {}, byComponent: {} };
@@ -20,7 +21,7 @@ export async function renderErrors(query?: { severity?: string; component?: stri
     const icon = SEVERITY_ICONS[sev] ?? "•";
     const color = SEVERITY_COLORS[sev] ?? "#6b7280";
     const isActive = query?.severity === sev;
-    return `<a href="/errors${sev === query?.severity ? "" : "?severity=" + sev}" class="err-summary-card${isActive ? " active" : ""}" style="--sev-color:${color}">
+    return `<a href="${projectId ? `/projects/${projectId}/errors` : `/errors`}${sev === query?.severity ? "" : "?severity=" + sev}" class="err-summary-card${isActive ? " active" : ""}" style="--sev-color:${color}">
       <span class="err-summary-icon">${icon}</span>
       <span class="err-summary-count">${count}</span>
       <span class="err-summary-label">${sev.replace("_", " ")}</span>
@@ -35,7 +36,7 @@ export async function renderErrors(query?: { severity?: string; component?: stri
     if (query?.severity) params.set("severity", query.severity);
     if (!isActive) params.set("component", comp);
     const qs = params.toString();
-    return `<a href="/errors${qs ? "?" + qs : ""}" class="err-chip${isActive ? " active" : ""}">${escapeHtml(comp)} <span class="err-chip-count">${count}</span></a>`;
+    return `<a href="${projectId ? `/projects/${projectId}/errors` : `/errors`}${qs ? "?" + qs : ""}" class="err-chip${isActive ? " active" : ""}">${escapeHtml(comp)} <span class="err-chip-count">${count}</span></a>`;
   }).join("\n");
 
   const rows = errorList.map((e: any) => {
@@ -69,7 +70,7 @@ export async function renderErrors(query?: { severity?: string; component?: stri
   if (query?.severity) activeFilters.push(`severity: ${query.severity}`);
   if (query?.component) activeFilters.push(`component: ${query.component}`);
   const filterBanner = activeFilters.length > 0
-    ? `<div class="err-active-filters">Filtered by ${activeFilters.join(", ")} · <a href="/errors">Clear filters</a></div>` : "";
+    ? `<div class="err-active-filters">Filtered by ${activeFilters.join(", ")} · <a href="${projectId ? `/projects/${projectId}/errors` : `/errors`}">Clear filters</a></div>` : "";
 
   const content = `
     <div class="page-header"><h1>🚨 Errors</h1><span class="total-badge">${sum.total} error${sum.total !== 1 ? "s" : ""}</span></div>
