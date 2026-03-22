@@ -144,7 +144,7 @@ export async function getEvents(opts: {
       switch_reason, switch_target, agent_end_msg_count, turn_end_tool_count,
       context_msg_count, stream_delta_type, stream_delta_len
     FROM events ORDER BY seq DESC LIMIT ${n(limit)}
-  );
+  `;
   return rows as unknown as EventRow[];
 }
 
