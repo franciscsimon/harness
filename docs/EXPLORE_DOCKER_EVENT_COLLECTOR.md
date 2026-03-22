@@ -211,15 +211,15 @@ Follows the same pattern as all other harness services — standalone, restartab
 - [ ] Link to container logs (docker logs API)
 - [ ] SPARQL queries: "services that crashed this week", "OOM frequency by service"
 
-## Open Questions
+## Decisions (Resolved)
 
-1. **Event volume**: Health check exec events fire every ~10s per container with health checks. With 5+ containers that's ~30 events/min of noise. Server-side filtering eliminates these, but should we also capture exec events for debugging?
+1. **Event filtering**: **No filtering** — capture ALL event types including `exec_*`. Full audit trail, can always filter at query time.
 
-2. **Retention**: Docker events are transient — once collected, the XTDB copy is the record of truth. How long to keep? Same as other events (indefinite in XTDB)?
+2. **Retention**: **Indefinite** in XTDB, same as other events. XTDB is the record of truth once Docker's ~24h buffer expires.
 
-3. **Reconnection**: If the Docker socket connection drops (Docker Desktop restart), the collector needs to reconnect and backfill from `since=<last_seen_timestamp>`. Docker retains events for ~24h.
+3. **Reconnection**: **Yes, backfill** — on reconnect, use `since=<last_seen_timestamp>` to catch events missed during downtime.
 
-4. **Multi-project**: Docker events are system-wide. We can filter by `com.docker.compose.project=harness` for our stack, but should we collect ALL Docker events on the host?
+4. **Scope**: **All Docker events on host** — not filtered by compose project. Captures everything: harness containers, CI step containers, manual docker runs, etc.
 
 ## Implementation Notes
 
