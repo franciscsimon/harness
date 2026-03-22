@@ -9,8 +9,8 @@ const SEVERITY_ORDER = ["data_loss", "degraded", "transient", "cosmetic"];
 
 export async function renderErrors(query?: { severity?: string; component?: string }, projectId?: string): Promise<string> {
   const [errors, summary] = await Promise.all([
-    fetchErrors({ severity: query?.severity, component: query?.component, limit: 200 }),
-    fetchErrorSummary(),
+    fetchErrors({ severity: query?.severity, component: query?.component, limit: 200, projectId }),
+    fetchErrorSummary(projectId),
   ]);
   const errorList = errors ?? [];
   const sum = summary ?? { total: 0, bySeverity: {}, byComponent: {} };

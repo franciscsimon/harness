@@ -16,26 +16,35 @@ async function get<T>(url: string, timeout = 5000): Promise<T | null> {
   } catch { return null; }
 }
 
-// :3333 Event Logger API
-export const fetchSessionList = () => get<any[]>(`${EVENT_API}/api/sessions/list`);
+// :3333 Event Logger API — all accept optional projectId for scoping
+function pq(projectId?: string): string {
+  return projectId ? `project_id=${encodeURIComponent(projectId)}` : "";
+}
+function pqs(projectId?: string, extra?: string): string {
+  const parts = [pq(projectId), extra].filter(Boolean);
+  return parts.length ? "?" + parts.join("&") : "";
+}
+
+export const fetchSessionList = (projectId?: string) => get<any[]>(`${EVENT_API}/api/sessions/list${pqs(projectId)}`);
 export const fetchSessionEvents = (id: string) => get<any[]>(`${EVENT_API}/api/sessions/${encodeURIComponent(id)}/events`);
-export const fetchStats = () => get<any>(`${EVENT_API}/api/stats`);
-export const fetchDashboard = () => get<any>(`${EVENT_API}/api/dashboard`);
-export const fetchDecisions = (limit = 50) => get<any[]>(`${EVENT_API}/api/decisions?limit=${limit}`);
-export const fetchArtifacts = () => get<any[]>(`${EVENT_API}/api/artifacts`);
+export const fetchStats = (projectId?: string) => get<any>(`${EVENT_API}/api/stats${pqs(projectId)}`);
+export const fetchDashboard = (projectId?: string) => get<any>(`${EVENT_API}/api/dashboard${pqs(projectId)}`);
+export const fetchDecisions = (limit = 50, projectId?: string) => get<any[]>(`${EVENT_API}/api/decisions${pqs(projectId, `limit=${limit}`)}`);
+export const fetchArtifacts = (projectId?: string) => get<any[]>(`${EVENT_API}/api/artifacts${pqs(projectId)}`);
 export const fetchEvent = (id: string) => get<any>(`${EVENT_API}/api/events/${encodeURIComponent(id)}`);
 export const fetchArtifactVersions = (path: string) => get<any[]>(`${EVENT_API}/api/artifact-versions?path=${encodeURIComponent(path)}`);
 
 // Errors
-export const fetchErrors = (opts?: { severity?: string; component?: string; limit?: number }) => {
+export const fetchErrors = (opts?: { severity?: string; component?: string; limit?: number; projectId?: string }) => {
   const params = new URLSearchParams();
+  if (opts?.projectId) params.set("project_id", opts.projectId);
   if (opts?.severity) params.set("severity", opts.severity);
   if (opts?.component) params.set("component", opts.component);
   if (opts?.limit) params.set("limit", String(opts.limit));
   const qs = params.toString();
   return get<any[]>(`${EVENT_API}/api/errors${qs ? "?" + qs : ""}`);
 };
-export const fetchErrorSummary = () => get<any>(`${EVENT_API}/api/errors/summary`);
+export const fetchErrorSummary = (projectId?: string) => get<any>(`${EVENT_API}/api/errors/summary${pqs(projectId)}`);
 
 // Projects
 export const fetchProjects = () => get<any[]>(`${EVENT_API}/api/projects`);

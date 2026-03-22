@@ -10,7 +10,7 @@ import { computeHealthScore, healthColor, healthLabel } from "../lib/health.ts";
 const CATEGORIES = ["session", "compaction", "agent", "message", "tool", "input", "model", "resource"];
 
 export async function renderSessions(projectId?: string): Promise<string> {
-  const sessions = (await fetchSessionList()) ?? [];
+  const sessions = (await fetchSessionList(projectId)) ?? [];
 
   const cards = sessions.map((s: any) => {
     const name = s.sessionId.split("/").pop() ?? s.sessionId;

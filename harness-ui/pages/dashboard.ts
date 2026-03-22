@@ -8,7 +8,7 @@ import { computeHealthScore, healthColor, healthLabel } from "../lib/health.ts";
 import { relativeTime, escapeHtml } from "../lib/format.ts";
 
 export async function renderDashboard(projectId?: string): Promise<string> {
-  const data = await fetchDashboard();
+  const data = await fetchDashboard(projectId);
   if (!data) {
     return layout('<p class="empty-msg">Dashboard unavailable — cannot reach event logger API.</p>',
       { title: "Dashboard", activePath: projectId ? `/projects/${projectId}/dashboard` : "/dashboard", projectId, activeSection: "dashboard" });

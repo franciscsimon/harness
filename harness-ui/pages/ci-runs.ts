@@ -4,7 +4,8 @@ import { relativeTime, formatDuration } from "../lib/format.ts";
 export async function renderCIRuns(projectId?: string): Promise<string> {
   let runs: any[] = [];
   try {
-    const r = await fetch("http://localhost:3333/api/ci-runs");
+    const qs = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+    const r = await fetch(`http://localhost:3333/api/ci-runs${qs}`);
     if (r.ok) runs = await r.json();
   } catch {}
 

@@ -22,7 +22,7 @@ function formatSize(bytes: number): string {
 }
 
 export async function renderArtifacts(projectId?: string): Promise<string> {
-  const artifacts = (await fetchArtifacts()) ?? [];
+  const artifacts = (await fetchArtifacts(projectId)) ?? [];
 
   // Group by path — most recent first
   const byPath = new Map<string, any[]>();

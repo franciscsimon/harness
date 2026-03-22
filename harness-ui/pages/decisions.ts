@@ -19,7 +19,7 @@ const OUTCOME_ICONS: Record<string, string> = {
 };
 
 export async function renderDecisions(projectId?: string): Promise<string> {
-  const decisions = (await fetchDecisions(200)) ?? [];
+  const decisions = (await fetchDecisions(200, projectId)) ?? [];
 
   const rows = decisions.map((d: any) => {
     const icon = OUTCOME_ICONS[d.outcome] ?? "•";

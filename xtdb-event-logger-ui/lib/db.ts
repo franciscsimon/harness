@@ -996,38 +996,40 @@ export async function getErrors(opts: {
   severity?: string;
   component?: string;
   limit?: number;
+  projectId?: string;
 } = {}): Promise<ErrorRow[]> {
   const limit = opts.limit ?? 100;
   try {
+    let rows: ErrorRow[];
     if (opts.severity && opts.component) {
-      const rows = await sql`
+      rows = await sql`
         SELECT * FROM errors
         WHERE severity = ${t(opts.severity)} AND component = ${t(opts.component)}
         ORDER BY ts DESC LIMIT ${n(limit)}
-      `;
-      return rows as unknown as ErrorRow[];
-    }
-    if (opts.severity) {
-      const rows = await sql`
+      ` as unknown as ErrorRow[];
+    } else if (opts.severity) {
+      rows = await sql`
         SELECT * FROM errors
         WHERE severity = ${t(opts.severity)}
         ORDER BY ts DESC LIMIT ${n(limit)}
-      `;
-      return rows as unknown as ErrorRow[];
-    }
-    if (opts.component) {
-      const rows = await sql`
+      ` as unknown as ErrorRow[];
+    } else if (opts.component) {
+      rows = await sql`
         SELECT * FROM errors
         WHERE component = ${t(opts.component)}
         ORDER BY ts DESC LIMIT ${n(limit)}
-      `;
-      return rows as unknown as ErrorRow[];
+      ` as unknown as ErrorRow[];
+    } else {
+      rows = await sql`
+        SELECT * FROM errors
+        ORDER BY ts DESC LIMIT ${n(limit)}
+      ` as unknown as ErrorRow[];
     }
-    const rows = await sql`
-      SELECT * FROM errors
-      ORDER BY ts DESC LIMIT ${n(limit)}
-    `;
-    return rows as unknown as ErrorRow[];
+    // Project filtering applied in JS (XTDB tagged templates make dynamic WHERE complex)
+    if (opts.projectId) {
+      rows = rows.filter(r => (r as any).project_id === opts.projectId);
+    }
+    return rows;
   } catch { return []; }
 }
 

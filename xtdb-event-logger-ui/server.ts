@@ -22,6 +22,7 @@ import {
   getDecisions,
   getProjectDecisions,
   getArtifacts,
+  getProjectArtifacts,
   getArtifactVersionSummaries,
   getArtifactReadCounts,
   getArtifactVersionsByPath,
@@ -106,7 +107,13 @@ app.get("/api/events", async (c) => {
 });
 
 app.get("/api/sessions/list", async (c) => {
-  const sessions = await getSessionList();
+  const projectId = c.req.query("project_id");
+  let sessions = await getSessionList();
+  if (projectId) {
+    const projSessions = await getProjectSessions(projectId);
+    const projSessionIds = new Set(projSessions.map(ps => ps.session_id));
+    sessions = sessions.filter(s => projSessionIds.has(s.sessionId));
+  }
   return c.json(sessions);
 });
 
@@ -169,7 +176,8 @@ app.get("/api/decisions", async (c) => {
 
 app.get("/api/artifacts", async (c) => {
   const sessionId = c.req.query("session_id");
-  const artifacts = await getArtifacts();
+  const projectId = c.req.query("project_id");
+  const artifacts = projectId ? await getProjectArtifacts(projectId) : await getArtifacts();
   const filtered = sessionId ? artifacts.filter(a => a.session_id === sessionId) : artifacts;
   return c.json(filtered);
 });
@@ -222,7 +230,12 @@ app.get("/api/test-runs", async (c) => {
 });
 
 app.get("/api/ci-runs", async (c) => {
-  const runs = await getCIRuns();
+  const projectId = c.req.query("project_id");
+  let runs = await getCIRuns();
+  if (projectId) {
+    // CI runs have a repo field — filter by project name matching repo
+    runs = runs.filter((r: any) => r.repo === projectId);
+  }
   return c.json(runs);
 });
 
@@ -241,8 +254,9 @@ app.get("/api/projections/:id{.+}", async (c) => {
 app.get("/api/errors", async (c) => {
   const severity = c.req.query("severity") || undefined;
   const component = c.req.query("component") || undefined;
+  const projectId = c.req.query("project_id") || undefined;
   const limit = Number(c.req.query("limit") ?? "100");
-  const errors = await getErrors({ severity, component, limit });
+  const errors = await getErrors({ severity, component, limit, projectId });
   return c.json(errors);
 });
 

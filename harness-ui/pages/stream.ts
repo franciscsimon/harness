@@ -7,8 +7,8 @@ const CATEGORIES = ["session", "compaction", "agent", "message", "tool", "input"
 
 export async function renderStream(projectId?: string): Promise<string> {
   const [stats, sessions] = await Promise.all([
-    fetchStats().catch(() => null),
-    fetchSessionList().catch(() => null),
+    fetchStats(projectId).catch(() => null),
+    fetchSessionList(projectId).catch(() => null),
   ]);
 
   const total = stats?.total ?? 0;
