@@ -52,11 +52,11 @@ All other pages (sessions, stream, dashboard, decisions, artifacts, errors, CI, 
 - [x] 1.5 Update all page render functions to accept `projectId` parameter
 - [x] 1.6 Remove old flat routes, add project sub-nav CSS, URL helpers
 
-### Phase 2: API project scoping (~1.5h)
-- [ ] 2.1 Add `?project_id=X` filter to all event-logger API endpoints
-- [ ] 2.2 Add project_id filter to getCIRuns, getDecisions, getArtifacts, getErrors
-- [ ] 2.3 Update harness-ui API calls to pass project_id from URL
-- [ ] 2.4 Ensure session_projects table links sessions → projects correctly
+### Phase 2: API project scoping ✅
+- [x] 2.1 Add `?project_id=X` filter to sessions/list, artifacts, ci-runs, errors endpoints
+- [x] 2.2 Decisions already had project_id support, artifacts now uses getProjectArtifacts
+- [x] 2.3 All harness-ui fetch functions pass projectId from page params
+- [x] 2.4 Sessions filtered via session_projects table, CI runs by repo name match
 
 ### Phase 3: Home page as project list ✅
 - [x] 3.1 Rewrite home page: list all projects with summary cards
