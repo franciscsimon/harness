@@ -44,13 +44,13 @@ All other pages (sessions, stream, dashboard, decisions, artifacts, errors, CI, 
 
 ## Implementation Phases
 
-### Phase 1: Route restructuring (~2h)
-- [ ] 1.1 Create `projectLayout()` component with project sub-nav
-- [ ] 1.2 Update `nav.ts` — main nav has only Home, Projects, Chat
-- [ ] 1.3 Add project catch-all route in server.ts: `/projects/:projectId/:section`
-- [ ] 1.4 Route dispatcher: extract projectId + section, call existing page renderers with projectId param
-- [ ] 1.5 Update all page render functions to accept `projectId` parameter
-- [ ] 1.6 Remove old flat routes (keep as redirects initially)
+### Phase 1: Route restructuring ✅
+- [x] 1.1 Create `projectLayout()` component with project sub-nav
+- [x] 1.2 Update `nav.ts` — main nav has only Home, Projects, Chat
+- [x] 1.3 Add project catch-all route in server.ts: `/projects/:projectId/:section`
+- [x] 1.4 Route dispatcher: extract projectId + section, call existing page renderers with projectId param
+- [x] 1.5 Update all page render functions to accept `projectId` parameter
+- [x] 1.6 Remove old flat routes, add project sub-nav CSS, URL helpers
 
 ### Phase 2: API project scoping (~1.5h)
 - [ ] 2.1 Add `?project_id=X` filter to all event-logger API endpoints

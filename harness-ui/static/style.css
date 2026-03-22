@@ -1987,3 +1987,54 @@ main#stream {
 .project-container {
   /* slightly less top padding since sub-nav takes space */
 }
+
+/* ─── Project Home Cards ──────────────────────────────────────── */
+
+.project-home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.project-home-card {
+  display: block;
+  background: var(--bg-secondary, #161b22);
+  border: 1px solid var(--border, #30363d);
+  border-radius: 8px;
+  padding: 20px;
+  text-decoration: none;
+  color: var(--text, #c9d1d9);
+  transition: border-color 0.15s, transform 0.1s;
+}
+
+.project-home-card:hover {
+  border-color: var(--accent, #58a6ff);
+  transform: translateY(-2px);
+}
+
+.phc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.phc-name {
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.phc-phase {
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.phc-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 0.85rem;
+  color: var(--text-dim, #8b949e);
+}
