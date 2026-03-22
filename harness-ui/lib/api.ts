@@ -149,12 +149,8 @@ export async function checkAllContainers(): Promise<ContainerStatus[]> {
     { name: "XTDB Replica", port: "5434", role: "Database (read)", check: probeHttp("http://localhost:8084/healthz/alive") },
     { name: "Keycloak", port: "8180", role: "Auth server", check: probeHttp("http://localhost:8180/health/ready") },
     { name: "QLever", port: "7001", role: "SPARQL endpoint", check: checkQleverHealth() },
-    { name: "Event API", port: "3333", role: "Event logger", check: probeHttp("http://localhost:3333/api/stats") },
-    { name: "Ops API", port: "3335", role: "Operations", check: probeHttp("http://localhost:3335/api/health") },
-    { name: "Chat WS", port: "3334", role: "Chat service", check: checkChatHealth() },
-    { name: "Harness UI", port: "3336", role: "This UI", check: Promise.resolve(true) },
     { name: "Soft Serve", port: "23232", role: "Git server", check: probeHttp("http://localhost:23232") },
-    { name: "CI Runner", port: "3337", role: "CI pipeline runner", check: probeHttp("http://localhost:3337/api/health") },
+    { name: "Process Compose", port: "8080", role: "Service orchestrator", check: probeHttp("http://localhost:8080/liveness") },
   ];
 
   const results = await Promise.all(checks.map(async (c) => ({
