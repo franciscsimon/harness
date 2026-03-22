@@ -26,10 +26,13 @@ export async function renderOps(projectId?: string): Promise<string> {
 
       <div class="ops-section">
         <div class="ops-section-header">
-          <h2>⚙️ Process Compose</h2>
-          <button class="btn" onclick="loadPCProcesses()">🔄 Refresh</button>
+          <h2>🚀 Container Services</h2>
+          <div>
+            <button class="btn" onclick="deployAll()">Deploy All</button>
+            <a href="${projectId ? `/projects/${projectId}/deploys` : "/deploys"}" class="btn" style="margin-left:0.5rem">📋 History</a>
+          </div>
         </div>
-        <div id="pc-processes"><p class="empty-msg">Loading...</p></div>
+        <div id="container-services"><p class="empty-msg">Loading...</p></div>
       </div>
 
       <div class="ops-section">
@@ -150,46 +153,48 @@ export async function renderOps(projectId?: string): Promise<string> {
     activeSection: "ops",
     extraHead: `<script src="/static/modal.js" defer></script><script src="/static/ops.js" defer></script>
 <script>
-// ── Process Compose ──
-async function loadPCProcesses() {
-  const el = document.getElementById("pc-processes");
+// ── Container Services ──
+const APP_SERVICES = ["event-api", "chat-ws", "ops-api", "harness-ui", "ci-runner"];
+const SVC_PORTS = { "event-api": 3333, "chat-ws": 3334, "ops-api": 3335, "harness-ui": 3336, "ci-runner": 3337 };
+const SVC_HEALTH = { "event-api": "/api/stats", "chat-ws": "/", "ops-api": "/api/health", "harness-ui": "/", "ci-runner": "/api/health" };
+
+async function loadContainerServices() {
+  const el = document.getElementById("container-services");
   try {
-    const r = await fetch("/api/pc/processes");
-    const data = await r.json();
-    if (data.error) { el.innerHTML = '<p class="empty-msg">' + data.error + '</p>'; return; }
-    const procs = data.data || data || [];
-    if (!Array.isArray(procs) || procs.length === 0) { el.innerHTML = '<p class="empty-msg">No processes (is process-compose running?)</p>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Process</th><th>Status</th><th>PID</th><th>Ready</th><th>Uptime</th><th>Restarts</th><th>Actions</th></tr></thead><tbody>' +
-      procs.map(function(p) {
-        var name = p.name || "?";
-        var status = p.status || "Unknown";
-        var isUp = (status === "Running");
-        var color = isUp ? "#238636" : status === "Completed" ? "#8b949e" : "#da3633";
-        var pid = p.pid || "—";
-        var ready = p.is_ready ? "✅" : "❌";
-        var uptime = p.system_time ? p.system_time : "—";
-        var restarts = p.restarts || 0;
-        return '<tr><td><strong>' + name + '</strong></td>' +
-          '<td style="color:' + color + '">' + status + '</td>' +
-          '<td>' + pid + '</td><td>' + ready + '</td>' +
-          '<td>' + uptime + '</td><td>' + restarts + '</td>' +
-          '<td><button class="btn" onclick="pcAction(\\'restart\\',\\'' + name + '\\')">🔄</button> ' +
-          (isUp ? '<button class="btn" onclick="pcAction(\\'stop\\',\\'' + name + '\\')">⏹</button>' :
-                  '<button class="btn" onclick="pcAction(\\'start\\',\\'' + name + '\\')">▶️</button>') +
-          '</td></tr>';
-      }).join("") +
-      '</tbody></table>';
-  } catch(e) { el.innerHTML = '<p class="empty-msg">Failed to load: ' + e.message + '</p>'; }
+    const checks = await Promise.all(APP_SERVICES.map(async function(name) {
+      try {
+        const r = await fetch("http://localhost:" + SVC_PORTS[name] + SVC_HEALTH[name], { signal: AbortSignal.timeout(3000) });
+        return { name: name, port: SVC_PORTS[name], ok: r.ok };
+      } catch(e) { return { name: name, port: SVC_PORTS[name], ok: false }; }
+    }));
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Service</th><th>Port</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
+      checks.map(function(s) {
+        var color = s.ok ? "#238636" : "#da3633";
+        return '<tr><td><strong>' + s.name + '</strong></td>' +
+          '<td><code>:' + s.port + '</code></td>' +
+          '<td style="color:' + color + ';font-weight:600">' + (s.ok ? "✅ Up" : "❌ Down") + '</td>' +
+          '<td><button class="btn" onclick="deploySvc(\\'' + s.name + '\\')">🔄 Redeploy</button></td></tr>';
+      }).join("") + '</tbody></table>';
+  } catch(e) { el.innerHTML = '<p class="empty-msg">Failed: ' + e.message + '</p>'; }
 }
-async function pcAction(action, name) {
+async function deploySvc(name) {
   try {
-    const r = await fetch("/api/pc/" + action + "/" + name, { method: "POST" });
+    const r = await fetch("/api/deploy", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({service: name, trigger: "ops-ui"}) });
     const d = await r.json();
-    if (d.success) { setTimeout(loadPCProcesses, 2000); }
-    else { alert("Action failed: " + JSON.stringify(d)); }
+    alert(d.success ? "✅ " + name + " redeployed" : "⚠️ Deploy failed");
+    setTimeout(loadContainerServices, 3000);
   } catch(e) { alert("Error: " + e.message); }
 }
-document.addEventListener("DOMContentLoaded", loadPCProcesses);
+async function deployAll() {
+  if (!confirm("Deploy all 5 services?")) return;
+  try {
+    const r = await fetch("/api/deploy", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({trigger: "ops-ui"}) });
+    const d = await r.json();
+    alert(d.success ? "✅ All services deployed" : "⚠️ Partial deploy");
+    setTimeout(loadContainerServices, 3000);
+  } catch(e) { alert("Error: " + e.message); }
+}
+document.addEventListener("DOMContentLoaded", loadContainerServices);
 
 // ── Git Backup ──
 async function gitBackup() {

@@ -23,6 +23,7 @@ import { renderGraph } from "./pages/graph.ts";
 import { renderCIRuns } from "./pages/ci-runs.ts";
 import { renderCIRunDetail } from "./pages/ci-run-detail.ts";
 import { renderGitRepos } from "./pages/git.ts";
+import { renderDeploys } from "./pages/deploys.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -130,6 +131,8 @@ app.get("/projects/:projectId/:section", async (c) => {
     }
     case "ops":
       return c.html(await renderOps(projectId));
+    case "deploys":
+      return c.html(await renderDeploys(projectId));
     default:
       return c.text("Not found", 404);
   }
