@@ -60,50 +60,20 @@
 - [ ] Add `ci: () => "ci:${randomUUID()}"` to `lib/jsonld/ids.ts`
 - [ ] Add CI query cards to graph page
 
-## Open Questions (discuss before implementing)
+## Decisions (2026-03-22)
 
-### Q1: Run CI steps in Docker or on host?
-The `runner.ts` uses `docker run` for each step. This is clean isolation but:
-- Needs Docker-in-Docker or host Docker socket mount
-- Network access to XTDB from within CI container?
-- The harness itself runs on host (not Docker) — should CI runner match?
+### Q1: CI step execution → **A: Docker socket mount (start), containerized (target)**
+Runner runs on host, spawns `docker run` per step. Future: move runner itself into a Docker container with socket mount.
 
-**Options:**
-- A) Docker socket mount: `runner.ts` runs on host, spawns `docker run` for each step
-- B) Host-native: run steps directly (simpler, but no isolation)
-- C) Docker Compose service: runner + Soft Serve in compose, socket mounted
+### Q2: Soft Serve repo setup → **B: Init bare repo + push**
+Soft Serve is the canonical git host. Create bare repo, push all branches. Soft Serve holds all repos.
 
-### Q2: How does Soft Serve get the harness repo?
-- A) Mirror: `git remote add soft-serve ssh://localhost:23231/harness` + push
-- B) Init: create bare repo in Soft Serve, push all branches
-- C) Volume mount: point Soft Serve at existing `.git` directory
+### Q3: CI notifications → **C: SSE event via Event API**
+CI results emit SSE events to harness-ui `/stream`. Visible alongside session events.
 
-### Q3: CI results notification
-Currently the runner writes to XTDB silently. Should it:
-- A) Print to runner stdout only
-- B) Send notification to Soft Serve (SSH message back to pusher)
-- C) Emit SSE event via Event API (show in harness-ui /stream)
-- D) All of the above
-
-### Q4: Port allocation
-Current ports in use:
-```
-:3333  Event API
-:3334  Chat WS
-:3335  Ops API
-:3336  Harness UI
-:5433  XTDB Primary (pgwire)
-:5434  XTDB Replica (pgwire)
-:7001  QLever SPARQL
-:8083  XTDB Primary (HTTP)
-:8084  XTDB Replica (HTTP)
-:8180  Keycloak
-:3900  Garage S3
-:19092 Redpanda (Kafka)
-```
-**Proposed for Soft Serve:**
-- `:23231` SSH (git operations)
-- `:23232` HTTP (web UI, optional)
+### Q4: Ports → **Confirmed**
+- `:23231` SSH (git push/pull)
+- `:23232` HTTP (web UI)
 
 ## Implementation Steps
 
