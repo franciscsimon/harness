@@ -7,16 +7,24 @@ export interface ComponentHealth {
   checkedAt: string;
 }
 
+const XTDB_PRIMARY_HEALTH = process.env.XTDB_PRIMARY_HEALTH ?? "http://localhost:8083";
+const XTDB_REPLICA_HEALTH = process.env.XTDB_REPLICA_HEALTH ?? "http://localhost:8084";
+const XTDB_PRIMARY_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
+const XTDB_PRIMARY_PORT = process.env.XTDB_EVENT_PORT ?? "5433";
+const XTDB_REPLICA_HOST = process.env.XTDB_REPLICA_HOST ?? XTDB_PRIMARY_HOST;
+const XTDB_REPLICA_PORT = process.env.XTDB_REPLICA_PORT ?? "5434";
+const DOCKER_NETWORK = process.env.DOCKER_NETWORK ?? "harness_default";
+
 export async function checkPrimary(): Promise<ComponentHealth> {
-  const healthz = await fetch("http://localhost:8083/healthz/alive")
+  const healthz = await fetch(`${XTDB_PRIMARY_HEALTH}/healthz/alive`)
     .then((r) => ({ ok: r.ok, status: r.status }))
     .catch(() => ({ ok: false, status: 0 }));
 
   const pgwire = await exec(
     "docker",
     [
-      "run", "--rm", "--network", "host", "postgres:16-alpine",
-      "psql", "-h", "localhost", "-p", "5433", "-U", "xtdb", "-d", "xtdb",
+      "run", "--rm", "--network", DOCKER_NETWORK, "postgres:16-alpine",
+      "psql", "-h", XTDB_PRIMARY_HOST, "-p", XTDB_PRIMARY_PORT, "-U", "xtdb", "-d", "xtdb",
       "-Atqc", "SELECT 1",
     ],
     { timeout: 10_000 },
@@ -28,7 +36,7 @@ export async function checkPrimary(): Promise<ComponentHealth> {
     details: {
       healthz: healthz.ok,
       pgwire: pgwire.exitCode === 0,
-      port: 5433,
+      port: Number(XTDB_PRIMARY_PORT),
     },
     checkedAt: new Date().toISOString(),
   };
@@ -51,15 +59,15 @@ export async function checkReplica(): Promise<ComponentHealth> {
     };
   }
 
-  const healthz = await fetch("http://localhost:8084/healthz/alive")
+  const healthz = await fetch(`${XTDB_REPLICA_HEALTH}/healthz/alive`)
     .then((r) => ({ ok: r.ok, status: r.status }))
     .catch(() => ({ ok: false, status: 0 }));
 
   const pgwire = await exec(
     "docker",
     [
-      "run", "--rm", "--network", "host", "postgres:16-alpine",
-      "psql", "-h", "localhost", "-p", "5434", "-U", "xtdb", "-d", "xtdb",
+      "run", "--rm", "--network", DOCKER_NETWORK, "postgres:16-alpine",
+      "psql", "-h", XTDB_REPLICA_HOST, "-p", XTDB_REPLICA_PORT, "-U", "xtdb", "-d", "xtdb",
       "-Atqc", "SELECT 1",
     ],
     { timeout: 10_000 },
