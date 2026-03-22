@@ -34,6 +34,7 @@ import {
   getErrors,
   getErrorSummary,
   getTestRuns,
+  getCIRuns,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -217,6 +218,11 @@ app.get("/api/test-runs", async (c) => {
       : await getTestRuns(undefined, limit);
     return c.json(rows);
   } catch { return c.json([]); }
+});
+
+app.get("/api/ci-runs", async (c) => {
+  const runs = await getCIRuns();
+  return c.json(runs);
 });
 
 app.get("/api/projections/:id{.+}", async (c) => {
