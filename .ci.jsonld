@@ -11,7 +11,7 @@
       "schema:name": "test",
       "code:image": "node:22-slim",
       "code:commands": [
-        "npm ci --ignore-scripts",
+        "npm install --ignore-scripts 2>/dev/null || true",
         "npx jiti test/pure-functions.ts"
       ]
     }

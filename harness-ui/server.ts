@@ -93,6 +93,40 @@ app.post("/api/sparql", async (c) => {
   }
 });
 
+// CI job enqueue — receives POST from Soft Serve hook, writes job file for runner
+app.post("/api/ci/enqueue", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { repo, ref, commitHash, commitMessage, pusher } = body;
+    if (!repo || !commitHash) return c.json({ error: "Missing repo or commitHash" }, 400);
+
+    const { randomUUID } = await import("node:crypto");
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const { join: pathJoin } = await import("node:path");
+    const { homedir } = await import("node:os");
+
+    const queueDir = process.env.CI_QUEUE_DIR ?? pathJoin(homedir(), ".ci-runner", "queue");
+    mkdirSync(queueDir, { recursive: true });
+
+    const job = {
+      id: `ci-${Date.now()}-${randomUUID().slice(0, 8)}`,
+      repo,
+      ref: ref ?? "refs/heads/main",
+      commitHash,
+      commitMessage: commitMessage ?? "",
+      pusher: pusher ?? "unknown",
+      timestamp: Date.now(),
+    };
+
+    const jobFile = pathJoin(queueDir, `${job.id}.json`);
+    writeFileSync(jobFile, JSON.stringify(job, null, 2));
+
+    return c.json({ queued: true, id: job.id, file: jobFile });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
 // Graph refresh — runs the full pipeline: parse AST → export triples → re-index QLever
 app.post("/api/graph/refresh", async (c) => {
   const root = join(__dirname, "..");
