@@ -8,7 +8,7 @@ log: !Kafka
   cluster: kafkaCluster
   topic: "xtdb-log"
   autoCreateTopic: true
-  epoch: 2
+  epoch: 3
 
 storage: !Remote
   objectStore: !S3
