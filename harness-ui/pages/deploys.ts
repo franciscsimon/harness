@@ -19,7 +19,7 @@ interface Deploy {
 export async function renderDeploys(projectId?: string): Promise<string> {
   let deploys: Deploy[] = [];
   try {
-    const historyPath = join(__dirname, "..", "data", "deploy-history.json");
+    const historyPath = join(__dirname, "..", "..", "data", "deploy-history.json");
     if (existsSync(historyPath)) {
       const data = JSON.parse(readFileSync(historyPath, "utf-8"));
       deploys = data.deploys ?? [];
