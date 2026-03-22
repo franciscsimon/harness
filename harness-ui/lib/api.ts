@@ -172,6 +172,24 @@ export async function checkAllContainers(): Promise<ContainerStatus[]> {
   return results;
 }
 
+// ─── App Service Health (server-side) ───────────────────────────
+const APP_SERVICES = [
+  { name: "event-api", port: 3333, path: "/api/stats" },
+  { name: "chat-ws", port: 3334, path: "/" },
+  { name: "ops-api", port: 3335, path: "/api/health" },
+  { name: "harness-ui", port: 3336, path: "/" },
+  { name: "ci-runner", port: 3337, path: "/api/health" },
+  { name: "docker-event-collector", port: 3338, path: "/api/health" },
+];
+
+export async function checkAppServices(): Promise<{ name: string; port: number; ok: boolean }[]> {
+  return Promise.all(APP_SERVICES.map(async (svc) => {
+    const url = `http://${svc.name}:${svc.port}${svc.path}`;
+    const ok = await probeHttp(url);
+    return { name: svc.name, port: svc.port, ok };
+  }));
+}
+
 // :3335 Ops API
 export const fetchHealth = () => get<any>(`${OPS_API}/api/health`);
 export const fetchBackups = () => get<any[]>(`${OPS_API}/api/backups`);

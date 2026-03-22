@@ -5,12 +5,13 @@
 // DOM element IDs that ops.js expects, wrapped in harness-ui layout.
 
 import { layout } from "../components/layout.ts";
-import { checkAllContainers } from "../lib/api.ts";
+import { checkAllContainers, checkAppServices } from "../lib/api.ts";
 
 export async function renderOps(projectId?: string): Promise<string> {
-  // Fetch container status server-side
+  // Fetch status server-side (avoids browser CORS issues)
   const containers = await checkAllContainers().catch(() => []);
   const up = containers.filter((c) => c.ok).length;
+  const appServices = await checkAppServices().catch(() => []);
 
   const containerRows = containers.map((c) => `
     <tr>
@@ -32,7 +33,19 @@ export async function renderOps(projectId?: string): Promise<string> {
             <a href="${projectId ? `/projects/${projectId}/deploys` : "/deploys"}" class="btn" style="margin-left:0.5rem">📋 History</a>
           </div>
         </div>
-        <div id="container-services"><p class="empty-msg">Loading...</p></div>
+        <div class="card" style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr><th>Service</th><th>Port</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>
+              ${appServices.map(s => `<tr>
+                <td><strong>${s.name}</strong></td>
+                <td><code>:${s.port}</code></td>
+                <td style="color:${s.ok ? "#238636" : "#da3633"};font-weight:600">${s.ok ? "✅ Up" : "❌ Down"}</td>
+                <td><button class="btn" onclick="deploySvc('${s.name}')">🔄 Redeploy</button></td>
+              </tr>`).join("\n")}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div class="ops-section">
@@ -153,48 +166,24 @@ export async function renderOps(projectId?: string): Promise<string> {
     activeSection: "ops",
     extraHead: `<script src="/static/modal.js" defer></script><script src="/static/ops.js" defer></script>
 <script>
-// ── Container Services ──
-const APP_SERVICES = ["event-api", "chat-ws", "ops-api", "harness-ui", "ci-runner", "docker-event-collector"];
-const SVC_PORTS = { "event-api": 3333, "chat-ws": 3334, "ops-api": 3335, "harness-ui": 3336, "ci-runner": 3337, "docker-event-collector": 3338 };
-const SVC_HEALTH = { "event-api": "/api/stats", "chat-ws": "/", "ops-api": "/api/health", "harness-ui": "/", "ci-runner": "/api/health", "docker-event-collector": "/api/health" };
-
-async function loadContainerServices() {
-  const el = document.getElementById("container-services");
-  try {
-    const checks = await Promise.all(APP_SERVICES.map(async function(name) {
-      try {
-        const r = await fetch("http://localhost:" + SVC_PORTS[name] + SVC_HEALTH[name], { signal: AbortSignal.timeout(3000) });
-        return { name: name, port: SVC_PORTS[name], ok: r.ok };
-      } catch(e) { return { name: name, port: SVC_PORTS[name], ok: false }; }
-    }));
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Service</th><th>Port</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
-      checks.map(function(s) {
-        var color = s.ok ? "#238636" : "#da3633";
-        return '<tr><td><strong>' + s.name + '</strong></td>' +
-          '<td><code>:' + s.port + '</code></td>' +
-          '<td style="color:' + color + ';font-weight:600">' + (s.ok ? "✅ Up" : "❌ Down") + '</td>' +
-          '<td><button class="btn" onclick="deploySvc(\\'' + s.name + '\\')">🔄 Redeploy</button></td></tr>';
-      }).join("") + '</tbody></table>';
-  } catch(e) { el.innerHTML = '<p class="empty-msg">Failed: ' + e.message + '</p>'; }
-}
+// ── Container Service Actions ──
 async function deploySvc(name) {
   try {
     const r = await fetch("/api/deploy", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({service: name, trigger: "ops-ui"}) });
     const d = await r.json();
     alert(d.success ? "✅ " + name + " redeployed" : "⚠️ Deploy failed");
-    setTimeout(loadContainerServices, 3000);
+    setTimeout(function() { location.reload(); }, 3000);
   } catch(e) { alert("Error: " + e.message); }
 }
 async function deployAll() {
-  if (!confirm("Deploy all 5 services?")) return;
+  if (!confirm("Deploy all 6 services?")) return;
   try {
     const r = await fetch("/api/deploy", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({trigger: "ops-ui"}) });
     const d = await r.json();
     alert(d.success ? "✅ All services deployed" : "⚠️ Partial deploy");
-    setTimeout(loadContainerServices, 3000);
+    setTimeout(function() { location.reload(); }, 3000);
   } catch(e) { alert("Error: " + e.message); }
 }
-document.addEventListener("DOMContentLoaded", loadContainerServices);
 
 // ── Git Backup ──
 async function gitBackup() {
