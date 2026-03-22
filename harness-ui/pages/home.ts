@@ -3,16 +3,14 @@
 // so the page renders even if backends are down.
 
 import { layout } from "../components/layout.ts";
-import { fetchStats, fetchDashboard, fetchIncidents, checkAllContainers } from "../lib/api.ts";
-import type { ContainerStatus } from "../lib/api.ts";
+import { fetchStats, fetchDashboard, fetchIncidents } from "../lib/api.ts";
 import { formatNumber, relativeTime } from "../lib/format.ts";
 
 export async function renderHome(): Promise<string> {
-  const [stats, dashboard, incidents, containers] = await Promise.all([
+  const [stats, dashboard, incidents] = await Promise.all([
     fetchStats().catch(() => null),
     fetchDashboard().catch(() => null),
     fetchIncidents("open").catch(() => null),
-    checkAllContainers().catch(() => [] as ContainerStatus[]),
   ]);
 
   const content = `
@@ -24,10 +22,7 @@ export async function renderHome(): Promise<string> {
       ${renderStatCard("Sessions", dashboard ? formatNumber(dashboard.totalSessions) : "—", dashboard ? `avg ${formatNumber(dashboard.avgEventsPerSession)} events/session` : "Event API unavailable", dashboard != null)}
       ${renderStatCard("Events", stats ? formatNumber(stats.total) : "—", stats?.byCategory ? `${Object.keys(stats.byCategory).length} categories` : "—", stats != null)}
       ${renderStatCard("Open Incidents", incidents ? String(incidents.length) : "—", incidents ? (incidents.length === 0 ? "All clear" : `${incidents.length} need attention`) : "Ops API unavailable", incidents != null)}
-      ${renderStatCard("System Health", containers.length ? `${containers.filter(c => c.ok).length}/${containers.length} up` : "—", containers.length ? (containers.every(c => c.ok) ? "All services healthy" : "Some services down") : "Unavailable", containers.length > 0 && containers.every(c => c.ok))}
     </div>
-
-    ${renderSystemHealth(containers)}
 
     ${renderCategoryBreakdown(stats)}
 
@@ -38,32 +33,6 @@ export async function renderHome(): Promise<string> {
 }
 
 // ─── Sub-renderers ─────────────────────────────────────────────
-
-function renderSystemHealth(containers: ContainerStatus[]): string {
-  if (!containers.length) {
-    return `<div class="section">
-      <h2>System Health</h2>
-      <div class="card"><div class="empty-state">Container status unavailable</div></div>
-    </div>`;
-  }
-
-  const rows = containers.map((c) => `<tr>
-    <td><span class="backend-dot" style="background:${c.ok ? "#238636" : "#da3633"};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px"></span>${c.name}</td>
-    <td><code>:${c.port}</code></td>
-    <td>${c.role}</td>
-    <td style="color:${c.ok ? "#238636" : "#da3633"};font-weight:600">${c.ok ? "Up" : "Down"}</td>
-  </tr>`).join("\n");
-
-  return `<div class="section">
-    <h2>System Health</h2>
-    <div class="card" style="overflow-x:auto">
-      <table class="data-table">
-        <thead><tr><th>Service</th><th>Port</th><th>Role</th><th>Status</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-  </div>`;
-}
 
 function renderStatCard(label: string, value: string, sub: string, available: boolean): string {
   const color = available ? "var(--accent)" : "var(--text-dim)";
