@@ -36,7 +36,6 @@ export interface ProjectSubNavItem {
 }
 
 const PROJECT_SUB_NAV: ProjectSubNavItem[] = [
-  { label: "Overview", section: "overview" },
   { label: "Sessions", section: "sessions" },
   { label: "Stream", section: "stream" },
   { label: "Dashboard", section: "dashboard" },

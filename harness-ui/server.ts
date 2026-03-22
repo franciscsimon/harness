@@ -11,7 +11,7 @@ import { renderSessionDetail } from "./pages/session-detail.ts";
 import { renderDashboard } from "./pages/dashboard.ts";
 import { renderDecisions } from "./pages/decisions.ts";
 import { renderArtifacts, renderArtifactVersions } from "./pages/artifacts.ts";
-import { renderProjectDetail } from "./pages/projects.ts";
+
 import { renderOps } from "./pages/ops.ts";
 import { renderChat } from "./pages/chat.ts";
 import { renderErrors } from "./pages/errors.ts";
@@ -104,8 +104,6 @@ app.get("/projects/:projectId/:section", async (c) => {
   const section = c.req.param("section");
 
   switch (section) {
-    case "overview":
-      return c.html(await renderProjectDetail(projectId));
     case "sessions":
       return c.html(await renderSessions(projectId));
     case "stream":
@@ -140,7 +138,7 @@ app.get("/projects/:projectId/:section", async (c) => {
 // Bare project route → redirect to overview
 app.get("/projects/:projectId", async (c) => {
   const projectId = c.req.param("projectId");
-  return c.redirect(`/projects/${encodeURIComponent(projectId)}/overview`);
+  return c.redirect(`/projects/${encodeURIComponent(projectId)}/sessions`);
 });
 
 // ── API endpoints ──────────────────────────────────────────────────

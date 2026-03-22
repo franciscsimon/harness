@@ -20,7 +20,7 @@ export async function renderHome(): Promise<string> {
     const sessionCount = p.session_count ?? 0;
     const lastSeen = p.last_seen_ts ? relativeTime(p.last_seen_ts) : "—";
 
-    return `<a class="project-home-card" href="/projects/${encodeURIComponent(name)}/overview">
+    return `<a class="project-home-card" href="/projects/${encodeURIComponent(name)}/sessions">
       <div class="phc-header">
         <span class="phc-name">📂 ${escapeHtml(name)}</span>
         <span class="phc-phase" style="color:${phaseColor}">${escapeHtml(phase)}</span>
