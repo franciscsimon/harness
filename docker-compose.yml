@@ -245,7 +245,7 @@ services:
       OPS_API_URL: http://ops-api:3335
       COLLECTOR_URL: http://docker-event-collector:3338
       SOFT_SERVE_HOST: soft-serve
-      CHAT_WS_URL: ws://chat-ws:3334/ws
+      CHAT_WS_URL: ws://localhost:3334/ws
       CHAT_HTTP_URL: http://chat-ws:3334
       QLEVER_URL: http://qlever:7001
       REDPANDA_HOST: redpanda
