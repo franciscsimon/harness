@@ -12,7 +12,8 @@
       "code:image": "node:22-slim",
       "code:commands": [
         "npm install --ignore-scripts 2>/dev/null || true",
-        "npx jiti test/pure-functions.ts"
+        "cd lib && npm install --ignore-scripts 2>/dev/null || true",
+        "cd /workspace && npx jiti test/pure-functions.ts"
       ]
     }
   ]
