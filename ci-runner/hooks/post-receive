@@ -3,7 +3,7 @@
 # The runner runs on the host, so we POST to harness-ui which writes the queue file.
 
 HARNESS_UI="${HARNESS_UI_URL:-http://host.docker.internal:3336}"
-REPO_NAME=$(basename "${GIT_DIR:-.}" .git)
+REPO_NAME=$(basename "${GIT_DIR:-${PWD:-.}}" .git)
 
 while read -r oldrev newrev refname; do
   # Skip deletes
