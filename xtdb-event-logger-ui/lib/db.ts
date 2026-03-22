@@ -1046,7 +1046,7 @@ export async function getTestRuns(projectId?: string, limit = 50): Promise<any[]
 
 export async function getCIRuns(limit = 50): Promise<any[]> {
   try {
-    return await sql`SELECT _id, repo, ref, commit_hash, commit_message, pusher, status, steps_passed, steps_failed, duration_ms, ts FROM ci_runs ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+    return await sql`SELECT _id, repo, ref, commit_hash, commit_message, pusher, status, steps_passed, steps_failed, duration_ms, ts, step_results FROM ci_runs ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
   } catch { return []; }
 }
 

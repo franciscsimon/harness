@@ -50,6 +50,7 @@ export interface CIStepResult {
   status: "passed" | "failed" | "skipped";
   durationMs: number;
   exitCode: number;
+  output?: string;  // combined stdout+stderr (last 10KB)
 }
 
 // ─── Record a CI run ─────────────────────────────────────────────
@@ -89,16 +90,18 @@ export async function recordCIRun(input: CIRunInput): Promise<string> {
     "prov:generatedAtTime": { "@type": "xsd:long", "@value": now },
   });
 
+  const stepResults = JSON.stringify(input.steps);
+
   await conn`INSERT INTO ci_runs (
     _id, repo, ref, commit_hash, commit_message, pusher,
-    status, steps_passed, steps_failed, duration_ms, ts, jsonld
+    status, steps_passed, steps_failed, duration_ms, ts, jsonld, step_results
   ) VALUES (
     ${t(id)}, ${t(input.repo)}, ${t(input.ref)},
     ${t(input.commitHash)}, ${t(input.commitMessage ?? "")},
     ${t(input.pusher ?? "")}, ${t(input.status)},
     ${n(input.steps.filter((s) => s.status === "passed").length)},
     ${n(input.steps.filter((s) => s.status === "failed").length)},
-    ${n(input.durationMs)}, ${n(now)}, ${t(jsonld)}
+    ${n(input.durationMs)}, ${n(now)}, ${t(jsonld)}, ${t(stepResults)}
   )`;
 
   return id;

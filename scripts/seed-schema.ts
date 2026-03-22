@@ -516,6 +516,7 @@ const schema: TableDef[] = [
       steps_failed: "bigint",
       duration_ms: "bigint",
       ts: "bigint",
+      step_results: "text",
       jsonld: "text",
     },
   },

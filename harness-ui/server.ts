@@ -72,6 +72,7 @@ app.get("/stream", async (c) => c.html(await renderStream()));
 app.get("/ops", async (c) => c.html(await renderOps()));
 app.get("/chat", async (c) => c.html(await renderChat()));
 app.get("/ci", async (c) => c.html(await renderCIRuns()));
+app.get("/git", async (c) => c.html(await renderGitRepos()));
 app.get("/graph", async (c) => {
   const q = c.req.query("q") || undefined;
   const sparql = c.req.query("sparql") || undefined;

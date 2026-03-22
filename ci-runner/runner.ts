@@ -196,6 +196,7 @@ async function runJob(job: CIJob): Promise<void> {
         status: r.exitCode === 0 ? "passed" : "failed",
         durationMs: r.durationMs,
         exitCode: r.exitCode,
+        output: (r.stdout + "\n" + r.stderr).trim().slice(-10000),
       })),
       durationMs: totalDuration,
       pipelineJsonLd,
