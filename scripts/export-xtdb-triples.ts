@@ -40,6 +40,7 @@ const TABLES = [
   "incidents",
   "errors",
   "ci_runs",
+  "docker_events",
 ];
 
 // Namespace prefixes for Turtle

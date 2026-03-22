@@ -1085,6 +1085,55 @@ export async function getCIRun(id: string): Promise<any | null> {
   } catch { return null; }
 }
 
+// ─── Docker Events ─────────────────────────────────────────────
+
+export async function getDockerEvents(opts: {
+  severity?: string;
+  action?: string;
+  service?: string;
+  limit?: number;
+} = {}): Promise<any[]> {
+  const limit = opts.limit ?? 100;
+  try {
+    let rows: any[];
+    if (opts.severity && opts.service) {
+      rows = await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events WHERE severity = ${t(opts.severity)} AND service_name = ${t(opts.service)} ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+    } else if (opts.severity) {
+      rows = await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events WHERE severity = ${t(opts.severity)} ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+    } else if (opts.service) {
+      rows = await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events WHERE service_name = ${t(opts.service)} ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+    } else if (opts.action) {
+      rows = await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events WHERE action = ${t(opts.action)} ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+    } else {
+      rows = await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+    }
+    return rows;
+  } catch { return []; }
+}
+
+export async function getDockerEventsSummary(): Promise<{
+  total: number;
+  bySeverity: Record<string, number>;
+  topServices: { name: string; count: number }[];
+  recentCritical: any[];
+}> {
+  try {
+    const totalRows = await sql`SELECT COUNT(*) as cnt FROM docker_events` as any[];
+    const total = Number(totalRows[0]?.cnt ?? 0);
+
+    const sevRows = await sql`SELECT severity, COUNT(*) as cnt FROM docker_events GROUP BY severity` as any[];
+    const bySeverity: Record<string, number> = {};
+    for (const r of sevRows) bySeverity[r.severity] = Number(r.cnt);
+
+    const svcRows = await sql`SELECT service_name, COUNT(*) as cnt FROM docker_events WHERE service_name != '' GROUP BY service_name ORDER BY cnt DESC LIMIT ${n(10)}` as any[];
+    const topServices = svcRows.map((r: any) => ({ name: r.service_name, count: Number(r.cnt) }));
+
+    const critRows = await sql`SELECT _id, action, container_name, service_name, exit_code, severity, ts FROM docker_events WHERE severity IN ('critical', 'error') ORDER BY ts DESC LIMIT ${n(10)}` as any[];
+
+    return { total, bySeverity, topServices, recentCritical: critRows };
+  } catch { return { total: 0, bySeverity: {}, topServices: [], recentCritical: [] }; }
+}
+
 /**
  * Close the connection.
  */

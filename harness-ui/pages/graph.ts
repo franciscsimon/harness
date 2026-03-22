@@ -122,6 +122,23 @@ SELECT ?run ?repo ?status ?duration WHERE {
 }
 ORDER BY DESC(?duration)`,
   },
+  docker: {
+    label: "Docker Events",
+    icon: "🐳",
+    desc: "Container lifecycle events — crashes, restarts, OOM, health changes",
+    query: `PREFIX docker: <https://pi.dev/docker/>
+PREFIX schema: <https://schema.org/>
+SELECT ?event ?action ?container ?severity ?time WHERE {
+  ?event a docker:ContainerEvent ;
+         docker:action ?action ;
+         docker:containerName ?container ;
+         docker:severity ?severity ;
+         schema:dateCreated ?time .
+  FILTER(?severity IN ("error", "critical", "warning"))
+}
+ORDER BY DESC(?time)
+LIMIT 50`,
+  },
   untested: {
     label: "Untested Functions",
     icon: "🚨",

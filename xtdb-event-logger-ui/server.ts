@@ -38,6 +38,8 @@ import {
   getTestRuns,
   getCIRuns,
   getCIRun,
+  getDockerEvents,
+  getDockerEventsSummary,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -266,6 +268,22 @@ app.get("/api/errors", async (c) => {
 
 app.get("/api/errors/summary", async (c) => {
   const summary = await getErrorSummary();
+  return c.json(summary);
+});
+
+// ── Docker Events ────────────────────────────────────────────────
+
+app.get("/api/docker-events", async (c) => {
+  const severity = c.req.query("severity") || undefined;
+  const action = c.req.query("action") || undefined;
+  const service = c.req.query("service") || undefined;
+  const limit = Number(c.req.query("limit") ?? "100");
+  const events = await getDockerEvents({ severity, action, service, limit });
+  return c.json(events);
+});
+
+app.get("/api/docker-events/summary", async (c) => {
+  const summary = await getDockerEventsSummary();
   return c.json(summary);
 });
 
