@@ -1,0 +1,11 @@
+{
+  "name": "ci-runner",
+  "version": "1.0.0",
+  "description": "Harness CI runner — watches queue, runs pipelines in Docker, records to XTDB",
+  "scripts": {
+    "start": "npx jiti server.ts"
+  },
+  "dependencies": {
+    "postgres": "^3.4.7"
+  }
+}
