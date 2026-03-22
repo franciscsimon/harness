@@ -35,6 +35,7 @@ import {
   getErrorSummary,
   getTestRuns,
   getCIRuns,
+  getCIRun,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -223,6 +224,12 @@ app.get("/api/test-runs", async (c) => {
 app.get("/api/ci-runs", async (c) => {
   const runs = await getCIRuns();
   return c.json(runs);
+});
+
+app.get("/api/ci-runs/:id", async (c) => {
+  const run = await getCIRun(c.req.param("id"));
+  if (!run) return c.json({ error: "Not found" }, 404);
+  return c.json(run);
 });
 
 app.get("/api/projections/:id{.+}", async (c) => {

@@ -21,6 +21,7 @@ import { renderKnowledgePage } from "./pages/knowledge.ts";
 import { renderStream } from "./pages/stream.ts";
 import { renderGraph } from "./pages/graph.ts";
 import { renderCIRuns } from "./pages/ci-runs.ts";
+import { renderCIRunDetail } from "./pages/ci-run-detail.ts";
 import { renderGitRepos } from "./pages/git.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
@@ -73,6 +74,7 @@ app.get("/stream", async (c) => c.html(await renderStream()));
 app.get("/ops", async (c) => c.html(await renderOps()));
 app.get("/chat", async (c) => c.html(await renderChat()));
 app.get("/ci", async (c) => c.html(await renderCIRuns()));
+app.get("/ci/:id", async (c) => c.html(await renderCIRunDetail(decodeURIComponent(c.req.param("id")))));
 app.get("/git", async (c) => c.html(await renderGitRepos()));
 app.get("/graph", async (c) => {
   const q = c.req.query("q") || undefined;

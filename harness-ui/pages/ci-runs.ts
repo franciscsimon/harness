@@ -38,7 +38,8 @@ export async function renderCIRuns(): Promise<string> {
       } catch {}
     }
 
-    return `<tr>
+    const rowId = encodeURIComponent(run._id ?? "");
+    return `<tr style="cursor:pointer" onclick="location.href='/ci/${rowId}'">
       <td><span style="color:${run.status === "passed" ? "#238636" : "#da3633"}">${status}</span></td>
       <td>${run.repo ?? "—"}</td>
       <td><code>${hash}</code></td>
@@ -47,7 +48,7 @@ export async function renderCIRuns(): Promise<string> {
       <td>${passed}/${passed + failed}</td>
       <td>${dur}</td>
       <td>${time}</td>
-    </tr>${details}`;
+    </tr>`;
   }).join("");
 
   const content = `

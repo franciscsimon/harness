@@ -1050,6 +1050,13 @@ export async function getCIRuns(limit = 50): Promise<any[]> {
   } catch { return []; }
 }
 
+export async function getCIRun(id: string): Promise<any | null> {
+  try {
+    const rows = await sql`SELECT _id, repo, ref, commit_hash, commit_message, pusher, status, steps_passed, steps_failed, duration_ms, ts, step_results, jsonld FROM ci_runs WHERE _id = ${t(id)}` as any[];
+    return rows[0] ?? null;
+  } catch { return null; }
+}
+
 /**
  * Close the connection.
  */
