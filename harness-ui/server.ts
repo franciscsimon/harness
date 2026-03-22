@@ -129,6 +129,18 @@ app.post("/api/ci/enqueue", async (c) => {
   }
 });
 
+// CI notification — receives POST from runner, logs to console
+app.post("/api/ci/notify", async (c) => {
+  try {
+    const body = await c.req.json();
+    const emoji = body.status === "passed" ? "✅" : "❌";
+    console.log(`[CI] ${emoji} ${body.repo}@${body.commitHash?.slice(0, 8)} — ${body.status} (${body.durationMs}ms, ${body.stepsFailed}/${body.stepsTotal} failed)`);
+    return c.json({ received: true });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 400);
+  }
+});
+
 // Graph refresh — runs the full pipeline: parse AST → export triples → re-index QLever
 app.post("/api/graph/refresh", async (c) => {
   const root = join(__dirname, "..");

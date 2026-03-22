@@ -187,6 +187,24 @@ async function runJob(job: CIJob): Promise<void> {
     try {
       const runId = await recordCIRun(runInput);
       console.log(`   📝 Recorded: ${runId} (${failed ? "FAILED" : "PASSED"}, ${totalDuration}ms)`);
+
+      // Notify harness-ui via SSE-compatible event (shows in /stream)
+      try {
+        await fetch("http://localhost:3336/api/ci/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: "ci_run",
+            repo: job.repo,
+            commitHash: job.commitHash,
+            status: failed ? "failed" : "passed",
+            stepsTotal: stepResults.length,
+            stepsFailed: stepResults.filter(s => s.exitCode !== 0).length,
+            durationMs: totalDuration,
+            runId,
+          }),
+        });
+      } catch { /* notification is best-effort */ }
     } catch (err) {
       console.error(`   ⚠️  XTDB write failed (results lost):`, err);
     }
