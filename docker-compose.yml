@@ -216,6 +216,8 @@ services:
     container_name: ops-api
     restart: unless-stopped
     ports: ["3335:3335"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       OPS_PORT: "3335"
       XTDB_EVENT_HOST: xtdb-primary

@@ -4,7 +4,7 @@
 import { layout } from "../components/layout.ts";
 import { escapeHtml, relativeTime, formatNumber } from "../lib/format.ts";
 
-const EVENT_API = process.env.EVENT_API ?? "http://localhost:3333";
+const EVENT_API = process.env.EVENT_API_URL ?? "http://localhost:3333";
 
 export async function renderHome(): Promise<string> {
   let projects: any[] = [];

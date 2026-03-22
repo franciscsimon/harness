@@ -8,8 +8,8 @@ FROM node:22-slim
 WORKDIR /app/web-chat
 COPY --from=deps /app/web-chat/node_modules ./node_modules
 COPY web-chat/ .
-# Shared lib (web-chat imports ../lib/errors.ts)
-COPY lib/errors.ts /app/lib/errors.ts
+# Shared lib (web-chat imports ../lib/errors.ts which imports ./jsonld/context.ts)
+COPY lib/ /app/lib/
 EXPOSE 3334
 ENV PORT=3334
 CMD ["npx", "jiti", "server.ts"]
