@@ -1,0 +1,157 @@
+# Auto-generated from .cd.jsonld — do not edit manually
+# Generated: 2026-03-22T14:41:18.186Z
+# Strategy: rolling
+
+version: "0.5"
+
+log_level: info
+log_length: 3000
+
+processes:
+  event-api:
+    command: "npx jiti server.ts"
+    working_dir: "./xtdb-event-logger-ui"
+    namespace: harness
+    readiness_probe:
+      http_get:
+        host: "127.0.0.1"
+        port: 3333
+        path: "/api/stats"
+      initial_delay_seconds: 3
+      period_seconds: 10
+      timeout_seconds: 5
+      failure_threshold: 3
+    liveness_probe:
+      http_get:
+        host: "127.0.0.1"
+        port: 3333
+        path: "/api/stats"
+      period_seconds: 30
+      timeout_seconds: 5
+      failure_threshold: 3
+    availability:
+      restart: "always"
+      backoff_seconds: 5
+      max_restarts: 0
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
+
+  chat-ws:
+    command: "npx jiti server.ts"
+    working_dir: "./web-chat"
+    namespace: harness
+    readiness_probe:
+      http_get:
+        host: "127.0.0.1"
+        port: 3334
+        path: "/"
+      initial_delay_seconds: 3
+      period_seconds: 10
+      timeout_seconds: 5
+      failure_threshold: 3
+    liveness_probe:
+      http_get:
+        host: "127.0.0.1"
+        port: 3334
+        path: "/"
+      period_seconds: 30
+      timeout_seconds: 5
+      failure_threshold: 3
+    availability:
+      restart: "always"
+      backoff_seconds: 5
+      max_restarts: 0
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
+
+  ops-api:
+    command: "npx jiti server.ts"
+    working_dir: "./xtdb-ops-api"
+    namespace: harness
+    readiness_probe:
+      http_get:
+        host: "127.0.0.1"
+        port: 3335
+        path: "/api/health"
+      initial_delay_seconds: 3
+      period_seconds: 10
+      timeout_seconds: 5
+      failure_threshold: 3
+    liveness_probe:
+      http_get:
+        host: "127.0.0.1"
+        port: 3335
+        path: "/api/health"
+      period_seconds: 30
+      timeout_seconds: 5
+      failure_threshold: 3
+    availability:
+      restart: "always"
+      backoff_seconds: 5
+      max_restarts: 0
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
+
+  harness-ui:
+    command: "npx jiti server.ts"
+    working_dir: "./harness-ui"
+    namespace: harness
+    readiness_probe:
+      http_get:
+        host: "127.0.0.1"
+        port: 3336
+        path: "/"
+      initial_delay_seconds: 3
+      period_seconds: 10
+      timeout_seconds: 5
+      failure_threshold: 3
+    liveness_probe:
+      http_get:
+        host: "127.0.0.1"
+        port: 3336
+        path: "/"
+      period_seconds: 30
+      timeout_seconds: 5
+      failure_threshold: 3
+    availability:
+      restart: "always"
+      backoff_seconds: 5
+      max_restarts: 0
+    shutdown:
+      signal: 15
+      timeout_seconds: 10
+    depends_on:
+      event-api:
+        condition: process_healthy
+
+  ci-runner:
+    command: "npx jiti server.ts"
+    working_dir: "./ci-runner"
+    namespace: harness
+    readiness_probe:
+      http_get:
+        host: "127.0.0.1"
+        port: 3337
+        path: "/api/health"
+      initial_delay_seconds: 3
+      period_seconds: 10
+      timeout_seconds: 5
+      failure_threshold: 3
+    liveness_probe:
+      http_get:
+        host: "127.0.0.1"
+        port: 3337
+        path: "/api/health"
+      period_seconds: 30
+      timeout_seconds: 5
+      failure_threshold: 3
+    availability:
+      restart: "always"
+      backoff_seconds: 5
+      max_restarts: 0
+    shutdown:
+      signal: 15
+      timeout_seconds: 10

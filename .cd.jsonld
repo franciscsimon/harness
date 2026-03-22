@@ -1,0 +1,56 @@
+{
+  "@context": {
+    "schema": "https://schema.org/",
+    "code": "https://pi.dev/code/"
+  },
+  "@type": "code:DeployPipeline",
+  "schema:name": "harness CD",
+  "code:strategy": "rolling",
+  "code:services": [
+    {
+      "@type": "code:Service",
+      "schema:name": "event-api",
+      "code:command": "npx jiti server.ts",
+      "code:workingDir": "xtdb-event-logger-ui",
+      "code:port": 3333,
+      "code:healthPath": "/api/stats",
+      "code:dependsOn": []
+    },
+    {
+      "@type": "code:Service",
+      "schema:name": "chat-ws",
+      "code:command": "npx jiti server.ts",
+      "code:workingDir": "web-chat",
+      "code:port": 3334,
+      "code:healthPath": "/",
+      "code:dependsOn": []
+    },
+    {
+      "@type": "code:Service",
+      "schema:name": "ops-api",
+      "code:command": "npx jiti server.ts",
+      "code:workingDir": "xtdb-ops-api",
+      "code:port": 3335,
+      "code:healthPath": "/api/health",
+      "code:dependsOn": []
+    },
+    {
+      "@type": "code:Service",
+      "schema:name": "harness-ui",
+      "code:command": "npx jiti server.ts",
+      "code:workingDir": "harness-ui",
+      "code:port": 3336,
+      "code:healthPath": "/",
+      "code:dependsOn": ["event-api"]
+    },
+    {
+      "@type": "code:Service",
+      "schema:name": "ci-runner",
+      "code:command": "npx jiti server.ts",
+      "code:workingDir": "ci-runner",
+      "code:port": 3337,
+      "code:healthPath": "/api/health",
+      "code:dependsOn": []
+    }
+  ]
+}
