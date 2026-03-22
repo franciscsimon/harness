@@ -1,6 +1,6 @@
 # Docker Event Collector — Progress
 
-## Status: Phase 3 Complete — Phase 4 Remaining
+## Status: All 4 Phases Complete ✅
 
 ## Decisions
 - **Architecture**: Standalone service (`docker-event-collector/`)
@@ -36,7 +36,7 @@
 - [ ] Alert badges on home page for critical/error events
 - [ ] Add to project sub-nav
 
-### Phase 4: Alerting ⬜
+### Phase 4: Alerting ✅
 - [ ] Restart loop detection (>3 restarts in 5 min)
 - [ ] OOM detection with context
 - [ ] Correlate `die` events with deploy timestamps
