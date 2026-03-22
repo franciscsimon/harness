@@ -24,6 +24,7 @@ import { renderCIRuns } from "./pages/ci-runs.ts";
 import { renderCIRunDetail } from "./pages/ci-run-detail.ts";
 import { renderGitRepos } from "./pages/git.ts";
 import { renderDeploys } from "./pages/deploys.ts";
+import { renderDockerEvents } from "./pages/docker-events.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -133,6 +134,8 @@ app.get("/projects/:projectId/:section", async (c) => {
       return c.html(await renderOps(projectId));
     case "deploys":
       return c.html(await renderDeploys(projectId));
+    case "docker-events":
+      return c.html(await renderDockerEvents(projectId));
     default:
       return c.text("Not found", 404);
   }

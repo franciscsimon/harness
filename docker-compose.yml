@@ -240,6 +240,7 @@ services:
       PORT: "3336"
       EVENT_API_URL: http://event-api:3333
       OPS_API_URL: http://ops-api:3335
+      COLLECTOR_URL: http://docker-event-collector:3338
       CHAT_WS_URL: ws://chat-ws:3334/ws
       CHAT_HTTP_URL: http://chat-ws:3334
       QLEVER_URL: http://qlever:7001

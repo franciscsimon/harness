@@ -46,6 +46,7 @@ const PROJECT_SUB_NAV: ProjectSubNavItem[] = [
   { label: "Git", section: "git" },
   { label: "Graph", section: "graph" },
   { label: "Deploys", section: "deploys" },
+  { label: "Docker", section: "docker-events" },
   { label: "Ops", section: "ops" },
 ];
 
