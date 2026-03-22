@@ -284,6 +284,7 @@ services:
       COLLECTOR_PORT: "3338"
       XTDB_URL: postgresql://xtdb-primary:5432/xtdb
       DOCKER_SOCKET: /var/run/docker.sock
+      HARNESS_UI_URL: http://harness-ui:3336
     depends_on: [xtdb-primary]
 
 volumes:

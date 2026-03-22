@@ -7,6 +7,7 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { startWriter, stopWriter, getWriterStats } from "./writer.ts";
 import { startCollector, stopCollector, getCollectorStats } from "./collector.ts";
+import { getAlertStats } from "./alerting.ts";
 
 const PORT = Number(process.env.COLLECTOR_PORT ?? "3338");
 const started = Date.now();
@@ -20,11 +21,13 @@ app.get("/", (c) => c.json({ service: "docker-event-collector", status: "ok" }))
 app.get("/api/health", (c) => {
   const collector = getCollectorStats();
   const writer = getWriterStats();
+  const alerts = getAlertStats();
   return c.json({
     status: collector.isConnected ? "ok" : "degraded",
     uptime: Date.now() - started,
     collector,
     writer,
+    alerts,
   });
 });
 

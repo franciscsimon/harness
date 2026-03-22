@@ -5,6 +5,7 @@
 import * as http from "node:http";
 import { transformEvent, type DockerRawEvent } from "./transform.ts";
 import { enqueueEvent } from "./writer.ts";
+import { checkAlerts } from "./alerting.ts";
 
 const DOCKER_SOCKET = process.env.DOCKER_SOCKET ?? "/var/run/docker.sock";
 const RECONNECT_DELAY_MS = 5000;
@@ -61,6 +62,7 @@ function connect() {
             lastSeenTimestamp = raw.time;
             const record = transformEvent(raw);
             enqueueEvent(record);
+            checkAlerts(record);
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             console.error(`[collector] Parse error: ${msg}`);
