@@ -36,7 +36,8 @@ export async function renderGitRepos(): Promise<string> {
       <td><code>${r.defaultBranch}</code></td>
       <td>${r.isPrivate ? "🔒 Private" : "🌐 Public"}</td>
       <td>
-        <code style="font-size:0.8rem">ssh://localhost:23231/${r.name}</code>
+        <code style="font-size:0.8rem">ssh://localhost:23231/${r.name}</code><br>
+        <code style="font-size:0.8rem">http://localhost:23232/${r.name}</code>
       </td>
     </tr>
   `).join("");
