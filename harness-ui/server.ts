@@ -129,6 +129,64 @@ app.post("/api/ci/enqueue", async (c) => {
   }
 });
 
+// Git repo backup/restore via Soft Serve container
+app.post("/api/git/backup", async (c) => {
+  try {
+    const { execSync } = await import("node:child_process");
+    const { join: pathJoin } = await import("node:path");
+    const { mkdirSync } = await import("node:fs");
+    const backupDir = pathJoin(__dirname, "..", "data", "backups");
+    mkdirSync(backupDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const filename = `git-repos-${ts}.tar.gz`;
+    const hostPath = pathJoin(backupDir, filename);
+    // Tar repos inside container, copy out
+    execSync(`docker exec soft-serve tar czf /tmp/repos-backup.tar.gz -C /soft-serve repos`, { timeout: 60000 });
+    execSync(`docker cp soft-serve:/tmp/repos-backup.tar.gz "${hostPath}"`, { timeout: 30000 });
+    execSync(`docker exec soft-serve rm -f /tmp/repos-backup.tar.gz`, { timeout: 5000 });
+    const { statSync } = await import("node:fs");
+    const size = statSync(hostPath).size;
+    return c.json({ success: true, filename, path: hostPath, sizeBytes: size });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.get("/api/git/backups", async (c) => {
+  try {
+    const { join: pathJoin } = await import("node:path");
+    const { readdirSync, statSync } = await import("node:fs");
+    const backupDir = pathJoin(__dirname, "..", "data", "backups");
+    const files = readdirSync(backupDir).filter(f => f.startsWith("git-repos-") && f.endsWith(".tar.gz")).sort().reverse();
+    const backups = files.map(f => {
+      const st = statSync(pathJoin(backupDir, f));
+      return { filename: f, sizeBytes: st.size, created: st.mtime.toISOString() };
+    });
+    return c.json(backups);
+  } catch { return c.json([]); }
+});
+
+app.post("/api/git/restore", async (c) => {
+  try {
+    const { filename } = await c.req.json();
+    if (!filename || filename.includes("..")) return c.json({ error: "Invalid filename" }, 400);
+    const { execSync } = await import("node:child_process");
+    const { join: pathJoin } = await import("node:path");
+    const { existsSync } = await import("node:fs");
+    const hostPath = pathJoin(__dirname, "..", "data", "backups", filename);
+    if (!existsSync(hostPath)) return c.json({ error: "Backup not found" }, 404);
+    // Copy into container and extract
+    execSync(`docker cp "${hostPath}" soft-serve:/tmp/repos-restore.tar.gz`, { timeout: 30000 });
+    execSync(`docker exec soft-serve tar xzf /tmp/repos-restore.tar.gz -C /soft-serve`, { timeout: 60000 });
+    execSync(`docker exec soft-serve rm -f /tmp/repos-restore.tar.gz`, { timeout: 5000 });
+    // Restart Soft Serve to pick up restored repos
+    execSync(`docker restart soft-serve`, { timeout: 30000 });
+    return c.json({ success: true, restored: filename });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
 // CI notification — receives POST from runner, logs to console
 app.post("/api/ci/notify", async (c) => {
   try {

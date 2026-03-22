@@ -121,12 +121,69 @@ export async function renderOps(): Promise<string> {
         <div id="topics-list" class="ops-topics"><p class="empty-msg">Loading...</p></div>
       </div>
 
+      <div class="ops-section">
+        <div class="ops-section-header">
+          <h2>🐙 Git Repository Backup</h2>
+        </div>
+        <div class="ops-backup-actions" style="margin-bottom:1rem">
+          <button class="btn" id="btn-git-backup" onclick="gitBackup()">📦 Backup All Repos</button>
+        </div>
+        <div id="git-backup-status" style="display:none;margin-bottom:1rem"></div>
+        <div id="git-backup-list"><p class="empty-msg">Loading backups...</p></div>
+      </div>
+
     </main>
   `;
 
   return layout(content, {
     title: "Operations",
     activePath: "/ops",
-    extraHead: `<script src="/static/modal.js" defer></script><script src="/static/ops.js" defer></script>`,
+    extraHead: `<script src="/static/modal.js" defer></script><script src="/static/ops.js" defer></script>
+<script>
+async function gitBackup() {
+  const btn = document.getElementById("btn-git-backup");
+  const status = document.getElementById("git-backup-status");
+  btn.disabled = true;
+  btn.textContent = "⏳ Backing up...";
+  status.style.display = "block";
+  status.innerHTML = '<div class="card" style="padding:0.5rem">Creating backup of all Soft Serve repos...</div>';
+  try {
+    const r = await fetch("/api/git/backup", { method: "POST" });
+    const d = await r.json();
+    if (d.success) {
+      status.innerHTML = '<div class="card" style="padding:0.5rem;color:#238636">✅ Backup created: ' + d.filename + ' (' + (d.sizeBytes/1024).toFixed(0) + ' KB)</div>';
+      loadGitBackups();
+    } else {
+      status.innerHTML = '<div class="card" style="padding:0.5rem;color:#da3633">❌ ' + (d.error || 'Unknown error') + '</div>';
+    }
+  } catch(e) {
+    status.innerHTML = '<div class="card" style="padding:0.5rem;color:#da3633">❌ ' + e.message + '</div>';
+  }
+  btn.disabled = false;
+  btn.textContent = "📦 Backup All Repos";
+}
+
+async function gitRestore(filename) {
+  if (!confirm("Restore repos from " + filename + "? This will overwrite current repos and restart Soft Serve.")) return;
+  try {
+    const r = await fetch("/api/git/restore", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({filename}) });
+    const d = await r.json();
+    alert(d.success ? "✅ Restored from " + filename + ". Soft Serve restarted." : "❌ " + d.error);
+  } catch(e) { alert("❌ " + e.message); }
+}
+
+async function loadGitBackups() {
+  try {
+    const r = await fetch("/api/git/backups");
+    const backups = await r.json();
+    const el = document.getElementById("git-backup-list");
+    if (!backups.length) { el.innerHTML = '<p class="empty-msg">No backups yet</p>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Filename</th><th>Size</th><th>Created</th><th>Action</th></tr></thead><tbody>' +
+      backups.map(b => '<tr><td>' + b.filename + '</td><td>' + (b.sizeBytes/1024).toFixed(0) + ' KB</td><td>' + new Date(b.created).toLocaleString() + '</td><td><button class="btn" onclick="gitRestore(\\'' + b.filename + '\\')">Restore</button></td></tr>').join('') +
+      '</tbody></table>';
+  } catch { document.getElementById("git-backup-list").innerHTML = '<p class="empty-msg">Failed to load backups</p>'; }
+}
+document.addEventListener("DOMContentLoaded", loadGitBackups);
+</script>`,
   });
 }
