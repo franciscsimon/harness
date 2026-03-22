@@ -11,10 +11,10 @@ while read -r oldrev newrev refname; do
 
   MSG=$(git log -1 --pretty=%s "$newrev" 2>/dev/null || echo "")
 
-  curl -sf -X POST "$HARNESS_UI/api/ci/enqueue" \
-    -H "Content-Type: application/json" \
-    -d "{\"repo\":\"$REPO_NAME\",\"ref\":\"$refname\",\"commitHash\":\"$newrev\",\"commitMessage\":\"$MSG\",\"pusher\":\"${USER:-unknown}\"}" \
-    >/dev/null 2>&1 \
+  PAYLOAD="{\"repo\":\"$REPO_NAME\",\"ref\":\"$refname\",\"commitHash\":\"$newrev\",\"commitMessage\":\"$MSG\",\"pusher\":\"${USER:-unknown}\"}"
+
+  wget -q --post-data="$PAYLOAD" --header="Content-Type: application/json" \
+    -O /dev/null "$HARNESS_UI/api/ci/enqueue" 2>/dev/null \
     && >&2 echo "✅ CI job queued for $REPO_NAME@${newrev:0:8}" \
     || >&2 echo "⚠️  CI enqueue failed (harness-ui unreachable?)"
 done
