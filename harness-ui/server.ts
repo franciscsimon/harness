@@ -21,6 +21,7 @@ import { renderKnowledgePage } from "./pages/knowledge.ts";
 import { renderStream } from "./pages/stream.ts";
 import { renderGraph } from "./pages/graph.ts";
 import { renderCIRuns } from "./pages/ci-runs.ts";
+import { renderGitRepos } from "./pages/git.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
