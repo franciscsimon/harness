@@ -154,13 +154,7 @@ export async function checkAllContainers(): Promise<ContainerStatus[]> {
     { name: "Chat WS", port: "3334", role: "Chat service", check: checkChatHealth() },
     { name: "Harness UI", port: "3336", role: "This UI", check: Promise.resolve(true) },
     { name: "Soft Serve", port: "23232", role: "Git server", check: probeHttp("http://localhost:23232") },
-    { name: "CI Runner", port: "—", role: "CI pipeline runner", check: (async () => {
-      try {
-        const { execSync } = await import("node:child_process");
-        const out = execSync("pgrep -f 'ci-runner/runner' 2>/dev/null", { encoding: "utf-8", timeout: 2000 });
-        return out.trim().length > 0;
-      } catch { return false; }
-    })() },
+    { name: "CI Runner", port: "3337", role: "CI pipeline runner", check: probeHttp("http://localhost:3337/api/health") },
   ];
 
   const results = await Promise.all(checks.map(async (c) => ({

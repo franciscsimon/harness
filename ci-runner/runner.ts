@@ -52,6 +52,17 @@ export interface StepResult {
   durationMs: number;
 }
 
+// ─── Exported state (for HTTP API) ────────────────────────────────
+
+export const runnerState = {
+  started: Date.now(),
+  jobsProcessed: 0,
+  jobsFailed: 0,
+  currentJob: null as string | null,
+  lastJobAt: 0,
+  queueDir: QUEUE_DIR,
+};
+
 // ─── Main loop ───────────────────────────────────────────────────
 
 async function main() {
@@ -112,9 +123,15 @@ async function drainQueue() {
       const runningPath = filePath.replace(".json", ".running");
       writeFileSync(runningPath, JSON.stringify(job, null, 2));
       unlinkSync(filePath);
+      runnerState.currentJob = job.id;
       await runJob(job);
+      runnerState.jobsProcessed++;
+      runnerState.lastJobAt = Date.now();
+      runnerState.currentJob = null;
       unlinkSync(runningPath);
     } catch (err) {
+      runnerState.jobsFailed++;
+      runnerState.currentJob = null;
       console.error(`❌ Failed to process ${file}:`, err);
       // Move to .failed
       try {

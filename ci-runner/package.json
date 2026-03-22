@@ -6,6 +6,8 @@
     "start": "npx jiti server.ts"
   },
   "dependencies": {
+    "hono": "^4.7.5",
+    "@hono/node-server": "^1.14.1",
     "postgres": "^3.4.7"
   }
 }
