@@ -5,7 +5,8 @@ export async function renderGitRepos(projectId?: string): Promise<string> {
   let repos: { name: string; description: string; isPrivate: boolean; defaultBranch: string }[] = [];
 
   try {
-    const output = execSync("ssh -o StrictHostKeyChecking=no -o ConnectTimeout=3 -p 23231 localhost repo list", {
+    const sshHost = process.env.SOFT_SERVE_HOST ?? "localhost";
+    const output = execSync(`ssh -o StrictHostKeyChecking=no -o ConnectTimeout=3 -p 23231 ${sshHost} repo list`, {
       encoding: "utf-8",
       timeout: 5000,
     }).trim();
@@ -13,7 +14,7 @@ export async function renderGitRepos(projectId?: string): Promise<string> {
 
     for (const name of names) {
       try {
-        const info = execSync(`ssh -o StrictHostKeyChecking=no -p 23231 localhost repo info ${name}`, {
+        const info = execSync(`ssh -o StrictHostKeyChecking=no -p 23231 ${sshHost} repo info ${name}`, {
           encoding: "utf-8",
           timeout: 5000,
         });
