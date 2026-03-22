@@ -117,10 +117,10 @@ async function drainQueue() {
 
   for (const file of files) {
     const filePath = join(QUEUE_DIR, file);
+    const runningPath = filePath.replace(".json", ".running");
     try {
       const job = JSON.parse(readFileSync(filePath, "utf-8")) as CIJob;
       // Move to .running to prevent double-pickup
-      const runningPath = filePath.replace(".json", ".running");
       writeFileSync(runningPath, JSON.stringify(job, null, 2));
       unlinkSync(filePath);
       runnerState.currentJob = job.id;
@@ -133,13 +133,34 @@ async function drainQueue() {
       runnerState.jobsFailed++;
       runnerState.currentJob = null;
       console.error(`❌ Failed to process ${file}:`, err);
-      // Move to .failed
+
+      // Record the failure to XTDB so it shows in the CI Runs page
       try {
-        const failedPath = filePath.replace(".json", ".failed");
-        if (existsSync(filePath)) {
-          writeFileSync(failedPath, readFileSync(filePath, "utf-8"));
-          unlinkSync(filePath);
-        }
+        const job = JSON.parse(readFileSync(runningPath, "utf-8")) as CIJob;
+        await recordCIRun({
+          repo: job.repo,
+          ref: job.ref,
+          commitHash: job.commitHash,
+          commitMessage: job.commitMessage,
+          pusher: job.pusher,
+          status: "error",
+          steps: [{
+            name: "runner-error",
+            status: "failed",
+            durationMs: 0,
+            exitCode: 1,
+            output: String(err),
+          }],
+          durationMs: 0,
+        });
+        console.log(`   📝 Recorded error for ${job.repo}@${job.commitHash.slice(0, 8)}`);
+      } catch (recErr) {
+        console.error(`   ⚠️  Failed to record error:`, recErr);
+      }
+
+      // Clean up .running file
+      try {
+        if (existsSync(runningPath)) unlinkSync(runningPath);
       } catch {}
     }
   }
