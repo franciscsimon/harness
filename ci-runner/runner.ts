@@ -26,6 +26,7 @@ const WORK_DIR = process.env.CI_WORK_DIR ?? join(process.env.HOME ?? "/tmp", ".c
 const REPOS_DIR = process.env.SOFT_SERVE_DATA_PATH
   ? join(process.env.SOFT_SERVE_DATA_PATH, "repos")
   : process.env.CI_REPOS_DIR ?? "";
+const SOFT_SERVE_SSH = process.env.SOFT_SERVE_SSH ?? "ssh://localhost:23231";
 const POLL_INTERVAL_MS = Number(process.env.CI_POLL_MS ?? "2000");
 const DOCKER_TIMEOUT = Number(process.env.CI_DOCKER_TIMEOUT ?? "300"); // 5 min default
 
@@ -217,8 +218,9 @@ function checkout(job: CIJob, workDir: string): void {
       stdio: "pipe",
     });
   } else {
-    // Clone from remote (fallback)
-    execSync(`git clone --depth=1 "${job.repo}" "${workDir}"`, { stdio: "pipe" });
+    // Clone from Soft Serve via SSH
+    const cloneUrl = job.repo.includes("://") ? job.repo : `${SOFT_SERVE_SSH}/${job.repo}`;
+    execSync(`git clone --depth=50 "${cloneUrl}" "${workDir}"`, { stdio: "pipe" });
     execSync(`git -C "${workDir}" checkout ${job.commitHash}`, { stdio: "pipe" });
   }
 }
