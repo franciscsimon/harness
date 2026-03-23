@@ -293,7 +293,7 @@ function checkout(job: CIJob, workDir: string): void {
   } else {
     // Clone from Soft Serve via SSH
     const cloneUrl = job.repo.includes("://") ? job.repo : `${SOFT_SERVE_SSH}/${job.repo}`;
-    execSync(`git clone --depth=50 "${cloneUrl}" "${workDir}"`, { stdio: "pipe" });
+    execSync(`GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --depth=50 "${cloneUrl}" "${workDir}"`, { stdio: "pipe" });
     execSync(`git -C "${workDir}" checkout ${job.commitHash}`, { stdio: "pipe" });
   }
 }
