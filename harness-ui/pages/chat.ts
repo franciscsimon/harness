@@ -26,7 +26,6 @@ ${renderNav("/chat")}
 <div class="chat-container">
 <div class="chat-layout">
   <div class="chat-main">
-    <div id="status" style="padding:4px 12px;font-size:0.8rem;color:#8b949e;border-bottom:1px solid #21262d">● disconnected</div>
     <main class="chat-messages" id="messages"></main>
     <div class="chat-input-wrap">
       <div class="chat-input-row">
@@ -37,6 +36,11 @@ ${renderNav("/chat")}
     </div>
   </div>
   <aside class="chat-sidebar" id="sidebar">
+
+    <!-- Connection status -->
+    <section class="sb-section sb-section-pinned">
+      <div id="status" style="font-size:0.85rem;font-weight:600">● disconnected</div>
+    </section>
 
     <!-- Project & Model — always visible -->
     <section class="sb-section sb-section-pinned">
