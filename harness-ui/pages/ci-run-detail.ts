@@ -1,10 +1,12 @@
 import { layout } from "../components/layout.ts";
 import { relativeTime, formatDuration, escapeHtml } from "../lib/format.ts";
 
+const EVENT_API = process.env.EVENT_API_URL ?? "http://localhost:3333";
+
 export async function renderCIRunDetail(id: string, projectId?: string): Promise<string> {
   let run: any = null;
   try {
-    const r = await fetch(`http://localhost:3333/api/ci-runs/${encodeURIComponent(id)}`);
+    const r = await fetch(`${EVENT_API}/api/ci-runs/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(10000) });
     if (r.ok) run = await r.json();
   } catch {}
 
