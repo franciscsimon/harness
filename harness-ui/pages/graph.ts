@@ -261,7 +261,8 @@ export async function renderGraph(queryKey?: string, customQuery?: string, proje
   const queryCards = Object.entries(CANNED_QUERIES)
     .map(([key, { label, icon, desc }]) => {
       const isActive = key === activeKey;
-      return `<a href="/graph?q=${key}" class="sparql-query-card${isActive ? " sparql-query-active" : ""}">
+      const graphBase = projectId ? `/projects/${projectId}/graph` : "/graph";
+      return `<a href="${graphBase}?q=${key}" class="sparql-query-card${isActive ? " sparql-query-active" : ""}">
         <span class="sparql-query-icon">${icon}</span>
         <span class="sparql-query-label">${label}</span>
         <span class="sparql-query-desc">${desc}</span>
@@ -285,7 +286,7 @@ export async function renderGraph(queryKey?: string, customQuery?: string, proje
 
     <div class="section">
       <h2>SPARQL Query</h2>
-      <form method="GET" action="/graph">
+      <form method="GET" action="${projectId ? `/projects/${projectId}/graph` : `/graph`}">
         <textarea name="sparql" rows="6" style="width:100%;font-family:monospace;font-size:0.85rem;background:var(--bg-secondary);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:0.75rem;resize:vertical">${escapeHtml(activeQuery)}</textarea>
         <button type="submit" class="filter-chip active" style="margin-top:0.5rem;cursor:pointer">Run Query</button>
       </form>
