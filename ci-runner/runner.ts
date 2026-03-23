@@ -119,6 +119,7 @@ async function drainQueue() {
     const filePath = join(QUEUE_DIR, file);
     const runningPath = filePath.replace(".json", ".running");
     try {
+      if (!existsSync(filePath)) continue; // race: file already picked up
       const job = JSON.parse(readFileSync(filePath, "utf-8")) as CIJob;
       // Move to .running to prevent double-pickup
       writeFileSync(runningPath, JSON.stringify(job, null, 2));
@@ -136,6 +137,7 @@ async function drainQueue() {
 
       // Record the failure to XTDB so it shows in the CI Runs page
       try {
+        if (!existsSync(runningPath)) throw new Error("No .running file to read");
         const job = JSON.parse(readFileSync(runningPath, "utf-8")) as CIJob;
         await recordCIRun({
           repo: job.repo,
