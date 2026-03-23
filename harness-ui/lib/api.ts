@@ -180,6 +180,7 @@ const APP_SERVICES = [
   { name: "harness-ui", port: 3336, path: "/" },
   { name: "ci-runner", port: 3337, path: "/api/health" },
   { name: "docker-event-collector", port: 3338, path: "/api/health" },
+  { name: "build-service", port: 3339, path: "/api/health" },
 ];
 
 export async function checkAppServices(): Promise<{ name: string; port: number; ok: boolean }[]> {

@@ -1,13 +1,14 @@
 #!/usr/bin/env npx jiti
 // ─── Container Deploy Script ─────────────────────────────────────
-// Image-based rolling deploy: build → push → deploy → health → rollback
+// Deploy-only: pulls images from Zot registry, recreates containers,
+// runs health checks, rolls back on failure.
+//
+// Images are built by build-service (:3339) — this script never builds.
 //
 // Usage:
 //   npx jiti scripts/deploy.ts                  # deploy all services
 //   npx jiti scripts/deploy.ts --service ops-api # deploy one service
 //   npx jiti scripts/deploy.ts --rollback        # rollback to previous tag
-//
-// Pipeline: git pull → build images → push to Zot → rolling docker compose up → health check → rollback on failure
 
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -20,7 +21,6 @@ const HARNESS_UI = process.env.HARNESS_UI_URL ?? "http://localhost:3336";
 interface ServiceDef {
   "schema:name": string;
   "oci:image": string;
-  "code:dockerfile": string;
   "code:port": number;
   "code:healthPath": string;
 }
@@ -28,7 +28,7 @@ interface ServiceDef {
 interface DeployResult {
   name: string;
   success: boolean;
-  phase: "build" | "push" | "deploy" | "health";
+  phase: "deploy" | "health";
   durationMs: number;
   error?: string;
 }
@@ -82,21 +82,14 @@ async function main() {
   const singleService = args.includes("--service") ? args[args.indexOf("--service") + 1] : null;
   const startTime = Date.now();
 
-  console.log("🚀 Container deploy started");
-
-  // 1. Git pull
-  console.log("\n📥 Step 1: git pull");
-  const pull = runSafe("git pull soft-serve main");
-  console.log(`   ${pull.ok ? pull.out.split("\n")[0] : "⚠️ " + pull.out.slice(0, 80)}`);
+  console.log("🚀 Deploy started (pull from registry → recreate → health check)");
 
   const commitHash = run("git rev-parse --short HEAD");
-  const commitFull = run("git rev-parse HEAD");
   const commitMsg = run("git log -1 --pretty=%s");
-  console.log(`   Commit: ${commitHash} — ${commitMsg}`);
+  console.log(`   Current commit: ${commitHash} — ${commitMsg}`);
 
-  // 2. Load config
+  // Load config
   const config = JSON.parse(readFileSync(join(ROOT, ".cd.jsonld"), "utf-8"));
-  const registry = config["code:registry"];
   let services: ServiceDef[] = config["code:services"];
 
   if (singleService) {
@@ -107,8 +100,8 @@ async function main() {
     }
   }
 
-  // For rollback, find previous tag
-  let imageTag = commitHash;
+  // For rollback, find previous successful deploy tag
+  let imageTag = "latest";
   if (isRollback) {
     const history = loadHistory();
     const prev = history.deploys.find((d: any) => d.status === "success" && d.commitHash !== commitHash);
@@ -122,57 +115,20 @@ async function main() {
 
   const results: DeployResult[] = [];
 
-  // 3. Build & push (skip for rollback — images already in registry)
-  if (!isRollback) {
-    console.log(`\n🔨 Step 2: build & push to ${registry}`);
-    for (const svc of services) {
-      const name = svc["schema:name"];
-      const image = svc["oci:image"];
-      const dockerfile = svc["code:dockerfile"];
-      const fullTag = `${registry}/${image}:${imageTag}`;
-      const latestTag = `${registry}/${image}:latest`;
-      const t = Date.now();
-
-      // Build
-      console.log(`   Building ${name}...`);
-      const build = runSafe(`docker build -t ${fullTag} -t ${latestTag} -f ${dockerfile} .`);
-      if (!build.ok) {
-        console.log(`   ❌ ${name}: build failed`);
-        results.push({ name, success: false, phase: "build", durationMs: Date.now() - t, error: build.out });
-        continue;
-      }
-
-      // Push
-      console.log(`   Pushing ${name}...`);
-      const push1 = runSafe(`docker push ${fullTag}`);
-      const push2 = runSafe(`docker push ${latestTag}`);
-      if (!push1.ok) {
-        console.log(`   ❌ ${name}: push failed`);
-        results.push({ name, success: false, phase: "push", durationMs: Date.now() - t, error: push1.out });
-        continue;
-      }
-      console.log(`   ✅ ${name}: built & pushed (${((Date.now() - t) / 1000).toFixed(1)}s)`);
-    }
-  }
-
-  // 4. Rolling deploy via docker compose
-  console.log("\n🔄 Step 3: rolling deploy");
+  // Rolling deploy: pull + recreate + health check
+  console.log(`\n🔄 Deploying ${services.length} services`);
   for (const svc of services) {
     const name = svc["schema:name"];
     const port = svc["code:port"];
     const healthPath = svc["code:healthPath"];
-
-    // Skip if build/push failed
-    if (results.some(r => r.name === name && !r.success)) {
-      console.log(`   ⏭️  ${name}: skipped (build/push failed)`);
-      continue;
-    }
-
     const t = Date.now();
-    console.log(`   Deploying ${name}...`);
 
-    // Pull latest image and recreate container
-    const deploy = runSafe(`docker compose up -d --no-deps --pull always ${name}`);
+    console.log(`   ${name}: pulling & recreating...`);
+
+    // Pull latest from registry and recreate
+    const deploy = runSafe(
+      `docker compose -p harness up -d --no-deps --pull always ${name}`
+    );
     if (!deploy.ok) {
       console.log(`   ❌ ${name}: deploy failed — ${deploy.out.slice(0, 80)}`);
       results.push({ name, success: false, phase: "deploy", durationMs: Date.now() - t, error: deploy.out });
@@ -186,58 +142,58 @@ async function main() {
       console.log(`   ✅ ${name}: healthy (${(dur / 1000).toFixed(1)}s)`);
       results.push({ name, success: true, phase: "health", durationMs: dur });
     } else {
-      console.log(`   ❌ ${name}: not healthy after 30s — triggering rollback`);
+      console.log(`   ❌ ${name}: unhealthy after 30s`);
       results.push({ name, success: false, phase: "health", durationMs: dur });
 
-      // Rollback this service to previous image
+      // Attempt rollback of this service
       const history = loadHistory();
       const prev = history.deploys.find((d: any) => d.status === "success");
       if (prev) {
-        console.log(`   ⏪ Rolling back ${name} to ${prev.commitHash}...`);
-        runSafe(`docker compose up -d --no-deps ${name}`);
+        console.log(`   ⏪ Rolling back ${name}...`);
+        runSafe(`docker compose -p harness up -d --no-deps ${name}`);
       }
     }
   }
 
-  // 5. Summary
+  // Summary
   const totalDuration = Date.now() - startTime;
   const allGood = results.length > 0 && results.every(r => r.success);
   const status = isRollback ? "rollback" : allGood ? "success" : "partial";
 
   console.log(`\n${allGood ? "✅" : "⚠️"} Deploy ${status}`);
-  console.log(`   Commit: ${imageTag}`);
   console.log(`   Duration: ${(totalDuration / 1000).toFixed(1)}s`);
-  console.log(`   Services: ${results.filter(r => r.success).length}/${results.length} healthy`);
+  results.forEach(r => {
+    console.log(`   ${r.success ? "✅" : "❌"} ${r.name} (${(r.durationMs / 1000).toFixed(1)}s)`);
+  });
 
-  // Save to deploy history
-  const entry = {
-    timestamp: new Date().toISOString(),
-    commitHash: imageTag,
-    commitFull,
+  // Save history
+  saveHistory({
+    commitHash,
     commitMessage: commitMsg,
     status,
     services: results,
     durationMs: totalDuration,
-  };
-  saveHistory(entry);
+    ts: Date.now(),
+  });
 
   // Notify harness-ui
   try {
     await fetch(`${HARNESS_UI}/api/ci/notify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "deployment", ...entry }),
+      body: JSON.stringify({
+        type: "deploy",
+        status,
+        commitHash,
+        services: results.length,
+        durationMs: totalDuration,
+      }),
+      signal: AbortSignal.timeout(5000),
     });
-  } catch { /* best-effort notification */ }
-
-  // Catalog check
-  const catalog = runSafe(`curl -s http://localhost:5050/v2/_catalog`);
-  if (catalog.ok) console.log(`\n📦 Registry: ${catalog.out}`);
-
-  process.exit(allGood ? 0 : 1);
+  } catch { /* intentionally silent — notification is best-effort */ }
 }
 
-main().catch((e) => {
-  console.error("Deploy failed:", e);
+main().catch(err => {
+  console.error("❌ Deploy failed:", err);
   process.exit(1);
 });

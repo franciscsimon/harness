@@ -190,7 +190,6 @@ services:
 
   # ── App Services ────────────────────────────────────────────────
   event-api:
-    build: { context: ., dockerfile: xtdb-event-logger-ui/Dockerfile }
     image: localhost:5050/harness/event-api:latest
     container_name: event-api
     restart: unless-stopped
@@ -202,7 +201,6 @@ services:
     depends_on: [xtdb-primary]
 
   chat-ws:
-    build: { context: ., dockerfile: web-chat/Dockerfile }
     image: localhost:5050/harness/chat-ws:latest
     container_name: chat-ws
     restart: unless-stopped
@@ -211,7 +209,6 @@ services:
       PORT: "3334"
 
   ops-api:
-    build: { context: ., dockerfile: xtdb-ops-api/Dockerfile }
     image: localhost:5050/harness/ops-api:latest
     container_name: ops-api
     restart: unless-stopped
@@ -230,7 +227,6 @@ services:
     depends_on: [xtdb-primary, redpanda]
 
   harness-ui:
-    build: { context: ., dockerfile: harness-ui/Dockerfile }
     image: localhost:5050/harness/harness-ui:latest
     container_name: harness-ui
     restart: unless-stopped
@@ -262,7 +258,6 @@ services:
     depends_on: [event-api, ops-api, chat-ws]
 
   ci-runner:
-    build: { context: ., dockerfile: ci-runner/Dockerfile }
     image: localhost:5050/harness/ci-runner:latest
     container_name: ci-runner
     restart: unless-stopped
@@ -285,7 +280,6 @@ services:
     depends_on: [xtdb-primary, soft-serve, build-service]
 
   docker-event-collector:
-    build: { context: ., dockerfile: docker-event-collector/Dockerfile }
     image: localhost:5050/harness/docker-event-collector:latest
     container_name: docker-event-collector
     restart: unless-stopped
