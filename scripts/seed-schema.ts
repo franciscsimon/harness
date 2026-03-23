@@ -617,6 +617,28 @@ async function seed() {
     await sql.unsafe(`DELETE FROM test_sync WHERE _id = 'sync-test-1'`);
   } catch {}
 
+  // ── Seed default project ─────────────────────────────────────────
+  try {
+    await sql.unsafe(
+      `INSERT INTO projects (_id, canonical_id, name, identity_type, git_remote_url, first_seen_ts, last_seen_ts, session_count, lifecycle_phase)
+       VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8)
+       ON CONFLICT (_id) DO NOTHING`,
+      [
+        sql.typed("proj:ac75514059c1" as any, 25),
+        sql.typed("harness" as any, 25),
+        sql.typed("harness" as any, 25),
+        sql.typed("git-remote" as any, 25),
+        sql.typed("git@github.com:franciscsimon/harness.git" as any, 25),
+        sql.typed(BigInt(Date.now()) as any, 20),
+        sql.typed(BigInt(0) as any, 20),
+        sql.typed("active" as any, 25),
+      ]
+    );
+    console.log(`  ✓ Default project 'harness' seeded`);
+  } catch (err: any) {
+    console.error(`  ✗ Default project: ${err.message?.split("\n")[0]}`);
+  }
+
   await sql.end();
   console.log(`\nDone: ${created} seeded, ${failed} failed, ${schema.length} total tables`);
   process.exit(failed > 0 ? 1 : 0);
