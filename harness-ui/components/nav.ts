@@ -43,6 +43,7 @@ const PROJECT_SUB_NAV: ProjectSubNavItem[] = [
   { label: "Artifacts", section: "artifacts" },
   { label: "Errors", section: "errors" },
   { label: "CI", section: "ci" },
+  { label: "Builds", section: "builds" },
   { label: "Git", section: "git" },
   { label: "Graph", section: "graph" },
   { label: "Deploys", section: "deploys" },

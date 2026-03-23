@@ -521,6 +521,23 @@ const schema: TableDef[] = [
     },
   },
   {
+    table: "builds",
+    columns: {
+      _id: "text",
+      repo: "text",
+      commit_hash: "text",
+      status: "text",
+      trigger: "text",
+      services_total: "bigint",
+      services_ok: "bigint",
+      services_failed: "bigint",
+      duration_ms: "bigint",
+      ts: "bigint",
+      jsonld: "text",
+      service_results: "text",
+    },
+  },
+  {
     table: "docker_events",
     columns: {
       _id: "text",

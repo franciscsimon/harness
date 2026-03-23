@@ -22,6 +22,7 @@ import { renderStream } from "./pages/stream.ts";
 import { renderGraph } from "./pages/graph.ts";
 import { renderCIRuns } from "./pages/ci-runs.ts";
 import { renderCIRunDetail } from "./pages/ci-run-detail.ts";
+import { renderBuilds, renderBuildDetail } from "./pages/builds.ts";
 import { renderGitRepos } from "./pages/git.ts";
 import { renderDeploys } from "./pages/deploys.ts";
 import { renderDockerEvents } from "./pages/docker-events.ts";
@@ -96,6 +97,26 @@ app.get("/projects/:projectId/ci/:runId{.+}", async (c) => {
   return c.html(await renderCIRunDetail(runId, projectId));
 });
 
+app.get("/projects/:projectId/builds/:buildId{.+}", async (c) => {
+  const projectId = decodeURIComponent(c.req.param("projectId"));
+  const buildId = decodeURIComponent(c.req.param("buildId"));
+  return c.html(await renderBuildDetail(buildId, projectId));
+});
+
+app.post("/projects/:projectId/builds/trigger", async (c) => {
+  const projectId = decodeURIComponent(c.req.param("projectId"));
+  const buildUrl = process.env.BUILD_SERVICE_URL ?? "http://build-service:3339";
+  try {
+    await fetch(`${buildUrl}/api/build`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repo: "harness", trigger: "manual" }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch { /* intentionally silent — best-effort trigger */ }
+  return c.redirect(`/projects/${projectId}/builds`);
+});
+
 app.get("/projects/:projectId/events/:eventId{.+}", async (c) => {
   const projectId = decodeURIComponent(c.req.param("projectId"));
   const eventId = c.req.param("eventId");
@@ -130,6 +151,8 @@ app.get("/projects/:projectId/:section", async (c) => {
     }
     case "ci":
       return c.html(await renderCIRuns(projectId));
+    case "builds":
+      return c.html(await renderBuilds(projectId));
     case "git":
       return c.html(await renderGitRepos(projectId));
     case "graph": {

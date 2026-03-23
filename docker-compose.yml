@@ -258,6 +258,7 @@ services:
       KEYCLOAK_URL: http://keycloak:8080
       SOFT_SERVE_HTTP: http://soft-serve:23232
       ZOT_URL: http://zot:5000
+      BUILD_SERVICE_URL: http://build-service:3339
     depends_on: [event-api, ops-api, chat-ws]
 
   ci-runner:
@@ -280,7 +281,8 @@ services:
       CI_WORK_VOLUME: harness_ci-work
       DOCKER_NETWORK: harness_default
       HARNESS_UI_URL: http://harness-ui:3336
-    depends_on: [xtdb-primary, soft-serve]
+      BUILD_SERVICE_URL: http://build-service:3339
+    depends_on: [xtdb-primary, soft-serve, build-service]
 
   docker-event-collector:
     build: { context: ., dockerfile: docker-event-collector/Dockerfile }
@@ -296,6 +298,23 @@ services:
       DOCKER_SOCKET: /var/run/docker.sock
       HARNESS_UI_URL: http://harness-ui:3336
     depends_on: [xtdb-primary]
+
+  build-service:
+    build: { context: ., dockerfile: build-service/Dockerfile }
+    image: localhost:5050/harness/build-service:latest
+    container_name: build-service
+    restart: unless-stopped
+    ports: ["3339:3339"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      PORT: "3339"
+      XTDB_EVENT_HOST: xtdb-primary
+      XTDB_EVENT_PORT: "5432"
+      SOFT_SERVE_SSH: ssh://soft-serve:23231
+      REGISTRY: localhost:5050
+      HARNESS_UI_URL: http://harness-ui:3336
+    depends_on: [xtdb-primary, soft-serve]
 
 volumes:
   redpanda-data:

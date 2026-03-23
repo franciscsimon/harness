@@ -61,6 +61,28 @@
       "code:dependsOn": ["xtdb-primary", "soft-serve"],
       "code:volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
       "code:networks": ["default"]
+    },
+    {
+      "@type": "code:ContainerService",
+      "schema:name": "docker-event-collector",
+      "oci:image": "harness/docker-event-collector",
+      "code:dockerfile": "docker-event-collector/Dockerfile",
+      "code:port": 3338,
+      "code:healthPath": "/api/health",
+      "code:dependsOn": ["xtdb-primary"],
+      "code:volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+      "code:networks": ["default"]
+    },
+    {
+      "@type": "code:ContainerService",
+      "schema:name": "build-service",
+      "oci:image": "harness/build-service",
+      "code:dockerfile": "build-service/Dockerfile",
+      "code:port": 3339,
+      "code:healthPath": "/api/health",
+      "code:dependsOn": ["xtdb-primary", "soft-serve"],
+      "code:volumes": ["/var/run/docker.sock:/var/run/docker.sock"],
+      "code:networks": ["default"]
     }
   ]
 }

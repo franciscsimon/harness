@@ -246,18 +246,20 @@ async function runJob(job: CIJob): Promise<void> {
         });
       } catch { /* notification is best-effort */ }
 
-      // Auto-deploy on success (if enabled)
-      if (!failed && process.env.AUTO_DEPLOY !== "false") {
-        console.log(`\n🚀 CI passed — triggering deploy for ${job.commitHash.slice(0, 8)}`);
+      // Auto-build on success — build service handles image creation + registry push
+      if (!failed) {
+        const buildUrl = process.env.BUILD_SERVICE_URL ?? "http://build-service:3339";
+        console.log(`\n🔨 CI passed — triggering build for ${job.commitHash.slice(0, 8)}`);
         try {
-          await fetch(`${process.env.HARNESS_UI_URL ?? "http://localhost:3336"}/api/deploy`, {
+          await fetch(`${buildUrl}/api/build`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ commitHash: job.commitHash, repo: job.repo, trigger: "ci" }),
+            body: JSON.stringify({ repo: job.repo, commit: job.commitHash, trigger: "ci-success" }),
+            signal: AbortSignal.timeout(5000),
           });
-          console.log(`   ✅ Deploy triggered`);
-        } catch (deployErr) {
-          console.error(`   ⚠️  Deploy trigger failed:`, (deployErr as Error).message?.slice(0, 200));
+          console.log(`   ✅ Build triggered`);
+        } catch (buildErr) {
+          console.error(`   ⚠️  Build trigger failed:`, (buildErr as Error).message?.slice(0, 200));
         }
       }
     } catch (err) {
