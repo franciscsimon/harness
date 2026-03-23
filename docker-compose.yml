@@ -269,12 +269,16 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ci-queue:/app/ci-queue
+      - ci-work:/app/ci-work
     environment:
       PORT: "3337"
       XTDB_EVENT_HOST: xtdb-primary
       XTDB_EVENT_PORT: "5432"
       SOFT_SERVE_SSH: ssh://soft-serve:23231
       CI_QUEUE_DIR: /app/ci-queue
+      CI_WORK_DIR: /app/ci-work
+      CI_WORK_VOLUME: harness_ci-work
+      DOCKER_NETWORK: harness_default
       HARNESS_UI_URL: http://harness-ui:3336
     depends_on: [xtdb-primary, soft-serve]
 
@@ -302,3 +306,4 @@ volumes:
   soft-serve-data:
   zot-data:
   ci-queue:
+  ci-work:

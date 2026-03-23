@@ -314,9 +314,9 @@ function executeStep(step: PipelineStep, workDir: string, job: CIJob): Promise<S
     // Build docker run command
     const args = [
       "run", "--rm",
-      "--network=host",
-      "-v", `${workDir}:/workspace`,
-      "-w", "/workspace",
+      `--network=${process.env.DOCKER_NETWORK ?? "harness_default"}`,
+      "-v", `${process.env.CI_WORK_VOLUME ?? "harness_ci-work"}:/ci-work`,
+      "-w", `/ci-work/${job.id}`,
       "-e", `CI=true`,
       "-e", `CI_REPO=${job.repo}`,
       "-e", `CI_COMMIT=${job.commitHash}`,
