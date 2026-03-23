@@ -69,7 +69,6 @@ Currently we run ad-hoc queries via `psql` or Node scripts from the host against
 
 ### Phase 1: Add Caddy reverse proxy ⬜
 - [ ] `caddy/Caddyfile` — HTTP :80 reverse proxy to harness-ui:3336
-- [ ] TCP passthrough :23231 → soft-serve:23231 for git SSH (Caddy layer4 or separate listener)
 - [ ] WebSocket upgrade for chat (`/ws` → chat-ws:3334)
 - [ ] Caddy in docker-compose.yml — the ONLY service with `ports:`
 - [ ] Verify harness-ui accessible via `http://localhost`
@@ -83,7 +82,7 @@ Currently we run ad-hoc queries via `psql` or Node scripts from the host against
 ### Phase 3: Remove ALL exposed ports ⬜
 - [ ] Remove `ports:` from every app service (3333-3339)
 - [ ] Remove `ports:` from every infra service (Redpanda, Garage, XTDB ×2, Keycloak, QLever, Soft Serve, Zot)
-- [ ] Only Caddy has `ports:` — `:80` and `:23231`
+- [ ] Only Caddy has `ports:` — `:80`
 - [ ] Update build-service REGISTRY env: `localhost:5050` → `zot:5000`
 - [ ] Update any remaining `localhost:PORT` refs in env vars
 
@@ -91,15 +90,15 @@ Currently we run ad-hoc queries via `psql` or Node scripts from the host against
 - [ ] All UI pages work through `http://localhost`
 - [ ] Chat WebSocket connects via Caddy
 - [ ] Stream page SSE works
-- [ ] `git push soft-serve main` works through Caddy TCP passthrough on :23231
-- [ ] CI pipeline: git push → CI → Build → all internal
+- [ ] CI pipeline: push via Soft Serve inside Docker → CI → Build → all internal
 - [ ] Ops page shows all services healthy
 - [ ] No browser console errors
 
 ## Decisions (Resolved)
-1. **No port expose for anything except Caddy** — not DB, not Zot, not Soft Serve, nothing
+1. **ONLY Caddy gets exposed ports** — nothing else. Not DB, not Zot, not Soft Serve, nothing.
 2. **HTTP for dev, HTTPS later for prod**
 
-## Target: 1 exposed service only
-- Caddy `:80` (+ `:23231` TCP passthrough for git SSH) — the ONLY container with `ports:`
-- Everything else: zero exposed ports, Docker DNS only
+## Target: 1 exposed service, 1 exposed port
+- Caddy `:80` → reverse proxy to harness-ui
+- That's it. Every other service: zero exposed ports, Docker DNS only.
+- Git push happens from inside Docker (ci-runner, build-service), not from host.
