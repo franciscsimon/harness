@@ -25,6 +25,7 @@ import { renderCIRunDetail } from "./pages/ci-run-detail.ts";
 import { renderGitRepos } from "./pages/git.ts";
 import { renderDeploys } from "./pages/deploys.ts";
 import { renderDockerEvents } from "./pages/docker-events.ts";
+import { renderGitDetail } from "./pages/git-detail.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -81,6 +82,12 @@ app.get("/projects/:projectId/sessions/:sid{.+}", async (c) => {
     return c.html(await renderKnowledgePage(sessionId, projectId));
   }
   return c.html(await renderSessionDetail(raw, projectId));
+});
+
+app.get("/projects/:projectId/git/:repoName", async (c) => {
+  const projectId = decodeURIComponent(c.req.param("projectId"));
+  const repoName = decodeURIComponent(c.req.param("repoName"));
+  return c.html(await renderGitDetail(repoName, projectId));
 });
 
 app.get("/projects/:projectId/ci/:runId{.+}", async (c) => {

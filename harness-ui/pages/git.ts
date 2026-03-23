@@ -32,7 +32,7 @@ export async function renderGitRepos(projectId?: string): Promise<string> {
 
   const rows = repos.map(r => `
     <tr>
-      <td><strong>${r.name}</strong></td>
+      <td><a href="${projectId ? `/projects/${projectId}/git/${r.name}` : `/git/${r.name}`}" style="font-weight:600;color:#58a6ff;text-decoration:none">${r.name}</a></td>
       <td>${r.description || "<span style='color:#484f58'>—</span>"}</td>
       <td><code>${r.defaultBranch}</code></td>
       <td>${r.isPrivate ? "🔒 Private" : "🌐 Public"}</td>
