@@ -177,8 +177,9 @@ app.post("/api/sparql", async (c) => {
 app.post("/api/ci/enqueue", async (c) => {
   try {
     const body = await c.req.json();
-    const { repo, ref, commitHash, commitMessage, pusher } = body;
-    if (!repo || !commitHash) return c.json({ error: "Missing repo or commitHash" }, 400);
+    const { repo, ref, commit, commitHash, commitMessage, pusher } = body;
+    const hash = commitHash ?? commit;
+    if (!repo || !hash) return c.json({ error: "Missing repo or commitHash" }, 400);
 
     const { randomUUID } = await import("node:crypto");
     const { mkdirSync, writeFileSync } = await import("node:fs");
@@ -192,7 +193,7 @@ app.post("/api/ci/enqueue", async (c) => {
       id: `ci-${Date.now()}-${randomUUID().slice(0, 8)}`,
       repo,
       ref: ref ?? "refs/heads/main",
-      commitHash,
+      commitHash: hash,
       commitMessage: commitMessage ?? "",
       pusher: pusher ?? "unknown",
       timestamp: Date.now(),
