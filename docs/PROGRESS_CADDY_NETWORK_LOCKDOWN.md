@@ -95,7 +95,11 @@ Currently we run ad-hoc queries via `psql` or Node scripts from the host against
 - [ ] Ops page shows all services healthy
 - [ ] No browser console errors
 
-## Open Questions
-1. Keep XTDB :5433 exposed for ad-hoc debugging from host?
-2. Keep Zot :5050 exposed? (build-service is inside Docker, but host tools might need it)
-3. HTTPS with self-signed cert or HTTP only for local dev?
+## Decisions (Resolved)
+1. **No XTDB port expose** — use `docker exec` for ad-hoc debugging
+2. **No Zot port expose** — build-service uses Docker DNS (`zot:5000`)
+3. **HTTP for dev, HTTPS later for prod**
+
+## Target: 2 exposed ports only
+- Caddy `:80` — reverse proxy to harness-ui (+ WebSocket for chat)
+- Soft Serve `:23231` — git SSH from host
