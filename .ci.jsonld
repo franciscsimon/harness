@@ -12,8 +12,9 @@
       "code:image": "node:22-slim",
       "code:commands": [
         "npm install --ignore-scripts 2>/dev/null || true",
-        "cd lib && npm install --ignore-scripts 2>/dev/null || true",
-        "cd $PWD && npx jiti test/pure-functions.ts"
+        "(cd lib && npm install --ignore-scripts 2>/dev/null || true)",
+        "(cd xtdb-event-logger && npm install --ignore-scripts 2>/dev/null || true)",
+        "NODE_PATH=xtdb-event-logger/node_modules npx jiti test/pure-functions.ts"
       ]
     }
   ]
