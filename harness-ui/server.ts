@@ -14,6 +14,7 @@ import { renderArtifacts, renderArtifactVersions } from "./pages/artifacts.ts";
 
 import { renderOps } from "./pages/ops.ts";
 import { renderChat } from "./pages/chat.ts";
+import { renderAuth } from "./pages/auth.ts";
 import { renderErrors } from "./pages/errors.ts";
 import { renderEventDetail } from "./pages/event-detail.ts";
 import { renderFlow } from "./pages/flow.ts";
@@ -66,6 +67,7 @@ app.get("/static/:file", (c) => {
 app.get("/", async (c) => c.html(await renderHome()));
 app.get("/projects", (c) => c.redirect("/"));
 app.get("/chat", async (c) => c.html(await renderChat()));
+app.get("/auth", async (c) => c.html(await renderAuth()));
 
 // ── Project-scoped pages ───────────────────────────────────────────
 // All pages live under /projects/:projectId/:section
@@ -473,6 +475,60 @@ app.get("/artifacts/content/:id{.+}", async (c) => {
     return c.html(html);
   } catch {
     return c.html(`<h1>Event API unavailable</h1><p>Cannot reach localhost:3333</p>`, 502);
+  }
+});
+
+// ── Auth management (upload/status/delete auth.json for chat-ws) ──
+
+const CHAT_AUTH_DIR = process.env.CHAT_AUTH_DIR ?? "/app/chat-auth";
+
+app.get("/api/auth/status", async (c) => {
+  try {
+    const authPath = join(CHAT_AUTH_DIR, "auth.json");
+    const { existsSync, readFileSync } = await import("node:fs");
+    if (!existsSync(authPath)) {
+      return c.json({ configured: false });
+    }
+    const data = JSON.parse(readFileSync(authPath, "utf-8"));
+    // Return provider names only, never tokens
+    const providers = Object.keys(data).filter(k => data[k]?.type);
+    return c.json({ configured: true, providers });
+  } catch (e) {
+    return c.json({ configured: false, error: (e as Error).message }, 500);
+  }
+});
+
+app.post("/api/auth/upload", async (c) => {
+  try {
+    const body = await c.req.json();
+    const authJson = body.auth;
+    if (!authJson || typeof authJson !== "object") {
+      return c.json({ error: "Missing 'auth' object in request body" }, 400);
+    }
+    // Validate it looks like auth.json (has provider entries)
+    const keys = Object.keys(authJson);
+    if (keys.length === 0) {
+      return c.json({ error: "Empty auth object" }, 400);
+    }
+    const { mkdirSync, writeFileSync, chmodSync } = await import("node:fs");
+    mkdirSync(CHAT_AUTH_DIR, { recursive: true });
+    const authPath = join(CHAT_AUTH_DIR, "auth.json");
+    writeFileSync(authPath, JSON.stringify(authJson, null, 2), "utf-8");
+    chmodSync(authPath, 0o600);
+    return c.json({ success: true, providers: keys.filter(k => authJson[k]?.type) });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.post("/api/auth/delete", async (c) => {
+  try {
+    const { existsSync, unlinkSync } = await import("node:fs");
+    const authPath = join(CHAT_AUTH_DIR, "auth.json");
+    if (existsSync(authPath)) unlinkSync(authPath);
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
   }
 });
 

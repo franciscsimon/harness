@@ -192,8 +192,11 @@ services:
     image: harness/chat-ws:latest
     container_name: chat-ws
     restart: unless-stopped
+    volumes:
+      - chat-auth:/root/.pi/agent
     environment:
       PORT: "3334"
+      PI_CODING_AGENT_DIR: /root/.pi/agent
 
   ops-api:
     image: harness/ops-api:latest
@@ -221,8 +224,10 @@ services:
       - ./data:/app/data
       - ./docker-compose.yml:/app/docker-compose.yml:ro
       - ci-queue:/app/ci-queue
+      - chat-auth:/app/chat-auth
     environment:
       PORT: "3336"
+      CHAT_AUTH_DIR: /app/chat-auth
       CI_QUEUE_DIR: /app/ci-queue
       EVENT_API_URL: http://event-api:3333
       OPS_API_URL: http://ops-api:3335
@@ -302,5 +307,6 @@ volumes:
   zot-data:
   ci-queue:
   ci-work:
+  chat-auth:
   caddy-data:
   caddy-config:

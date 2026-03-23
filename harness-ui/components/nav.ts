@@ -8,6 +8,7 @@ export interface NavItem {
 const MAIN_NAV: NavItem[] = [
   { label: "Home", href: "/" },
   { label: "Chat", href: "/chat" },
+  { label: "🔐 Auth", href: "/auth" },
 ];
 
 export function renderNav(activePath: string = "/"): string {
