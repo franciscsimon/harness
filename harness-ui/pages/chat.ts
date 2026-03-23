@@ -7,7 +7,7 @@ import { renderNav } from "../components/nav.ts";
 import { CHAT_WS_URL } from "../lib/api.ts";
 
 export function renderChat(): string {
-  // Extract host from ws://localhost:3334/ws → localhost:3334
+  // Extract host from ws://localhost/ws → localhost (through Caddy)
   const wsHost = CHAT_WS_URL.replace(/^wss?:\/\//, "").replace(/\/.*$/, "");
 
   return `<!DOCTYPE html><html lang="en"><head>

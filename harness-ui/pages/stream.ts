@@ -69,7 +69,7 @@ export async function renderStream(projectId?: string): Promise<string> {
   return layout(content, {
     title: "Event Stream",
     activePath: projectId ? `/projects/${projectId}/stream` : "/stream",
-    extraHead: `<script>window.EVENT_API = "http://localhost:3333";</script><script src="/static/stream.js" defer></script>`,
+    extraHead: `<script src="/static/stream.js" defer></script>`,
     projectId,
     activeSection: "stream",
   });

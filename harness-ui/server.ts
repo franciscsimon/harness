@@ -196,6 +196,54 @@ app.post("/api/sparql", async (c) => {
   }
 });
 
+// ── Event-API proxy (browser can't reach event-api directly) ───
+const EVENT_API = process.env.EVENT_API_URL ?? "http://event-api:3333";
+
+// SSE stream proxy
+app.get("/api/events/stream", async (c) => {
+  try {
+    const upstream = await fetch(`${EVENT_API}/api/events/stream`, {
+      signal: AbortSignal.timeout(0), // no timeout — SSE is long-lived
+      headers: { Accept: "text/event-stream" },
+    });
+    if (!upstream.ok) return c.text("Upstream error", 502);
+    return new Response(upstream.body, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  } catch (e) {
+    return c.text(`SSE proxy error: ${(e as Error).message}`, 502);
+  }
+});
+
+// Events REST proxy
+app.get("/api/events", async (c) => {
+  try {
+    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const r = await fetch(`${EVENT_API}/api/events${qs}`, { signal: AbortSignal.timeout(10_000) });
+    const data = await r.json();
+    return c.json(data, r.status as any);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 502);
+  }
+});
+
+// Sessions REST proxy (for chat.js dashboard link)
+app.get("/api/sessions/:path{.+}", async (c) => {
+  try {
+    const path = c.req.param("path");
+    const r = await fetch(`${EVENT_API}/api/sessions/${path}`, { signal: AbortSignal.timeout(10_000) });
+    const ct = r.headers.get("content-type") ?? "";
+    if (ct.includes("json")) return c.json(await r.json(), r.status as any);
+    return c.body(await r.text(), r.status as any, { "Content-Type": ct });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 502);
+  }
+});
+
 // CI job enqueue — receives POST from Soft Serve hook, writes job file for runner
 app.post("/api/ci/enqueue", async (c) => {
   try {

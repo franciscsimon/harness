@@ -16,7 +16,7 @@ import { join } from "node:path";
 
 const ROOT = join(import.meta.dirname ?? __dirname, "..");
 const DEPLOY_HISTORY = join(ROOT, "data", "deploy-history.json");
-const HARNESS_UI = process.env.HARNESS_UI_URL ?? "http://localhost:3336";
+const HARNESS_UI = process.env.HARNESS_UI_URL ?? "http://harness-ui:3336";
 
 interface ServiceDef {
   "schema:name": string;
@@ -47,11 +47,12 @@ function runSafe(cmd: string, cwd = ROOT): { ok: boolean; out: string } {
   }
 }
 
-async function healthCheck(port: number, path: string, timeoutMs = 30_000): Promise<boolean> {
+async function healthCheck(name: string, port: number, path: string, timeoutMs = 30_000): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     try {
-      const r = await fetch(`http://localhost:${port}${path}`, { signal: AbortSignal.timeout(3000) });
+      // Use Docker service name — deploy runs inside Docker network
+      const r = await fetch(`http://${name}:${port}${path}`, { signal: AbortSignal.timeout(3000) });
       if (r.ok) return true;
     } catch { /* retry */ }
     await new Promise(r => setTimeout(r, 2000));
@@ -136,7 +137,7 @@ async function main() {
     }
 
     // Health check
-    const healthy = await healthCheck(port, healthPath);
+    const healthy = await healthCheck(name, port, healthPath);
     const dur = Date.now() - t;
     if (healthy) {
       console.log(`   ✅ ${name}: healthy (${(dur / 1000).toFixed(1)}s)`);

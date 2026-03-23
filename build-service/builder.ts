@@ -146,25 +146,24 @@ async function buildService(
   const fullImage = `${registry}/${image}`;
   const shaTag = `${fullImage}:${commit.slice(0, 12)}`;
   const latestTag = `${fullImage}:latest`;
+  const localTag = `${image}:latest`; // e.g. harness/event-api:latest — for docker compose
 
   try {
-    // Build
+    // Build with registry + local tags
     console.log(`[build] ${name}: docker build -f ${dockerfile}`);
     execSync(
-      `docker build --no-cache -f ${dockerfile} -t ${shaTag} -t ${latestTag} .`,
+      `docker build --no-cache -f ${dockerfile} -t ${shaTag} -t ${latestTag} -t ${localTag} .`,
       { cwd: workDir, timeout: 300_000, stdio: "pipe" }
     );
 
-    // Push SHA tag
+    // Push to registry
     console.log(`[build] ${name}: pushing ${shaTag}`);
     execSync(`docker push ${shaTag}`, { timeout: 120_000, stdio: "pipe" });
-
-    // Push latest tag
     console.log(`[build] ${name}: pushing ${latestTag}`);
     execSync(`docker push ${latestTag}`, { timeout: 120_000, stdio: "pipe" });
 
     return {
-      name, image: fullImage, tags: [shaTag, latestTag],
+      name, image: fullImage, tags: [shaTag, latestTag, localTag],
       status: "success", durationMs: Date.now() - startTime,
     };
   } catch (err: any) {

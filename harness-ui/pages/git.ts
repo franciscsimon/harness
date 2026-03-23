@@ -37,8 +37,7 @@ export async function renderGitRepos(projectId?: string): Promise<string> {
       <td><code>${r.defaultBranch}</code></td>
       <td>${r.isPrivate ? "🔒 Private" : "🌐 Public"}</td>
       <td>
-        <code style="font-size:0.8rem">ssh://localhost:23231/${r.name}</code><br>
-        <code style="font-size:0.8rem">http://localhost:23232/${r.name}</code>
+        <code style="font-size:0.8rem">ssh://soft-serve:23231/${r.name}</code> <span style="font-size:0.7rem;color:#8b949e">(Docker internal)</span>
       </td>
     </tr>
   `).join("");

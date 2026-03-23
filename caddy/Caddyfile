@@ -1,0 +1,11 @@
+:80 {
+	# WebSocket for chat — must come before the catch-all
+	handle /ws {
+		reverse_proxy chat-ws:3334
+	}
+
+	# Everything else → harness-ui
+	handle {
+		reverse_proxy harness-ui:3336
+	}
+}

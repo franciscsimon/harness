@@ -62,7 +62,7 @@ export async function renderOps(projectId?: string): Promise<string> {
       </div>
 
       <div class="ops-api-banner ops-api-checking" id="api-banner">
-        Connecting to Ops API at <code>localhost:3335</code>...
+        Connecting to Ops API...
         <span class="ops-api-hint">Start it with: <code>task ops:api</code></span>
       </div>
 

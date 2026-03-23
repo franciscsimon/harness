@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  var API = "http://localhost:3335";
+  var API = "";
   var apiBanner = document.getElementById("api-banner");
   var apiConnected = false;
 
@@ -15,10 +15,10 @@
     apiConnected = connected;
     if (connected) {
       apiBanner.className = "ops-api-banner ops-api-connected";
-      apiBanner.innerHTML = 'Ops API connected <code>localhost:3335</code>';
+      apiBanner.innerHTML = 'Ops API connected';
     } else {
       apiBanner.className = "ops-api-banner ops-api-disconnected";
-      apiBanner.innerHTML = 'Ops API unreachable at <code>localhost:3335</code> <span class="ops-api-hint">Start it with: <code>task ops:api</code></span>';
+      apiBanner.innerHTML = 'Ops API unreachable';
     }
   }
 

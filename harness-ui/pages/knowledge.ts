@@ -51,7 +51,7 @@ export async function renderKnowledgePage(sessionId: string, projectId?: string)
       ${html}
     </div>
     <div style="padding:16px 20px;max-width:960px;margin:0 auto">
-      <a href="http://localhost:3333/api/sessions/${encodeURIComponent(sessionId)}/knowledge" class="btn" download="${escapeHtml(name)}.knowledge.md">📥 Download .md</a>
+      <a href="/api/sessions/${encodeURIComponent(sessionId)}/knowledge" class="btn" download="${escapeHtml(name)}.knowledge.md">📥 Download .md</a>
     </div>
   `;
 

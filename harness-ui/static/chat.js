@@ -130,13 +130,13 @@ function updateSessionInfo(msg) {
   if (msg.sessionFile) {
     sessionStorage.setItem("pi-chat-sessionFile", msg.sessionFile);
     currentSessionFile = msg.sessionFile;
-    $sbDashLink.href = `http://localhost:3333/sessions#${encodeURIComponent(msg.sessionFile)}`;
+    $sbDashLink.href = `/projects/harness/sessions#${encodeURIComponent(msg.sessionFile)}`;
     fetchDecisionsAndArtifacts();
   }
 }
 
 // ─── Decisions & Artifacts (sidebar) ─────────────────────────────
-const DASHBOARD_API = "http://localhost:3333/api";
+const DASHBOARD_API = "/api";
 let currentSessionFile = null;
 
 function fetchDecisionsAndArtifacts() {

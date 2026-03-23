@@ -41,7 +41,7 @@ export async function renderGitDetail(repoName: string, projectId?: string): Pro
       <div class="page-header">
         <h1>📂 ${escapeHtml(repoName)}</h1>
         <div>
-          <code style="font-size:0.8rem;color:#8b949e">ssh://localhost:23231/${escapeHtml(repoName)}</code>
+          <code style="font-size:0.8rem;color:#8b949e">ssh://soft-serve:23231/${escapeHtml(repoName)}</code> <span style="font-size:0.7rem;color:#8b949e">(Docker internal)</span>
         </div>
       </div>
 
