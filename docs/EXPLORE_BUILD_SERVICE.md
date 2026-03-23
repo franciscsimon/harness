@@ -97,12 +97,12 @@ Each can run independently:
 ### Dockerfile
 Same pattern as ci-runner: node:22-slim + docker CLI + git + SSH
 
-## Open Questions
+## Decisions (Resolved)
 
-1. **Build trigger**: Should CI auto-trigger build on test pass? Or should build be manual/separate?
-2. **Caching**: Docker layer cache is local to the builder container. Should we use BuildKit cache mounts for faster rebuilds?
-3. **Parallel builds**: Build all 6 services in parallel or sequential? (Sequential is simpler, parallel is faster)
-4. **UI page**: Add a `/builds` page to harness-ui showing build history? Or integrate into deploys page?
+1. **Build trigger**: Auto-trigger from CI on test pass + manual API call from UI
+2. **Caching**: No cache — clean builds every time
+3. **Parallel builds**: Parallel — build all services concurrently
+4. **UI**: Separate `/builds` page with last 100 builds + manual trigger button
 
 ## Implementation Plan
 
