@@ -9,6 +9,8 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { createLogger } from "../lib/logger.ts";
 import { requestLogger } from "../lib/request-logger.ts";
+import { validateBody } from "../lib/validate.ts";
+import * as v from "valibot";
 
 // Import and start the queue watcher
 import { runnerState } from "./runner.ts";
@@ -68,20 +70,28 @@ app.get("/api/queue", (c) => {
 
 // ── Enqueue (alternative to harness-ui proxy) ────────────────────
 
-app.post("/api/enqueue", async (c) => {
-  try {
-    const body = await c.req.json();
-    const { repo, ref, commitHash, commitMessage, pusher } = body;
-    if (!(repo && commitHash)) return c.json({ error: "Missing repo or commitHash" }, 400);
+const EnqueueSchema = v.object({
+  repo: v.string(),
+  ref: v.optional(v.string(), "refs/heads/main"),
+  commitHash: v.string(),
+  commitMessage: v.optional(v.string(), ""),
+  pusher: v.optional(v.string(), "unknown"),
+});
 
+app.post("/api/enqueue", async (c) => {
+  const parsed = await validateBody(c, EnqueueSchema);
+  if (parsed.error) return parsed.response;
+  const { repo, ref, commitHash, commitMessage, pusher } = parsed.data;
+
+  try {
     mkdirSync(QUEUE_DIR, { recursive: true });
     const job = {
       id: `ci-${Date.now()}-${randomUUID().slice(0, 8)}`,
       repo,
-      ref: ref ?? "refs/heads/main",
+      ref,
       commitHash,
-      commitMessage: commitMessage ?? "",
-      pusher: pusher ?? "unknown",
+      commitMessage,
+      pusher,
       timestamp: Date.now(),
     };
     const jobFile = join(QUEUE_DIR, `${job.id}.json`);

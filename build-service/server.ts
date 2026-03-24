@@ -15,6 +15,8 @@ import { Hono } from "hono";
 import postgres from "postgres";
 import { createLogger } from "../lib/logger.ts";
 import { requestLogger } from "../lib/request-logger.ts";
+import { validateBody } from "../lib/validate.ts";
+import * as v from "valibot";
 import { type BuildRequest, getCurrentBuild, runBuild } from "./builder.ts";
 import { closeRecorder, recordBuild } from "./recorder.ts";
 
@@ -56,24 +58,29 @@ app.get("/api/health", (c) => {
 
 // ─── Trigger Build ───────────────────────────────────────────────
 
+const BuildSchema = v.object({
+  repo: v.optional(v.string(), "harness"),
+  commit: v.optional(v.string()),
+  commitHash: v.optional(v.string()),
+  services: v.optional(v.array(v.string())),
+  trigger: v.optional(v.string(), "api"),
+});
+
 app.post("/api/build", async (c) => {
   const current = getCurrentBuild();
   if (current) {
     return c.json({ error: "Build already in progress", build: current }, 409);
   }
 
-  let body: any;
-  try {
-    body = await c.req.json();
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
+  const parsed = await validateBody(c, BuildSchema);
+  if (parsed.error) return parsed.response;
+  const body = parsed.data;
 
   const req: BuildRequest = {
-    repo: body.repo ?? "harness",
+    repo: body.repo,
     commit: body.commit ?? body.commitHash,
     services: body.services,
-    trigger: body.trigger ?? "api",
+    trigger: body.trigger,
   };
 
   // Run build asynchronously — respond immediately with build ID
