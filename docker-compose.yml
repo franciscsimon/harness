@@ -200,6 +200,11 @@ services:
       UI_PORT: "3333"
       XTDB_EVENT_HOST: xtdb-primary
       XTDB_EVENT_PORT: "5432"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3333/api/stats"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     depends_on: [xtdb-primary]
 
   chat-ws:
@@ -211,6 +216,11 @@ services:
     environment:
       PORT: "3334"
       PI_CODING_AGENT_DIR: /root/.pi/agent
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3334/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   ops-api:
     image: harness/ops-api:latest
@@ -227,6 +237,11 @@ services:
       XTDB_PRIMARY_HEALTH: http://xtdb-primary:8080
       XTDB_REPLICA_HEALTH: http://xtdb-replica:8080
       DOCKER_NETWORK: harness_default
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3335/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     depends_on: [xtdb-primary, redpanda]
 
   harness-ui:
@@ -259,6 +274,11 @@ services:
       SOFT_SERVE_HTTP: http://soft-serve:23232
       ZOT_URL: http://zot:5000
       BUILD_SERVICE_URL: http://build-service:3339
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3336/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     depends_on: [event-api, ops-api, chat-ws]
 
   ci-runner:
@@ -280,6 +300,11 @@ services:
       DOCKER_NETWORK: harness_default
       HARNESS_UI_URL: http://harness-ui:3336
       BUILD_SERVICE_URL: http://build-service:3339
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3337/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     depends_on: [xtdb-primary, soft-serve, build-service]
 
   docker-event-collector:
@@ -293,6 +318,11 @@ services:
       XTDB_URL: postgresql://xtdb-primary:5432/xtdb
       DOCKER_SOCKET: /var/run/docker.sock
       HARNESS_UI_URL: http://harness-ui:3336
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3338/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     depends_on: [xtdb-primary]
 
   build-service:
@@ -309,7 +339,23 @@ services:
       SOFT_SERVE_SSH: ssh://soft-serve:23231
       REGISTRY: zot:5000
       HARNESS_UI_URL: http://harness-ui:3336
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3339/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     depends_on: [xtdb-primary, soft-serve]
+
+  health-prober:
+    build: { context: ., dockerfile: health-prober/Dockerfile }
+    image: harness/health-prober:latest
+    container_name: health-prober
+    restart: unless-stopped
+    environment:
+      PROBE_INTERVAL_MS: "30000"
+      XTDB_EVENT_HOST: xtdb-primary
+      XTDB_EVENT_PORT: "5432"
+    depends_on: [xtdb-primary, event-api, ops-api, ci-runner, build-service]
 
 volumes:
   redpanda-data:
