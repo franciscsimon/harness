@@ -448,3 +448,7 @@ const server = serve({ fetch: app.fetch, port: PORT }, () => {
   log.info({ port: PORT }, "web-chat listening");
 });
 injectWebSocket(server);
+
+// ── Graceful shutdown ────────────────────────────────────────────
+process.on("SIGTERM", () => { log.info("SIGTERM received, shutting down"); process.exit(0); });
+process.on("SIGINT", () => { log.info("SIGINT received, shutting down"); process.exit(0); });

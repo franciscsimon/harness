@@ -582,3 +582,7 @@ app.get("/api/metrics", (c) => c.json(getMetricsSummary()));
 serve({ fetch: app.fetch, port: UI_PORT }, () => {
   log.info({ port: UI_PORT }, "harness-ui listening");
 });
+
+// ── Graceful shutdown ────────────────────────────────────────────
+process.on("SIGTERM", () => { log.info("SIGTERM received, shutting down"); process.exit(0); });
+process.on("SIGINT", () => { log.info("SIGINT received, shutting down"); process.exit(0); });

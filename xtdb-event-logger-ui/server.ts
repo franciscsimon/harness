@@ -297,3 +297,7 @@ app.post("/api/wipe", async (c) => {
 serve({ fetch: app.fetch, port: UI_PORT }, () => {
   log.info({ port: UI_PORT }, "xtdb-event-logger-ui listening");
 });
+
+// ── Graceful shutdown ────────────────────────────────────────────
+process.on("SIGTERM", () => { log.info("SIGTERM received, shutting down"); process.exit(0); });
+process.on("SIGINT", () => { log.info("SIGINT received, shutting down"); process.exit(0); });
