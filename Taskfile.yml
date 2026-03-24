@@ -535,6 +535,60 @@ tasks:
         npx tsx ci-runner/runner.ts --once "$JOB"
         rm -f "$JOB"
 
+  # ── Testing Targets ────────────────────────────────────────────
+  'test:unit':
+    desc: Run unit tests
+    cmds:
+      - bun test
+
+  'test:contracts':
+    desc: Run API contract tests (requires running services)
+    cmds:
+      - bun test test/contracts/schemas.ts
+
+  'test:perf':
+    desc: Run performance load tests
+    cmds:
+      - npx jiti test/performance/load-test.ts
+
+  'test:integration':
+    desc: Run integration tests (requires running services)
+    cmds:
+      - npx jiti test/integration/ci-flow.ts
+
+  'test:e2e':
+    desc: Run end-to-end tests (requires all services)
+    cmds:
+      - npx jiti test/e2e/full-pipeline.ts
+
+  'test:chaos':
+    desc: Run chaos tests — WARNING destructive
+    cmds:
+      - npx jiti test/chaos/service-down.ts
+
+  'test:data':
+    desc: Run data integrity tests (requires XTDB)
+    cmds:
+      - npx jiti test/data/primary-replica-sync.ts
+      - npx jiti test/data/referential-integrity.ts
+
+  'test:all':
+    desc: Run all test suites
+    deps: [test:unit, test:contracts]
+
+  # ── Security Targets ──────────────────────────────────────────
+  'security:audit':
+    desc: Run npm audit and save results (schedule weekly)
+    cmds:
+      - mkdir -p data
+      - npm audit --json > data/npm-audit-$(date +%Y%m%d).json || true
+      - echo "Audit saved to data/npm-audit-$(date +%Y%m%d).json"
+
+  'security:scan':
+    desc: Run gitleaks secret detection
+    cmds:
+      - gitleaks detect --source=. --config=.gitleaks.toml --baseline-path=.gitleaks-baseline.json -v
+
   'ci:hook:install':
     desc: Install Soft Serve post-receive hook for CI
     vars:

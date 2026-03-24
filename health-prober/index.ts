@@ -116,6 +116,24 @@ async function main(): Promise<void> {
       log.warn({ service: d.service, status: d.status, error: d.error }, "Service unhealthy");
     }
 
+    // SSE health alerts — push to harness-ui /api/ci/notify endpoint
+    if (down.length > 0) {
+      try {
+        const alertPayload = {
+          type: "health_alert",
+          services: down.map((d) => ({ service: d.service, status: d.status, error: d.error })),
+          ts: Date.now(),
+        };
+        await fetch(`${process.env.HARNESS_UI_URL || "http://localhost:3336"}/api/ci/notify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(alertPayload),
+        });
+      } catch {
+        /* SSE alert delivery is best-effort */
+      }
+    }
+
     if (sql) await storeResults(sql, results);
   };
 

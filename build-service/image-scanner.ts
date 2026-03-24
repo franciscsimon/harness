@@ -87,6 +87,14 @@ function countBySeverity(vulns: VulnerabilityFinding[]) {
   };
 }
 
+/** Check if scan results should block deployment. */
+export function shouldBlockDeploy(result: ScanResult): { blocked: boolean; reason: string } {
+  if (result.criticalCount > 0) {
+    return { blocked: true, reason: `${result.criticalCount} CRITICAL vulnerabilities found — deployment blocked` };
+  }
+  return { blocked: false, reason: "No critical vulnerabilities" };
+}
+
 /** Format scan results as a human-readable report. */
 export function formatScanReport(result: ScanResult): string {
   const icon = result.passed ? "✅" : "❌";

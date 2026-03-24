@@ -203,6 +203,23 @@ async function runJob(job: CIJob): Promise<void> {
       }
     }
 
+    // 4b. Post-step: review-gate (runs even if pipeline passed, skipped on failure)
+    if (!failed) {
+      try {
+        const reviewResult = await executeStep(
+          { name: "review-gate", image: "oven/bun:latest", commands: ["bun install --frozen-lockfile", "npx jiti review-gate/index.ts ."] },
+          workDir,
+          job,
+        );
+        results.push(reviewResult);
+        if (reviewResult.exitCode !== 0) {
+          log.warn({ step: "review-gate", exitCode: reviewResult.exitCode }, "Review gate flagged issues");
+        }
+      } catch (err) {
+        log.warn({ err }, "Review gate post-step failed (non-blocking)");
+      }
+    }
+
     // 5. Record results in XTDB (the run AND the pipeline config are both JSON-LD)
     const totalDuration = Date.now() - startTime;
     const runInput: CIRunInput = {

@@ -28,13 +28,21 @@
       "@type": "code:PipelineStep",
       "schema:name": "security",
       "code:image": "zricethezav/gitleaks:latest",
-      "code:commands": ["gitleaks detect --source=. --config=.gitleaks.toml --baseline-path=.gitleaks-baseline.json -v"]
+      "code:commands": ["gitleaks detect --source=. --config=.gitleaks.toml --baseline-path=.gitleaks-baseline.json -v"],
+      "code:blocking": true
     },
     {
       "@type": "code:PipelineStep",
       "schema:name": "audit",
       "code:image": "oven/bun:latest",
-      "code:commands": ["npm audit --audit-level=high || true"]
+      "code:commands": ["npm audit --audit-level=high"]
+    },
+    {
+      "@type": "code:PipelineStep",
+      "schema:name": "contracts",
+      "code:image": "oven/bun:latest",
+      "code:commands": ["bun install --frozen-lockfile", "bun test test/contracts/schemas.ts"],
+      "code:requiresServices": true
     },
     {
       "@type": "code:PipelineStep",

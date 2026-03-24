@@ -17,6 +17,15 @@ fi
 
 exitcode=0
 
+# ── Gitleaks: scan staged files for secrets ──────────────────────
+if command -v gitleaks &>/dev/null; then
+  echo "🔒 gitleaks: scanning staged files for secrets..."
+  if ! gitleaks protect --staged --config=.gitleaks.toml --baseline-path=.gitleaks-baseline.json 2>&1; then
+    echo "⚠️  Secrets detected in staged files! Remove them before committing."
+    exitcode=1
+  fi
+fi
+
 # ── Collect files by language ────────────────────────────────────
 TS_FILES=""
 GO_FILES=""
