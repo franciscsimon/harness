@@ -2,6 +2,8 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
+import { createLogger } from "../lib/logger.ts";
+import { requestLogger } from "../lib/request-logger.ts";
 import {
   getArtifacts,
   getArtifactVersion,
@@ -46,11 +48,13 @@ import { generateKnowledgeMarkdown } from "./lib/knowledge.ts";
 // ─── Config ────────────────────────────────────────────────────────
 
 const UI_PORT = Number(process.env.UI_PORT ?? "3333");
+const log = createLogger("xtdb-event-logger-ui");
 const POLL_MS = Number(process.env.UI_POLL_MS ?? "500");
 
 // ─── App ───────────────────────────────────────────────────────────
 
 const app = new Hono();
+app.use("*", requestLogger(log));
 app.use("/*", cors({ origin: "*" }));
 
 // ── SSE Stream ─────────────────────────────────────────────────────
@@ -290,4 +294,6 @@ app.post("/api/wipe", async (c) => {
   return c.json({ deleted, message: `Erased ${deleted} events` });
 });
 
-serve({ fetch: app.fetch, port: UI_PORT });
+serve({ fetch: app.fetch, port: UI_PORT }, () => {
+  log.info({ port: UI_PORT }, "xtdb-event-logger-ui listening");
+});

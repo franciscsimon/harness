@@ -5,14 +5,18 @@
 
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { createLogger } from "../lib/logger.ts";
+import { requestLogger } from "../lib/request-logger.ts";
 import { getAlertStats } from "./alerting.ts";
 import { getCollectorStats, startCollector, stopCollector } from "./collector.ts";
 import { getWriterStats, startWriter, stopWriter } from "./writer.ts";
 
 const PORT = Number(process.env.COLLECTOR_PORT ?? "3338");
+const log = createLogger("docker-event-collector");
 const started = Date.now();
 
 const app = new Hono();
+app.use("*", requestLogger(log));
 
 // ── Health ───────────────────────────────────────────────────────
 
@@ -33,7 +37,9 @@ app.get("/api/health", (c) => {
 startWriter();
 startCollector();
 
-serve({ fetch: app.fetch, port: PORT }, () => {});
+serve({ fetch: app.fetch, port: PORT }, () => {
+  log.info({ port: PORT }, "docker-event-collector listening");
+});
 
 // ── Graceful shutdown ────────────────────────────────────────────
 

@@ -13,15 +13,19 @@
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import postgres from "postgres";
+import { createLogger } from "../lib/logger.ts";
+import { requestLogger } from "../lib/request-logger.ts";
 import { type BuildRequest, getCurrentBuild, runBuild } from "./builder.ts";
 import { closeRecorder, recordBuild } from "./recorder.ts";
 
 const PORT = Number(process.env.PORT ?? "3339");
+const log = createLogger("build-service");
 const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
 const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
 const HARNESS_UI_URL = process.env.HARNESS_UI_URL ?? "http://harness-ui:3336";
 
 const app = new Hono();
+app.use("*", requestLogger(log));
 const startedAt = Date.now();
 let totalBuilds = 0;
 let lastBuildId: string | null = null;
@@ -143,7 +147,9 @@ app.get("/api/builds/:id", async (c) => {
 
 // ─── Start ───────────────────────────────────────────────────────
 
-serve({ fetch: app.fetch, port: PORT }, () => {});
+serve({ fetch: app.fetch, port: PORT }, () => {
+  log.info({ port: PORT }, "build-service listening");
+});
 
 process.on("SIGTERM", async () => {
   await closeRecorder();

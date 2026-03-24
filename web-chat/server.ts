@@ -4,6 +4,8 @@ import { createNodeWebSocket } from "@hono/node-ws";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { createLogger } from "../lib/logger.ts";
+import { requestLogger } from "../lib/request-logger.ts";
 import { captureError } from "../lib/errors.ts";
 import {
   createPoolSession,
@@ -23,9 +25,11 @@ import { parseClientMessage, send } from "./lib/ws-protocol.ts";
 
 const PORT = Number(process.env.CHAT_PORT ?? "3334");
 const CWD = process.env.CHAT_CWD ?? process.cwd();
+const log = createLogger("web-chat");
 
 const app = new Hono();
 app.use("/*", cors({ origin: "*" }));
+app.use("*", requestLogger(log));
 const { upgradeWebSocket, injectWebSocket } = createNodeWebSocket({ app });
 
 // Health check (used by harness-ui to detect if chat service is up)
@@ -440,5 +444,7 @@ app.get(
 
 // ─── Start ────────────────────────────────────────────────────────
 
-const server = serve({ fetch: app.fetch, port: PORT }, () => {});
+const server = serve({ fetch: app.fetch, port: PORT }, () => {
+  log.info({ port: PORT }, "web-chat listening");
+});
 injectWebSocket(server);

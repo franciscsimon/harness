@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { createLogger } from "../lib/logger.ts";
+import { requestLogger } from "../lib/request-logger.ts";
 import { renderArtifacts, renderArtifactVersions } from "./pages/artifacts.ts";
 import { renderAuth } from "./pages/auth.ts";
 import { renderBuildDetail, renderBuilds } from "./pages/builds.ts";
@@ -31,10 +33,12 @@ import { renderStream } from "./pages/stream.ts";
 
 const UI_PORT = Number(process.env.UI_PORT ?? "3336");
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const log = createLogger("harness-ui");
 
 // ─── App ───────────────────────────────────────────────────────────
 
 const app = new Hono();
+app.use("*", requestLogger(log));
 
 // ── Static files ───────────────────────────────────────────────────
 
@@ -548,4 +552,6 @@ app.post("/api/auth/delete", async (c) => {
 
 // ── Start ──────────────────────────────────────────────────────────
 
-serve({ fetch: app.fetch, port: UI_PORT }, () => {});
+serve({ fetch: app.fetch, port: UI_PORT }, () => {
+  log.info({ port: UI_PORT }, "harness-ui listening");
+});

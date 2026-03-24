@@ -7,6 +7,8 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { createLogger } from "../lib/logger.ts";
+import { requestLogger } from "../lib/request-logger.ts";
 
 // Import and start the queue watcher
 import { runnerState } from "./runner.ts";
@@ -14,8 +16,10 @@ import "./runner.ts"; // starts the main loop
 
 const CI_PORT = Number(process.env.CI_PORT ?? "3337");
 const QUEUE_DIR = process.env.CI_QUEUE_DIR ?? join(process.env.HOME ?? "/tmp", ".ci-runner", "queue");
+const log = createLogger("ci-runner");
 
 const app = new Hono();
+app.use("*", requestLogger(log));
 
 // ── Health / Status ──────────────────────────────────────────────
 
@@ -90,4 +94,6 @@ app.post("/api/enqueue", async (c) => {
 
 // ── Start HTTP server ────────────────────────────────────────────
 
-serve({ fetch: app.fetch, port: CI_PORT }, () => {});
+serve({ fetch: app.fetch, port: CI_PORT }, () => {
+  log.info({ port: CI_PORT }, "ci-runner listening");
+});

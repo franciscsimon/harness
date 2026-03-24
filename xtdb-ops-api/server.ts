@@ -4,6 +4,8 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
+import { createLogger } from "../lib/logger.ts";
+import { requestLogger } from "../lib/request-logger.ts";
 import { authMiddleware } from "./lib/auth.ts";
 import { getJob, restoreFromArchive, startCsvBackup, startSnapshotBackup, startSnapshotRestore } from "./lib/backup.ts";
 import { type CIEvent, processCIEvent, verifySignature } from "./lib/ci-webhook.ts";
@@ -16,9 +18,11 @@ import { schedulerStatus, startScheduler, stopScheduler } from "./lib/scheduler.
 import { verifyBackup } from "./lib/verify-backup.ts";
 
 const OPS_PORT = Number(process.env.OPS_PORT ?? "3335");
+const log = createLogger("xtdb-ops-api");
 const app = new Hono();
 
 app.use("/*", cors({ origin: "*" }));
+app.use("*", requestLogger(log));
 app.use("/*", authMiddleware());
 
 // ── Health ────────────────────────────────────────────────────────
@@ -402,4 +406,6 @@ app.patch("/api/incidents/:id", async (c) => {
 
 // ── Start ─────────────────────────────────────────────────────────
 
-serve({ fetch: app.fetch, port: OPS_PORT });
+serve({ fetch: app.fetch, port: OPS_PORT }, () => {
+  log.info({ port: OPS_PORT }, "xtdb-ops-api listening");
+});
