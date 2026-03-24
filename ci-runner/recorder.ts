@@ -6,7 +6,7 @@
 // entity in the harness. No separate context, no translation.
 
 import { randomUUID } from "node:crypto";
-import postgres from "postgres";
+import { connectXtdb } from "../lib/db.ts";
 import { JSONLD_CONTEXT, piId } from "../lib/jsonld/context.ts";
 
 const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
@@ -16,16 +16,7 @@ let sql: ReturnType<typeof postgres> | null = null;
 
 function db() {
   if (!sql) {
-    sql = postgres({
-      host: XTDB_HOST,
-      port: XTDB_PORT,
-      database: "xtdb",
-      user: process.env.XTDB_USER ?? "xtdb",
-      password: process.env.XTDB_PASSWORD ?? "xtdb",
-      max: 2,
-      idle_timeout: 30,
-      connect_timeout: 5,
-    });
+    sql = connectXtdb({ max: 2 });
   }
   return sql;
 }

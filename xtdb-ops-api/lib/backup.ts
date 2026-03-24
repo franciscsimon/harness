@@ -1,21 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import postgres from "postgres";
+import { connectXtdb } from "../../lib/db.ts";
 import { exec } from "./exec.ts";
 
 let _sql: ReturnType<typeof postgres> | null = null;
 function db() {
   if (!_sql) {
-    _sql = postgres({
-      host: "localhost",
-      port: 5433,
-      database: "xtdb",
-      user: process.env.XTDB_USER ?? "xtdb",
-      password: process.env.XTDB_PASSWORD ?? "xtdb",
-      max: 1,
-      idle_timeout: 30,
-    });
+    _sql = connectXtdb({ max: 1 });
   }
   return _sql;
 }

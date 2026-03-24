@@ -1,4 +1,4 @@
-import postgres from "postgres";
+import { connectXtdb } from "../../lib/db.ts";
 import { startErrorCollector, stopErrorCollector } from "../../lib/errors.ts";
 import type { Endpoint, NormalizedEvent, ResolvedConfig } from "../types.ts";
 

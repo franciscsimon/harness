@@ -1,5 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
-import postgres from "postgres";
+import { connectXtdb } from "../../lib/db.ts";
 
 const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
 const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
@@ -9,16 +9,7 @@ let sql: ReturnType<typeof postgres> | null = null;
 
 function db() {
   if (!sql) {
-    sql = postgres({
-      host: XTDB_HOST,
-      port: XTDB_PORT,
-      database: "xtdb",
-      user: process.env.XTDB_USER ?? "xtdb",
-      password: process.env.XTDB_PASSWORD ?? "xtdb",
-      max: 2,
-      idle_timeout: 30,
-      connect_timeout: 10,
-    });
+    sql = connectXtdb({ max: 2 });
   }
   return sql;
 }

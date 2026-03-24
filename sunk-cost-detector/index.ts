@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import postgres from "postgres";
+import { connectXtdb } from "../lib/db.ts";
 import { captureError } from "../lib/errors.ts";
 
 const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
@@ -55,16 +55,7 @@ export default function (pi: ExtensionAPI) {
   async function connectDb(): Promise<Sql | null> {
     if (sql) return sql;
     try {
-      sql = postgres({
-        host: XTDB_HOST,
-        port: XTDB_PORT,
-        database: "xtdb",
-        user: process.env.XTDB_USER ?? "xtdb",
-        password: process.env.XTDB_PASSWORD ?? "xtdb",
-        max: 1,
-        idle_timeout: 30,
-        connect_timeout: 10,
-      });
+      sql = connectXtdb({ max: 1 });
       await sql`SELECT 1 AS ok`;
       // Seed table
       await sql`INSERT INTO file_metrics (_id, project_id, session_id, file_path, edit_count, error_count, ts)

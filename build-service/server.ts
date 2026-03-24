@@ -12,7 +12,7 @@
 
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
-import postgres from "postgres";
+import { connectXtdb } from "../lib/db.ts";
 import { createLogger } from "../lib/logger.ts";
 import { requestLogger } from "../lib/request-logger.ts";
 import { apiMetrics } from "../lib/api-metrics.ts";
@@ -38,16 +38,7 @@ let totalBuilds = 0;
 let lastBuildId: string | null = null;
 
 // Read-only connection for queries
-const sql = postgres({
-  host: XTDB_HOST,
-  port: XTDB_PORT,
-  database: "xtdb",
-  user: process.env.XTDB_USER ?? "xtdb",
-  password: process.env.XTDB_PASSWORD ?? "xtdb",
-  max: 2,
-  idle_timeout: 30,
-  connect_timeout: 5,
-});
+const sql = connectXtdb({ max: 2 });
 
 // ─── Health ──────────────────────────────────────────────────────
 

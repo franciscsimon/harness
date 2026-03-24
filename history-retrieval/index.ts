@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import postgres from "postgres";
+import { connectXtdb } from "../lib/db.ts";
 
 const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
 const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
@@ -22,16 +22,7 @@ export default function (pi: ExtensionAPI) {
   async function ensureDb(): Promise<Sql | null> {
     if (sql) return sql;
     try {
-      sql = postgres({
-        host: XTDB_HOST,
-        port: XTDB_PORT,
-        database: "xtdb",
-        user: process.env.XTDB_USER ?? "xtdb",
-        password: process.env.XTDB_PASSWORD ?? "xtdb",
-        max: 1,
-        idle_timeout: 30,
-        connect_timeout: 10,
-      });
+      sql = connectXtdb({ max: 1 });
       await sql`SELECT 1 AS ok`;
       return sql;
     } catch {

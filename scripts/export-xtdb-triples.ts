@@ -11,7 +11,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import postgres from "postgres";
+import { connectXtdb } from "../lib/db.ts";
 
 const ROOT = path.resolve(__dirname, "..");
 const CALL_GRAPH = path.join(ROOT, "data", "call-graph.jsonld");
@@ -188,15 +188,7 @@ let bnodeCounter = 0;
 // ---- Main ----
 
 async function main() {
-  const sql = postgres({
-    host: "localhost",
-    port: 5434, // replica (read-only)
-    database: "xtdb",
-    username: "xtdb",
-    password: process.env.XTDB_PASSWORD ?? "xtdb",
-    idle_timeout: 5,
-    max: 2,
-  });
+  const sql = connectXtdb({ max: 2 });
 
   const allTriples: string[] = [];
   let xtdbDocCount = 0;

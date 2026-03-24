@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import postgres from "postgres";
+import { connectXtdb } from "../../lib/db.ts";
 
-const sql = postgres({ host: "localhost", port: 5433, database: "xtdb", user: process.env.XTDB_USER ?? "xtdb", password: process.env.XTDB_PASSWORD ?? "xtdb", max: 2 });
+const sql = connectXtdb({ max: 2 });
 const t = (v: string | null) => sql.typed(v as any, 25);
 const n = (v: number | null) => sql.typed(v as any, 20);
 

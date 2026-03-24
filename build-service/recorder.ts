@@ -2,7 +2,7 @@
 // Writes build results to XTDB `builds` table as JSON-LD.
 // Same pattern as ci-runner/recorder.ts.
 
-import postgres from "postgres";
+import { connectXtdb } from "../lib/db.ts";
 import { JSONLD_CONTEXT, piId } from "../lib/jsonld/context.ts";
 import type { BuildResult } from "./builder.ts";
 
@@ -13,16 +13,7 @@ let sql: ReturnType<typeof postgres> | null = null;
 
 function db() {
   if (!sql) {
-    sql = postgres({
-      host: XTDB_HOST,
-      port: XTDB_PORT,
-      database: "xtdb",
-      user: process.env.XTDB_USER ?? "xtdb",
-      password: process.env.XTDB_PASSWORD ?? "xtdb",
-      max: 2,
-      idle_timeout: 30,
-      connect_timeout: 5,
-    });
+    sql = connectXtdb({ max: 2 });
   }
   return sql;
 }

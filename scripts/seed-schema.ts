@@ -8,7 +8,7 @@
  * Usage: npx jiti scripts/seed-schema.ts
  */
 
-import postgres from "postgres";
+import { connectXtdb } from "../lib/db.ts";
 
 const XTDB_HOST = process.env.XTDB_HOST ?? "localhost";
 const XTDB_PORT = Number(process.env.XTDB_PORT ?? 5433);
@@ -568,13 +568,7 @@ const ZERO: Record<ColType, string | number | boolean> = {
 };
 
 async function seed() {
-  const sql = postgres({
-    host: XTDB_HOST,
-    port: XTDB_PORT,
-    user: process.env.XTDB_USER ?? "xtdb",
-    database: "xtdb",
-    onnotice: () => {}, // suppress XTDB warnings during seeding
-  });
+  const sql = connectXtdb({ max: 1 });
 
   const SEED_ID = "__schema_seed__";
   let _created = 0;

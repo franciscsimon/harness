@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import postgres from "postgres";
+import { connectXtdb } from "../lib/db.ts";
 import { accumulate, createRunState } from "./accumulator.ts";
 import { projectChanges, projectReasoning, projectResult, projectTask } from "./projectors.ts";
 import type { ProjectionRow, RunState } from "./types.ts";
@@ -18,16 +18,7 @@ export default function (pi: ExtensionAPI) {
 
   function getSql(): ReturnType<typeof postgres> {
     if (!sql) {
-      sql = postgres({
-        host: process.env.XTDB_HOST ?? "localhost",
-        port: Number(process.env.XTDB_PORT ?? 5433),
-        database: "xtdb",
-        user: process.env.XTDB_USER ?? "xtdb",
-        password: process.env.XTDB_PASSWORD ?? "xtdb",
-        max: 1,
-        idle_timeout: 30,
-        connect_timeout: 10,
-      });
+      sql = connectXtdb({ max: 1 });
     }
     return sql;
   }
