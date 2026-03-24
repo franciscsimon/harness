@@ -52,6 +52,8 @@ function formatDecisionsForContext(decisions: DecisionRecord[]): string {
 }
 
 export default function (pi: ExtensionAPI) {
+  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+
   let sql: Sql | null = null;
 
   // ── Inject decisions into context before each agent turn ───────

@@ -6,6 +6,11 @@ tasks:
     cmds:
       - task --list
 
+  status:
+    desc: Show status of all services (infrastructure, apps, pi resources)
+    cmds:
+      - bash scripts/status.sh
+
   setup:
     desc: Minimal local setup for XTDB event capture (XTDB + deployed logger + UI deps)
     deps:

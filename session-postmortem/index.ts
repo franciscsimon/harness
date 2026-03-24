@@ -31,6 +31,8 @@ function emptyState(): SessionState {
 }
 
 export default function (pi: ExtensionAPI) {
+  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+
   let sql: Sql | null = null;
   let state = emptyState();
 

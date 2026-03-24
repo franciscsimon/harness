@@ -30,6 +30,8 @@ interface WorkflowState {
 }
 
 export default function (pi: ExtensionAPI) {
+  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+
   const workflows = new Map<string, WorkflowDef>();
   let state: WorkflowState = emptyState();
   let sql: Sql | null = null;

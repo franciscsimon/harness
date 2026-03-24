@@ -10,6 +10,12 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     depends_on: [harness-ui, chat-ws]
+    healthcheck:
+      test: ["CMD", "wget", "-qO/dev/null", "http://localhost:80/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
   # ── Kafka-compatible broker ────────────────────────────────────
   redpanda:
@@ -154,6 +160,12 @@ services:
     volumes:
       - qlever-data:/data
     working_dir: /data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:7001/ >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   # ── Soft Serve (Git Server) ───────────────────────────────────────
   # Self-hosted Git server. Repos pushed here trigger CI via post-receive hook.
@@ -167,6 +179,7 @@ services:
     environment:
       SOFT_SERVE_DATA_PATH: /soft-serve
       SOFT_SERVE_INITIAL_ADMIN_KEYS: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOmJmcsP1uIiTFfTkavjEmDr4W+9iTecbPU4KTJi0efv opunix@fs.evalgo.org"
+    # Note: healthcheck handled externally via status script (image may lack shell tools)
 
   # ── OCI Registry (Zot) ──────────────────────────────────────────
   zot:
@@ -176,6 +189,7 @@ services:
     volumes:
       - zot-data:/var/lib/zot
       - ./zot-config.json:/etc/zot/config.json:ro
+    # Note: zot-minimal is scratch-based (no shell). Health checked externally via status script.
 
   # ── App Services ────────────────────────────────────────────────
   event-api:

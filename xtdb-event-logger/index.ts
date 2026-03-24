@@ -28,6 +28,12 @@ export default function (pi: ExtensionAPI) {
 
   // ── Config ──
   const config = loadConfig();
+
+  // Master switch — disabled by default.
+  // Enable with: XTDB_EVENT_LOGGING=true
+  // Or in ~/.pi/agent/xtdb-event-logger.json: { "enabled": true }
+  if (!config.enabled) return;
+
   setSamplingInterval(config.sampling.intervalMs);
 
   // ── Build candidate endpoints ──
@@ -128,7 +134,7 @@ export default function (pi: ExtensionAPI) {
           }
 
           if (liveEndpoints.length === 0) {
-            ctx.ui.notify("[xtdb-logger] No endpoints available. Event logging DISABLED.", "error");
+            ctx.ui.notify("[xtdb-logger] No endpoints available. Event logging DISABLED.", "info");
             return;
           }
 

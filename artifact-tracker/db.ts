@@ -27,12 +27,21 @@ export async function ensureDb(): Promise<Sql | null> {
   }
 }
 
+const RESERVED = new Set(["position", "type", "name", "status", "version", "source", "path", "url", "description", "tag"]);
+const BIGINT_COLS = new Set(["ts", "size_bytes", "version", "created_at"]);
+
 async function bootstrapTable(db: Sql, table: string, columns: string) {
-  const values = columns.split(",").map(c => c.trim()).map(c =>
-    ["ts", "size_bytes", "version", "created_at"].includes(c) ? "0" : "''"
-  ).join(", ");
-  await db.unsafe(`INSERT INTO ${table} (${columns}) VALUES (${values})`);
-  await db.unsafe(`DELETE FROM ${table} WHERE _id = ''`);
+  const SEED_ID = "__tracker_seed__";
+  const cols = columns.split(",").map(c => c.trim());
+  const colList = cols.map(c => RESERVED.has(c) ? `"${c}"` : c).join(", ");
+  const placeholders = cols.map((_, i) => `$${i + 1}`).join(", ");
+  const values = cols.map(c => {
+    if (c === "_id") return db.typed(SEED_ID as any, 25);  // text
+    if (BIGINT_COLS.has(c)) return db.typed(0 as any, 20);  // bigint
+    return db.typed("" as any, 25);  // text
+  });
+  await db.unsafe(`INSERT INTO ${table} (${colList}) VALUES (${placeholders})`, values);
+  await db.unsafe(`DELETE FROM ${table} WHERE _id = $1`, [db.typed(SEED_ID as any, 25)]);
 }
 
 export function typed(db: Sql, v: string | null) { return db.typed(v as any, 25); }

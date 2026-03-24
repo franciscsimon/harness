@@ -28,6 +28,8 @@ const DEFAULTS: SunkCostConfig = {
 };
 
 export default function (pi: ExtensionAPI) {
+  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+
   const config = { ...DEFAULTS };
 
   let fileEditCounts: Record<string, number> = {};

@@ -11,23 +11,43 @@ const t = (v: string | null) => sql.typed(v as any, 25);
 const n = (v: number | null) => sql.typed(v as any, 20);
 
 // ─── Ensure tables exist (XTDB is schema-on-write) ────────────────
+// XTDB requires typed parameters (OID 25=text, 20=bigint, 16=boolean)
+// and quoting of reserved words (name, path, version, status, etc.).
+
+const RESERVED = new Set(["position", "type", "name", "status", "version", "source", "path", "url", "description", "tag"]);
+function q(col: string): string { return RESERVED.has(col) ? `"${col}"` : col; }
+
+type ColType = "text" | "bigint" | "boolean";
+interface SeedDef { table: string; columns: Record<string, ColType> }
+
+const seedDefs: SeedDef[] = [
+  { table: "decisions", columns: { _id: "text", project_id: "text", session_id: "text", ts: "bigint", task: "text", what: "text", outcome: "text", why: "text", files: "text", alternatives: "text", agent: "text", tags: "text", jsonld: "text" } },
+  { table: "projects", columns: { _id: "text", canonical_id: "text", name: "text", identity_type: "text", git_remote_url: "text", git_root_path: "text", first_seen_ts: "bigint", last_seen_ts: "bigint", session_count: "bigint", jsonld: "text" } },
+  { table: "session_projects", columns: { _id: "text", session_id: "text", project_id: "text", canonical_id: "text", cwd: "text", git_root_path: "text", ts: "bigint", is_first_session: "boolean", jsonld: "text" } },
+  { table: "delegations", columns: { _id: "text", parent_session_id: "text", child_session_id: "text", project_id: "text", agent_name: "text", task: "text", status: "text", exit_code: "bigint", ts: "bigint", jsonld: "text" } },
+  { table: "file_metrics", columns: { _id: "text", project_id: "text", session_id: "text", file_path: "text", edit_count: "bigint", error_count: "bigint", ts: "bigint" } },
+  { table: "session_postmortems", columns: { _id: "text", project_id: "text", session_id: "text", goal: "text", what_worked: "text", what_failed: "text", files_changed: "text", error_count: "bigint", turn_count: "bigint", ts: "bigint", jsonld: "text" } },
+  { table: "artifacts", columns: { _id: "text", project_id: "text", session_id: "text", path: "text", content_hash: "text", kind: "text", operation: "text", tool_call_id: "text", ts: "bigint", jsonld: "text" } },
+  { table: "artifact_versions", columns: { _id: "text", session_id: "text", path: "text", relative_path: "text", version: "bigint", content_hash: "text", content: "text", size_bytes: "bigint", operation: "text", tool_call_id: "text", ts: "bigint", jsonld: "text" } },
+  { table: "artifact_reads", columns: { _id: "text", session_id: "text", path: "text", tool_call_id: "text", ts: "bigint" } },
+];
+
+const OID: Record<ColType, number> = { text: 25, bigint: 20, boolean: 16 };
+const ZERO: Record<ColType, string | number | boolean> = { text: "", bigint: 0, boolean: false };
 
 async function ensureTables(): Promise<void> {
-  const seeds: Array<{ table: string; columns: string; values: string }> = [
-    { table: "decisions", columns: "_id, project_id, session_id, ts, task, what, outcome, why, files, alternatives, agent, tags, jsonld", values: "'_seed', '', '', 0, '', '', '', '', '', '', '', '', ''" },
-    { table: "projects", columns: "_id, canonical_id, name, identity_type, git_remote_url, git_root_path, first_seen_ts, last_seen_ts, session_count, jsonld", values: "'_seed', '', '', '', '', '', 0, 0, 0, ''" },
-    { table: "session_projects", columns: "_id, session_id, project_id, canonical_id, cwd, git_root_path, ts, is_first_session, jsonld", values: "'_seed', '', '', '', '', '', 0, false, ''" },
-    { table: "delegations", columns: "_id, parent_session_id, child_session_id, project_id, agent_name, task, status, exit_code, ts, jsonld", values: "'_seed', '', '', '', '', '', '', 0, 0, ''" },
-    { table: "file_metrics", columns: "_id, project_id, session_id, file_path, edit_count, error_count, ts", values: "'_seed', '', '', '', 0, 0, 0" },
-    { table: "session_postmortems", columns: "_id, project_id, session_id, goal, what_worked, what_failed, files_changed, error_count, turn_count, ts, jsonld", values: "'_seed', '', '', '', '', '', '', 0, 0, 0, ''" },
-    { table: "artifacts", columns: "_id, project_id, session_id, path, content_hash, kind, operation, tool_call_id, ts, jsonld", values: "'_seed', '', '', '', '', '', '', '', 0, ''" },
-    { table: "artifact_versions", columns: "_id, session_id, path, relative_path, version, content_hash, content, size_bytes, operation, tool_call_id, ts, jsonld", values: "'_seed', '', '', '', 0, '', '', 0, '', '', 0, ''" },
-    { table: "artifact_reads", columns: "_id, session_id, path, tool_call_id, ts", values: "'_seed', '', '', '', 0" },
-  ];
-  for (const s of seeds) {
+  const SEED_ID = "__ui_seed__";
+  for (const def of seedDefs) {
+    const cols = Object.keys(def.columns);
+    const types = Object.values(def.columns);
+    const colList = cols.map(q).join(", ");
+    const placeholders = cols.map((_, i) => `$${i + 1}`).join(", ");
+    const values = cols.map((col, i) =>
+      col === "_id" ? sql.typed(SEED_ID as any, OID[types[i]]) : sql.typed(ZERO[types[i]] as any, OID[types[i]])
+    );
     try {
-      await sql.unsafe(`INSERT INTO ${s.table} (${s.columns}) VALUES (${s.values})`);
-      await sql.unsafe(`DELETE FROM ${s.table} WHERE _id = '_seed'`);
+      await sql.unsafe(`INSERT INTO ${def.table} (${colList}) VALUES (${placeholders})`, values);
+      await sql.unsafe(`DELETE FROM ${def.table} WHERE _id = $1`, [sql.typed(SEED_ID as any, 25)]);
     } catch { /* table may already exist */ }
   }
 }

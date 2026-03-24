@@ -86,6 +86,8 @@ async function insertSessionLink(sql: Sql, sessionId: string, projId: string, id
 }
 
 export default function (pi: ExtensionAPI) {
+  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+
   let sql: Sql | null = null;
 
   pi.on("session_start", async (_event, ctx) => {

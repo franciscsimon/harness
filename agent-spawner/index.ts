@@ -22,6 +22,8 @@ interface SpawnedAgent {
 }
 
 export default function (pi: ExtensionAPI) {
+  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+
   let agents: SpawnedAgent[] = [];
   let nextId = 1;
   let sql: Sql | null = null;

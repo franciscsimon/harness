@@ -29,6 +29,8 @@ async function db(): Promise<Sql | null> {
 }
 
 export default function (pi: ExtensionAPI) {
+  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+
   const t = (s: Sql, v: string | null) => s.typed(v as any, 25);
   const n = (s: Sql, v: number | null) => s.typed(v as any, 20);
 

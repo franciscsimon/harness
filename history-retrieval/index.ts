@@ -15,6 +15,8 @@ type Sql = ReturnType<typeof postgres>;
  * 3. Inject "Prior Work" context + failure warnings into agent context
  */
 export default function (pi: ExtensionAPI) {
+  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+
   let sql: Sql | null = null;
 
   async function ensureDb(): Promise<Sql | null> {

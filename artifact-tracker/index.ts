@@ -15,6 +15,8 @@ interface PendingCall {
 }
 
 export default function (pi: ExtensionAPI) {
+  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+
   const pending = new Map<string, PendingCall>();
 
   pi.on("tool_call", async (event) => {

@@ -504,6 +504,8 @@ async function handleDeployHistory(args: string, ctx: any): Promise<void> {
 // ── Extension entry point ───────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+
   // /env add <name> [url]  |  /env list
   pi.registerCommand("env", {
     description: "Manage environments — add or list",

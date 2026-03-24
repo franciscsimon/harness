@@ -7,6 +7,10 @@ import type { RunState, ProjectionRow } from "./types.ts";
 // ─── Entry Point ───────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+  // Respect the same master switch as xtdb-event-logger.
+  // Disabled by default — enable with XTDB_EVENT_LOGGING=true
+  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+
   let state: RunState | null = null;
   let sql: ReturnType<typeof postgres> | null = null;
 
@@ -28,66 +32,87 @@ export default function (pi: ExtensionAPI) {
     return sql;
   }
 
-  // ── INSERT helper ──
+  // ── Write queue — serialises INSERTs so a max:1 pool never sees concurrent queries ──
 
-  async function emit(row: ProjectionRow | null): Promise<void> {
+  const writeQueue: ProjectionRow[] = [];
+  let flushing = false;
+
+  function enqueue(row: ProjectionRow | null): void {
     if (!row) return;
+    writeQueue.push(row);
+    if (!flushing) drainQueue();
+  }
+
+  async function drainQueue(): Promise<void> {
+    if (flushing) return;
+    flushing = true;
     try {
-      const db = getSql();
-      const t = (v: string | null) => db.typed(v as any, 25);   // OID 25 = text
-      const n = (v: number | null) => db.typed(v as any, 20);   // OID 20 = int8
-
-      switch (row.type) {
-        case "AgentTaskRequested":
-          await db`INSERT INTO projections (
-            _id, type, task_id, session_id, ts,
-            prompt, input_source, context_msg_count,
-            system_prompt_event_id, input_event_id
-          ) VALUES (
-            ${t(row._id)}, ${t(row.type)}, ${t(row.task_id)}, ${t(row.session_id)}, ${n(row.ts)},
-            ${t(row.prompt)}, ${t(row.input_source)}, ${n(row.context_msg_count)},
-            ${t(row.system_prompt_event_id)}, ${t(row.input_event_id)}
-          )`;
-          break;
-
-        case "AgentReasoningTrace":
-          await db`INSERT INTO projections (
-            _id, type, task_id, session_id, ts,
-            turn_index, thinking_event_ids, tool_call_event_ids,
-            tool_result_event_ids, provider_payload_bytes, tool_count,
-            tools_summary, turn_start_event_id, turn_end_event_id
-          ) VALUES (
-            ${t(row._id)}, ${t(row.type)}, ${t(row.task_id)}, ${t(row.session_id)}, ${n(row.ts)},
-            ${n(row.turn_index)}, ${t(row.thinking_event_ids)}, ${t(row.tool_call_event_ids)},
-            ${t(row.tool_result_event_ids)}, ${n(row.provider_payload_bytes)}, ${n(row.tool_count)},
-            ${t(row.tools_summary)}, ${t(row.turn_start_event_id)}, ${t(row.turn_end_event_id)}
-          )`;
-          break;
-
-        case "AgentResultProduced":
-          await db`INSERT INTO projections (
-            _id, type, task_id, session_id, ts,
-            reasoning_trace_ids, total_turns, total_msg_count,
-            agent_end_event_id, final_message_event_id, output_summary
-          ) VALUES (
-            ${t(row._id)}, ${t(row.type)}, ${t(row.task_id)}, ${t(row.session_id)}, ${n(row.ts)},
-            ${t(row.reasoning_trace_ids)}, ${n(row.total_turns)}, ${n(row.total_msg_count)},
-            ${t(row.agent_end_event_id)}, ${t(row.final_message_event_id)}, ${t(row.output_summary)}
-          )`;
-          break;
-
-        case "ProjectStateChanged":
-          await db`INSERT INTO projections (
-            _id, type, task_id, session_id, ts,
-            mutations, mutating_tool_count
-          ) VALUES (
-            ${t(row._id)}, ${t(row.type)}, ${t(row.task_id)}, ${t(row.session_id)}, ${n(row.ts)},
-            ${t(row.mutations)}, ${n(row.mutating_tool_count)}
-          )`;
-          break;
+      while (writeQueue.length > 0) {
+        const row = writeQueue.shift()!;
+        try {
+          await insertRow(row);
+        } catch {
+          // Best-effort — drop and continue with next row
+        }
       }
-    } catch (err) {
-      console.error(`[event-projector] INSERT failed for ${row.type}: ${err}`);
+    } finally {
+      flushing = false;
+    }
+  }
+
+  async function insertRow(row: ProjectionRow): Promise<void> {
+    const db = getSql();
+    const t = (v: string | null) => db.typed(v as any, 25);   // OID 25 = text
+    const n = (v: number | null) => db.typed(v as any, 20);   // OID 20 = int8
+
+    switch (row.type) {
+      case "AgentTaskRequested":
+        await db`INSERT INTO projections (
+          _id, type, task_id, session_id, ts,
+          prompt, input_source, context_msg_count,
+          system_prompt_event_id, input_event_id
+        ) VALUES (
+          ${t(row._id)}, ${t(row.type)}, ${t(row.task_id)}, ${t(row.session_id)}, ${n(row.ts)},
+          ${t(row.prompt)}, ${t(row.input_source)}, ${n(row.context_msg_count)},
+          ${t(row.system_prompt_event_id)}, ${t(row.input_event_id)}
+        )`;
+        break;
+
+      case "AgentReasoningTrace":
+        await db`INSERT INTO projections (
+          _id, type, task_id, session_id, ts,
+          turn_index, thinking_event_ids, tool_call_event_ids,
+          tool_result_event_ids, provider_payload_bytes, tool_count,
+          tools_summary, turn_start_event_id, turn_end_event_id
+        ) VALUES (
+          ${t(row._id)}, ${t(row.type)}, ${t(row.task_id)}, ${t(row.session_id)}, ${n(row.ts)},
+          ${n(row.turn_index)}, ${t(row.thinking_event_ids)}, ${t(row.tool_call_event_ids)},
+          ${t(row.tool_result_event_ids)}, ${n(row.provider_payload_bytes)}, ${n(row.tool_count)},
+          ${t(row.tools_summary)}, ${t(row.turn_start_event_id)}, ${t(row.turn_end_event_id)}
+        )`;
+        break;
+
+      case "AgentResultProduced":
+        await db`INSERT INTO projections (
+          _id, type, task_id, session_id, ts,
+          reasoning_trace_ids, total_turns, total_msg_count,
+          agent_end_event_id, final_message_event_id, output_summary
+        ) VALUES (
+          ${t(row._id)}, ${t(row.type)}, ${t(row.task_id)}, ${t(row.session_id)}, ${n(row.ts)},
+          ${t(row.reasoning_trace_ids)}, ${n(row.total_turns)}, ${n(row.total_msg_count)},
+          ${t(row.agent_end_event_id)}, ${t(row.final_message_event_id)}, ${t(row.output_summary)}
+        )`;
+        break;
+
+      case "ProjectStateChanged":
+        await db`INSERT INTO projections (
+          _id, type, task_id, session_id, ts,
+          mutations, mutating_tool_count
+        ) VALUES (
+          ${t(row._id)}, ${t(row.type)}, ${t(row.task_id)}, ${t(row.session_id)}, ${n(row.ts)},
+          ${t(row.mutations)}, ${n(row.mutating_tool_count)}
+        )`;
+        break;
     }
   }
 
@@ -124,7 +149,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("agent_start" as any, () => {
     state = accumulate(state, "agent_start", realId("agent_start"), asRecord({}));
     if (state) {
-      emit(projectTask(crypto.randomUUID(), state));
+      enqueue(projectTask(crypto.randomUUID(), state));
     }
   });
 
@@ -155,14 +180,14 @@ export default function (pi: ExtensionAPI) {
     if (state) {
       const traceId = crypto.randomUUID();
       const row = projectReasoning(traceId, state, id);
-      emit(row);
+      enqueue(row);
       state = { ...state, reasoningTraceIds: [...state.reasoningTraceIds, traceId] };
 
       // Provisional result + changes — in case agent_end never fires (subagent exit)
       if (!resultProjectionId) resultProjectionId = crypto.randomUUID();
       if (!changesProjectionId) changesProjectionId = crypto.randomUUID();
-      emit(projectResult(resultProjectionId, state));
-      emit(projectChanges(changesProjectionId, state));
+      enqueue(projectResult(resultProjectionId, state));
+      enqueue(projectChanges(changesProjectionId, state));
     }
   });
 
@@ -172,8 +197,8 @@ export default function (pi: ExtensionAPI) {
       // Final versions — same IDs overwrite provisional rows in XTDB
       if (!changesProjectionId) changesProjectionId = crypto.randomUUID();
       if (!resultProjectionId) resultProjectionId = crypto.randomUUID();
-      emit(projectChanges(changesProjectionId, state));
-      emit(projectResult(resultProjectionId, state));
+      enqueue(projectChanges(changesProjectionId, state));
+      enqueue(projectResult(resultProjectionId, state));
       state = null;
       resultProjectionId = "";
       changesProjectionId = "";

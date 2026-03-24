@@ -7,6 +7,7 @@ import type { ResolvedConfig } from "./types.ts";
 
 function defaults(): ResolvedConfig {
   return {
+    enabled: false,
     endpoints: {
       xtdb: {
         enabled: true,
@@ -50,6 +51,9 @@ export function loadConfig(): ResolvedConfig {
     const raw = readFileSync(CONFIG_FILE, "utf-8");
     const file = JSON.parse(raw);
 
+    // Merge top-level enabled
+    if (typeof file?.enabled === "boolean") config.enabled = file.enabled;
+
     // Merge endpoints.xtdb
     if (file?.endpoints?.xtdb) {
       if (typeof file.endpoints.xtdb.enabled === "boolean") config.endpoints.xtdb.enabled = file.endpoints.xtdb.enabled;
@@ -79,6 +83,9 @@ export function loadConfig(): ResolvedConfig {
   }
 
   // 2. Env var overrides (highest priority)
+  if (process.env.XTDB_EVENT_LOGGING) {
+    config.enabled = process.env.XTDB_EVENT_LOGGING === "true";
+  }
   if (process.env.XTDB_EVENT_HOST) {
     config.endpoints.xtdb.host = process.env.XTDB_EVENT_HOST;
   }

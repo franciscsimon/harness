@@ -166,6 +166,7 @@ export interface FlushConfig {
 }
 
 export interface ResolvedConfig {
+  enabled: boolean;
   endpoints: {
     xtdb: XtdbEndpointConfig;
     jsonl: JsonlEndpointConfig;

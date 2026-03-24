@@ -413,6 +413,8 @@ async function handleImport(parts: string[], ctx: any): Promise<void> {
 // ── Extension entry point ───────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
+  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+
   pi.registerCommand("req", {
     description: "Track project requirements: add, list, status, link, coverage, import",
     getArgumentCompletions: (prefix: string) => {
