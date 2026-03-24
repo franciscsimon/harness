@@ -2,10 +2,10 @@
 # Idempotent Garage bootstrap: layout, key, bucket
 
 ADMIN="http://garage:3903"
-AUTH="Authorization: Bearer admin-secret"
+AUTH="Authorization: Bearer ${GARAGE_ADMIN_TOKEN:-admin-secret}"
 CT="Content-Type: application/json"
-ACCESS_KEY="GK02e8e11dbf9b0325065707e5"
-SECRET_KEY="9834ce4f6ac15c899f31534198c3b15b67e0f30939a8911c7939c88e7603dc56"
+ACCESS_KEY="${GARAGE_ACCESS_KEY:-GK02e8e11dbf9b0325065707e5}"
+SECRET_KEY="${GARAGE_SECRET_KEY:-9834ce4f6ac15c899f31534198c3b15b67e0f30939a8911c7939c88e7603dc56}"
 
 apk add --no-cache curl jq >/dev/null 2>&1
 
