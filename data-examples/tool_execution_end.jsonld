@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:e2e2fc0a-a3b9-48f4-8ce0-a9b175b41d81",
-      "@type": [
-        "ev:ToolExecutionEnd"
-      ],
+      "@type": ["ev:ToolExecutionEnd"],
       "ev:eventName": [
         {
           "@value": "tool_execution_end"
@@ -84,9 +82,7 @@
     },
     {
       "@id": "_:env_e2e2fc0a-a3b9-48f4-8ce0-a9b175b41d81",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

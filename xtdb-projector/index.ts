@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import postgres from "postgres";
-import { createRunState, accumulate } from "./accumulator.ts";
-import { projectTask, projectReasoning, projectResult, projectChanges } from "./projectors.ts";
-import type { RunState, ProjectionRow } from "./types.ts";
+import { accumulate, createRunState } from "./accumulator.ts";
+import { projectChanges, projectReasoning, projectResult, projectTask } from "./projectors.ts";
+import type { ProjectionRow, RunState } from "./types.ts";
 
 // ─── Entry Point ───────────────────────────────────────────────────
 
@@ -62,8 +62,8 @@ export default function (pi: ExtensionAPI) {
 
   async function insertRow(row: ProjectionRow): Promise<void> {
     const db = getSql();
-    const t = (v: string | null) => db.typed(v as any, 25);   // OID 25 = text
-    const n = (v: number | null) => db.typed(v as any, 20);   // OID 20 = int8
+    const t = (v: string | null) => db.typed(v as any, 25); // OID 25 = text
+    const n = (v: number | null) => db.typed(v as any, 20); // OID 20 = int8
 
     switch (row.type) {
       case "AgentTaskRequested":
@@ -124,11 +124,11 @@ export default function (pi: ExtensionAPI) {
 
   /** Read the real XTDB _id published by xtdb-event-logger for the current event.
    *  Requires xtdb-event-logger to load first (alphabetical: xtdb-event-logger < xtdb-projector). */
-  let lastEventName = "";
+  let _lastEventName = "";
   function realId(expectedEvent: string): string {
     const last = (globalThis as any).__piLastEvent;
     if (last && last.eventName === expectedEvent) {
-      lastEventName = expectedEvent;
+      _lastEventName = expectedEvent;
       return last._id;
     }
     return crypto.randomUUID();

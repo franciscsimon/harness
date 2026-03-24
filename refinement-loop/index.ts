@@ -10,14 +10,14 @@ export default function (pi: ExtensionAPI) {
   let iteration = 0;
   let task = "";
 
-  function reset() {
+  function _reset() {
     active = false;
     iteration = 0;
     task = "";
   }
 
   // ── Inject refinement prompt when active ──
-  pi.on("before_agent_start", async (event, ctx) => {
+  pi.on("before_agent_start", async (event, _ctx) => {
     if (!active) return;
 
     const refinementPrompt = [
@@ -92,9 +92,9 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.setStatus("refine", "🔄 Refining (iter 0)");
         ctx.ui.notify(
           `🔄 Refinement loop started.\n` +
-          (task ? `Task: ${task}\n` : "") +
-          `The agent will now pause after each step for your review.\n` +
-          `Commands: /refine approve | done`,
+            (task ? `Task: ${task}\n` : "") +
+            `The agent will now pause after each step for your review.\n` +
+            `Commands: /refine approve | done`,
           "success",
         );
         return;
@@ -124,10 +124,7 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         ctx.ui.notify(
-          `🔄 Refinement Loop:\n` +
-          `  Active: yes\n` +
-          `  Iteration: ${iteration}\n` +
-          `  Task: ${task || "(none)"}`,
+          `🔄 Refinement Loop:\n` + `  Active: yes\n` + `  Iteration: ${iteration}\n` + `  Task: ${task || "(none)"}`,
           "info",
         );
         return;

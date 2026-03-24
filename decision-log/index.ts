@@ -1,8 +1,8 @@
+import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { randomUUID } from "node:crypto";
-import { ids } from "../lib/jsonld/ids.ts";
 import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
+import { ids } from "../lib/jsonld/ids.ts";
 import { buildDecisionJsonLd } from "./rdf.ts";
 import type { DecisionRecord, LogDecisionInput } from "./types.ts";
 
@@ -14,7 +14,7 @@ const OUTCOME_ICONS: Record<string, string> = {
 
 async function initXtdb(): Promise<Sql> {
   const sql = connectXtdb();
-  if (!await ensureConnected(sql)) throw new Error("XTDB unreachable");
+  if (!(await ensureConnected(sql))) throw new Error("XTDB unreachable");
   // Ensure decisions table exists (XTDB is schema-on-write)
   await sql`INSERT INTO decisions (_id, project_id, session_id, ts, task, what, outcome, why, jsonld)
     VALUES ('dec:seed', '', '', 0, '', '', '', '', '')`;
@@ -86,8 +86,8 @@ export default function (pi: ExtensionAPI) {
     // Active reminder — models like Claude Opus won't call log_decision without a nudge
     parts.push(
       "**Reminder:** After completing any coding task, call `log_decision` to record what you decided and why. " +
-      "This applies to file edits, bug fixes, architecture choices, dependency picks, and rejected approaches. " +
-      "Do this BEFORE your final response to the user."
+        "This applies to file edits, bug fixes, architecture choices, dependency picks, and rejected approaches. " +
+        "Do this BEFORE your final response to the user.",
     );
 
     return {
@@ -104,7 +104,8 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "log_decision",
     label: "Log Decision",
-    description: "Record a design decision, failed approach, or deferred choice for the current project. This persists across sessions so future agents know what was tried and why.",
+    description:
+      "Record a design decision, failed approach, or deferred choice for the current project. This persists across sessions so future agents know what was tried and why.",
     promptSnippet: "log_decision — record a decision/failure/deferral for the project history",
     promptGuidelines: [
       "ALWAYS call log_decision after completing work that involved: choosing an approach, fixing a bug, writing or refactoring code, changing architecture, or deferring a choice. One decision per distinct choice.",
@@ -114,14 +115,15 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       task: Type.String({ description: "What were you trying to accomplish" }),
       what: Type.String({ description: "What was tried or decided" }),
-      outcome: Type.Union(
-        [Type.Literal("success"), Type.Literal("failure"), Type.Literal("deferred")],
-        { description: "success = worked and adopted, failure = tried and rejected, deferred = postponed" },
-      ),
+      outcome: Type.Union([Type.Literal("success"), Type.Literal("failure"), Type.Literal("deferred")], {
+        description: "success = worked and adopted, failure = tried and rejected, deferred = postponed",
+      }),
       why: Type.String({ description: "Why this outcome — root cause for failures, reasoning for decisions" }),
       files: Type.Optional(Type.Array(Type.String(), { description: "Related file paths" })),
       alternatives: Type.Optional(Type.String({ description: "Alternatives considered before deciding" })),
-      tags: Type.Optional(Type.Array(Type.String(), { description: "Tags for categorization (e.g. 'architecture', 'dependency')" })),
+      tags: Type.Optional(
+        Type.Array(Type.String(), { description: "Tags for categorization (e.g. 'architecture', 'dependency')" }),
+      ),
     }),
     async execute(_toolCallId, params: LogDecisionInput, _signal, _onUpdate, ctx) {
       const current = (globalThis as any).__piCurrentProject;
@@ -145,8 +147,8 @@ export default function (pi: ExtensionAPI) {
 
       const sessionId = ctx.sessionManager?.getSessionFile?.() ?? "unknown";
       const now = Date.now();
-      const t = (v: string | null) => sql!.typed(v as any, 25);
-      const n = (v: number | null) => sql!.typed(v as any, 20);
+      const t = (v: string | null) => sql?.typed(v as any, 25);
+      const n = (v: number | null) => sql?.typed(v as any, 20);
 
       const record: DecisionRecord = {
         _id: ids.decision(),
@@ -201,8 +203,7 @@ export default function (pi: ExtensionAPI) {
           const matched = words.some((w: string) => haystack.includes(w));
           if (matched) {
             await sql!`INSERT INTO requirement_links (_id, requirement_id, entity_type, entity_id, ts)
-              VALUES (${t(`reqlink:${randomUUID()}`)}, ${t(req._id as string)}, ${t('decision')}, ${t(record._id)}, ${n(Date.now())})`;
-            console.log(`[decision-log] Auto-linked decision to requirement: ${req.title}`);
+              VALUES (${t(`reqlink:${randomUUID()}`)}, ${t(req._id as string)}, ${t("decision")}, ${t(record._id)}, ${n(Date.now())})`;
           }
         }
       } catch (_autoLinkErr) {
@@ -221,7 +222,11 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async () => {
     if (sql) {
-      try { await sql.end(); } catch { /* cleanup — safe to ignore */ }
+      try {
+        await sql.end();
+      } catch {
+        /* cleanup — safe to ignore */
+      }
       sql = null;
     }
   });

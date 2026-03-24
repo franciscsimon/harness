@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:771afd56-535b-440b-b703-be26e166a693",
-      "@type": [
-        "ev:MessageUpdate"
-      ],
+      "@type": ["ev:MessageUpdate"],
       "ev:eventName": [
         {
           "@value": "message_update"
@@ -79,9 +77,7 @@
     },
     {
       "@id": "_:env_771afd56-535b-440b-b703-be26e166a693",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

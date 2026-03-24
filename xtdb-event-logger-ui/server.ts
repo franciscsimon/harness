@@ -1,45 +1,42 @@
+import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { serve } from "@hono/node-server";
 import { streamSSE } from "hono/streaming";
 import {
-  getEvents,
-  getEventsSince,
-  getEvent,
-  getSessions,
-  getSessionList,
-  getSessionEvents,
-  getStats,
-  getMaxSeq,
-  getDashboardSessions,
-  getToolUsageStats,
-  getSessionKnowledge,
-  getErrorPatterns,
-  getProjections,
-  getProjects,
-  getProject,
-  resolveProjectId,
-  getProjectSessions,
-  getDecisions,
-  getProjectDecisions,
   getArtifacts,
-  getProjectArtifacts,
-  getArtifactVersionSummaries,
-  getArtifactReadCounts,
-  getArtifactVersionsByPath,
   getArtifactVersion,
-  getAdjacentVersions,
-  getProjectLifecycleEvents,
-  getProjectDependencies,
-  getProjectTags,
-  getProjectDecommissions,
-  getErrors,
-  getErrorSummary,
-  getTestRuns,
-  getCIRuns,
+  getArtifactVersionSummaries,
+  getArtifactVersionsByPath,
   getCIRun,
+  getCIRuns,
+  getDashboardSessions,
+  getDecisions,
   getDockerEvents,
   getDockerEventsSummary,
+  getErrorPatterns,
+  getErrorSummary,
+  getErrors,
+  getEvent,
+  getEvents,
+  getEventsSince,
+  getProject,
+  getProjectArtifacts,
+  getProjectDecisions,
+  getProjectDecommissions,
+  getProjectDependencies,
+  getProjections,
+  getProjectLifecycleEvents,
+  getProjectSessions,
+  getProjects,
+  getProjectTags,
+  getSessionEvents,
+  getSessionKnowledge,
+  getSessionList,
+  getSessions,
+  getStats,
+  getTestRuns,
+  getToolUsageStats,
+  resolveProjectId,
   wipeAllEvents,
 } from "./lib/db.ts";
 import { compactEvent } from "./lib/format.ts";
@@ -72,9 +69,7 @@ app.get("/api/events/stream", async (c) => {
       }
       const stats = await getStats();
       await stream.writeSSE({ event: "stats", data: JSON.stringify(stats) });
-    } catch (err) {
-      console.error("[api] Initial SSE fetch failed:", err);
-    }
+    } catch (_err) {}
 
     while (true) {
       await stream.sleep(POLL_MS);
@@ -90,9 +85,7 @@ app.get("/api/events/stream", async (c) => {
           const stats = await getStats();
           await stream.writeSSE({ event: "stats", data: JSON.stringify(stats) });
         }
-      } catch (err) {
-        console.error("[api] SSE poll error:", err);
-      }
+      } catch (_err) {}
     }
   });
 });
@@ -115,8 +108,8 @@ app.get("/api/sessions/list", async (c) => {
   let sessions = await getSessionList();
   if (projectId) {
     const projSessions = await getProjectSessions(projectId);
-    const projSessionIds = new Set(projSessions.map(ps => ps.session_id));
-    sessions = sessions.filter(s => projSessionIds.has(s.sessionId));
+    const projSessionIds = new Set(projSessions.map((ps) => ps.session_id));
+    sessions = sessions.filter((s) => projSessionIds.has(s.sessionId));
   }
   return c.json(sessions);
 });
@@ -145,7 +138,11 @@ app.get("/api/stats", async (c) => {
 });
 
 app.get("/api/dashboard", async (c) => {
-  const [sessions, tools, errors] = await Promise.all([getDashboardSessions(), getToolUsageStats(), getErrorPatterns()]);
+  const [sessions, tools, errors] = await Promise.all([
+    getDashboardSessions(),
+    getToolUsageStats(),
+    getErrorPatterns(),
+  ]);
   const ranked = sessions.map((s) => ({
     ...s,
     healthScore: computeHealthScore(s),
@@ -154,7 +151,8 @@ app.get("/api/dashboard", async (c) => {
   return c.json({
     totalSessions: sessions.length,
     totalEvents: sessions.reduce((s, r) => s + r.eventCount, 0),
-    avgEventsPerSession: sessions.length > 0 ? Math.round(sessions.reduce((s, r) => s + r.eventCount, 0) / sessions.length) : 0,
+    avgEventsPerSession:
+      sessions.length > 0 ? Math.round(sessions.reduce((s, r) => s + r.eventCount, 0) / sessions.length) : 0,
     overallErrorRate: sessions.length > 0 ? sessions.reduce((s, r) => s + r.errorRate, 0) / sessions.length : 0,
     sessions: ranked,
     toolUsage: tools,
@@ -175,7 +173,7 @@ app.get("/api/decisions", async (c) => {
   const rawProjectId = c.req.query("project_id");
   const projectId = rawProjectId ? await resolveProjectId(rawProjectId) : undefined;
   const decisions = projectId ? await getProjectDecisions(projectId) : await getDecisions();
-  const filtered = sessionId ? decisions.filter(d => d.session_id === sessionId) : decisions;
+  const filtered = sessionId ? decisions.filter((d) => d.session_id === sessionId) : decisions;
   return c.json(filtered);
 });
 
@@ -184,7 +182,7 @@ app.get("/api/artifacts", async (c) => {
   const rawProjectId = c.req.query("project_id");
   const projectId = rawProjectId ? await resolveProjectId(rawProjectId) : undefined;
   const artifacts = projectId ? await getProjectArtifacts(projectId) : await getArtifacts();
-  const filtered = sessionId ? artifacts.filter(a => a.session_id === sessionId) : artifacts;
+  const filtered = sessionId ? artifacts.filter((a) => a.session_id === sessionId) : artifacts;
   return c.json(filtered);
 });
 
@@ -228,11 +226,11 @@ app.get("/api/test-runs", async (c) => {
   const projectId = c.req.query("project_id") || undefined;
   const limit = Number(c.req.query("limit") ?? "50");
   try {
-    const rows = projectId
-      ? await getTestRuns(projectId, limit)
-      : await getTestRuns(undefined, limit);
+    const rows = projectId ? await getTestRuns(projectId, limit) : await getTestRuns(undefined, limit);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch {
+    return c.json([]);
+  }
 });
 
 app.get("/api/ci-runs", async (c) => {
@@ -291,10 +289,5 @@ app.post("/api/wipe", async (c) => {
   const deleted = await wipeAllEvents();
   return c.json({ deleted, message: `Erased ${deleted} events` });
 });
-
-// ─── Start ─────────────────────────────────────────────────────────
-
-console.log(`\n  📊 Event API (JSON only — UI served by harness-ui :3336)`);
-console.log(`  → http://localhost:${UI_PORT}/api\n`);
 
 serve({ fetch: app.fetch, port: UI_PORT });

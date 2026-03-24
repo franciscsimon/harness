@@ -4,7 +4,9 @@
   "type": "module",
   "description": "Pi.dev extension — automated session post-mortems persisted to XTDB",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "dependencies": {
     "postgres": "^3.4.8"

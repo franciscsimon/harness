@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { homedir } from "node:os";
+import { join } from "node:path";
 import type { ResolvedConfig } from "./types.ts";
 
 // ─── Defaults ──────────────────────────────────────────────────────
@@ -63,13 +63,15 @@ export function loadConfig(): ResolvedConfig {
 
     // Merge endpoints.jsonl
     if (file?.endpoints?.jsonl) {
-      if (typeof file.endpoints.jsonl.enabled === "boolean") config.endpoints.jsonl.enabled = file.endpoints.jsonl.enabled;
+      if (typeof file.endpoints.jsonl.enabled === "boolean")
+        config.endpoints.jsonl.enabled = file.endpoints.jsonl.enabled;
       if (typeof file.endpoints.jsonl.path === "string") config.endpoints.jsonl.path = file.endpoints.jsonl.path;
     }
 
     // Merge endpoints.console
     if (file?.endpoints?.console) {
-      if (typeof file.endpoints.console.enabled === "boolean") config.endpoints.console.enabled = file.endpoints.console.enabled;
+      if (typeof file.endpoints.console.enabled === "boolean")
+        config.endpoints.console.enabled = file.endpoints.console.enabled;
     }
 
     // Merge sampling

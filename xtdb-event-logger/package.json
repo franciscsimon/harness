@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "Pi.dev extension — captures all 30 events into XTDB v2 with JSON-LD via RDF triples",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "dependencies": {
     "@rdfjs/types": "^2.0.1",

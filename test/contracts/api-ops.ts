@@ -6,10 +6,16 @@
  */
 
 const OPS = "http://localhost:3335";
-let passed = 0, failed = 0;
+let _passed = 0,
+  failed = 0;
 const failures: string[] = [];
-function pass(name: string) { passed++; console.log(`  ✅ ${name}`); }
-function fail(name: string, reason: string) { failed++; failures.push(`${name}: ${reason}`); console.log(`  ❌ ${name}: ${reason}`); }
+function pass(_name: string) {
+  _passed++;
+}
+function fail(name: string, reason: string) {
+  failed++;
+  failures.push(`${name}: ${reason}`);
+}
 
 async function json(method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> {
   const opts: RequestInit = { method, headers: { "Content-Type": "application/json" } };
@@ -24,11 +30,6 @@ async function html(path: string): Promise<{ status: number; text: string }> {
 }
 
 async function main() {
-  console.log("\n── API Contracts: xtdb-ops-api (:3335) ──\n");
-
-  // ── Health endpoints ──
-  console.log("Health endpoints:");
-
   const health = await json("GET", "/api/health");
   health.status === 200 && health.body.overall && Array.isArray(health.body.components)
     ? pass("GET /api/health → { overall, components[] }")
@@ -48,34 +49,24 @@ async function main() {
   redpanda.status === 200 && redpanda.body.status && redpanda.body.details
     ? pass("GET /api/health/redpanda → { status, details }")
     : fail("/api/health/redpanda", `status=${redpanda.status}`);
-
-  // ── Replication ──
-  console.log("\nReplication:");
   const repl = await json("GET", "/api/replication");
   repl.status === 200 && repl.body.primary && repl.body.replica
     ? pass("GET /api/replication → { primary, replica }")
     : fail("/api/replication", `status=${repl.status} keys=${Object.keys(repl.body || {})}`);
-
-  // ── Scheduler ──
-  console.log("\nScheduler:");
   const sched = await json("GET", "/api/scheduler/status");
   sched.status === 200 && sched.body.running !== undefined
     ? pass("GET /api/scheduler/status → has running field")
     : fail("/api/scheduler/status", `status=${sched.status}`);
-
-  // ── Replica control ──
-  console.log("\nReplica control:");
   const replStatus = await json("GET", "/api/replica/status");
   replStatus.status === 200 && replStatus.body.running !== undefined
     ? pass("GET /api/replica/status → has running field")
     : fail("/api/replica/status", `status=${replStatus.status}`);
 
-  // ── Incidents CRUD ──
-  console.log("\nIncidents:");
-
   // Create
   const created = await json("POST", "/api/incidents", {
-    severity: "low", title: "Contract test incident", description: "test"
+    severity: "low",
+    title: "Contract test incident",
+    description: "test",
   });
   (created.status === 200 || created.status === 201) && created.body._id
     ? pass("POST /api/incidents → creates incident with _id")
@@ -96,37 +87,22 @@ async function main() {
       ? pass(`GET /api/incidents/:id → ${get.status} (${get.status === 401 ? "auth required" : "OK"})`)
       : fail("GET /api/incidents/:id", `unexpected status=${get.status}`);
   }
-
-  // ── Lifecycle events ──
-  console.log("\nLifecycle:");
   const lifecycle = await json("GET", "/api/lifecycle/events");
   lifecycle.status === 200 && Array.isArray(lifecycle.body)
     ? pass("GET /api/lifecycle/events → array")
     : fail("/api/lifecycle/events", `status=${lifecycle.status}`);
-
-  // ── Topics ──
-  console.log("\nTopics:");
   const topics = await json("GET", "/api/topics");
   topics.status === 200 && (topics.body.topics || Array.isArray(topics.body))
     ? pass("GET /api/topics → has topics")
     : fail("/api/topics", `status=${topics.status} keys=${Object.keys(topics.body || {})}`);
-
-  // ── Backups ──
-  console.log("\nBackups:");
   const backups = await json("GET", "/api/backups");
   backups.status === 200 && Array.isArray(backups.body)
     ? pass("GET /api/backups → array")
     : fail("/api/backups", `status=${backups.status}`);
-
-  // ── Dashboard pages ──
-  console.log("\nDashboard pages:");
   const dash = await html("/dashboard");
   dash.status === 200 && dash.text.includes("<!DOCTYPE html")
     ? pass("GET /dashboard → 200 HTML")
     : fail("GET /dashboard", `status=${dash.status}`);
-
-  // ── Error contracts ──
-  console.log("\nError contracts:");
 
   // Missing incident — endpoint may require auth (401) or return 404
   const missing = await json("GET", "/api/incidents/__nonexistent__");
@@ -157,14 +133,12 @@ async function main() {
   badRestore.status === 400
     ? pass("POST /api/restore missing archive → 400")
     : fail("POST /api/restore validation", `expected 400, got ${badRestore.status}`);
-
-  // ── Summary ──
-  console.log(`\n── Results: ${passed} passed, ${failed} failed ──`);
   if (failures.length > 0) {
-    console.log("\nFailures:");
-    failures.forEach(f => console.log(`  • ${f}`));
+    failures.forEach((_f) => {});
   }
   process.exit(failed > 0 ? 1 : 0);
 }
 
-main().catch(err => { console.error("Fatal:", err); process.exit(1); });
+main().catch((_err) => {
+  process.exit(1);
+});

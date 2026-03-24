@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:b7cbcce9-7148-46e6-9cce-1bf2157d8fea",
-      "@type": [
-        "ev:BeforeAgentStart"
-      ],
+      "@type": ["ev:BeforeAgentStart"],
       "ev:eventName": [
         {
           "@value": "before_agent_start"
@@ -79,9 +77,7 @@
     },
     {
       "@id": "_:env_b7cbcce9-7148-46e6-9cce-1bf2157d8fea",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

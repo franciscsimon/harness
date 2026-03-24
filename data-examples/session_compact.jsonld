@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:5451ada6-0549-4768-92d2-cb88a3da212b",
-      "@type": [
-        "ev:SessionCompact"
-      ],
+      "@type": ["ev:SessionCompact"],
       "ev:eventName": [
         {
           "@value": "session_compact"
@@ -74,9 +72,7 @@
     },
     {
       "@id": "_:env_5451ada6-0549-4768-92d2-cb88a3da212b",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

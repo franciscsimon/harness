@@ -2,13 +2,13 @@
 // Runs all automatable test cases from AUGMENTED_PATTERNS_TESTS.md
 // Run: npx jiti run-tests.ts
 
-import postgres from "postgres";
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import postgres from "postgres";
 
 const sql = postgres({ host: "localhost", port: 5433, database: "xtdb", username: "xtdb" });
 const t = (v: string | null) => sql.typed(v as any, 25);
-const n = (v: number | null) => sql.typed(v as any, 20);
+const _n = (v: number | null) => sql.typed(v as any, 20);
 
 const UI_BASE = "http://localhost:3333";
 const TEMPLATES_DIR = join(process.env.HOME ?? "~", "harness", "templates");
@@ -16,25 +16,22 @@ const EXTENSIONS_DIR = join(process.env.HOME ?? "~", ".pi", "agent", "extensions
 
 // ─── Test Framework ────────────────────────────────────────────
 
-let passed = 0;
+let _passed = 0;
 let failed = 0;
-let skipped = 0;
+let _skipped = 0;
 const failures: string[] = [];
 
-function pass(name: string) {
-  passed++;
-  console.log(`  ✅ ${name}`);
+function pass(_name: string) {
+  _passed++;
 }
 
 function fail(name: string, reason: string) {
   failed++;
   failures.push(`${name}: ${reason}`);
-  console.log(`  ❌ ${name} — ${reason}`);
 }
 
-function skip(name: string, reason: string) {
-  skipped++;
-  console.log(`  ⏭️  ${name} — ${reason}`);
+function skip(_name: string, _reason: string) {
+  _skipped++;
 }
 
 function assert(condition: boolean, name: string, reason: string) {
@@ -55,8 +52,6 @@ async function fetchOk(url: string): Promise<{ status: number; text: string }> {
 // ─── T0: Infrastructure ────────────────────────────────────────
 
 async function testInfrastructure() {
-  console.log("\n── T0: Infrastructure ──");
-
   // T0.1 XTDB running
   try {
     const rows = await sql`SELECT COUNT(*) AS cnt FROM events`;
@@ -75,19 +70,17 @@ async function testInfrastructure() {
   assert(seeds.length >= 12, "T0.2 Seed sessions exist", `found ${seeds.length}/12`);
 
   // T0.3 UI server
-  const { status } = await fetchOk(UI_BASE + "/");
+  const { status } = await fetchOk(`${UI_BASE}/`);
   assert(status === 200, "T0.3 UI server running", `status=${status}`);
 }
 
 // ─── T1: Context Markers in UI ─────────────────────────────────
 
 async function testContextMarkers() {
-  console.log("\n── T1: Context Markers in UI ──");
-
   // T1.1 Context metrics query
   const ctxEvents = await sql`
     SELECT event_name, context_msg_count, provider_payload_bytes
-    FROM events WHERE session_id = ${t('/test/ctx-markers-bloated')}
+    FROM events WHERE session_id = ${t("/test/ctx-markers-bloated")}
     AND (context_msg_count IS NOT NULL OR provider_payload_bytes IS NOT NULL)
     ORDER BY seq ASC
   `;
@@ -137,12 +130,14 @@ async function testContextMarkers() {
 // ─── T2: Focused Agent Templates ───────────────────────────────
 
 async function testTemplates() {
-  console.log("\n── T2: Focused Agent Templates ──");
-
   // T2.1 Template files exist
   const expected = ["committer.md", "reviewer.md", "refactorer.md", "debugger.md", "planner.md"];
   const allExist = expected.every((f) => existsSync(join(TEMPLATES_DIR, f)));
-  assert(allExist, "T2.1 All 5 template files exist", `missing: ${expected.filter(f => !existsSync(join(TEMPLATES_DIR, f)))}`);
+  assert(
+    allExist,
+    "T2.1 All 5 template files exist",
+    `missing: ${expected.filter((f) => !existsSync(join(TEMPLATES_DIR, f)))}`,
+  );
 
   // T2.2 Template structure
   for (const file of expected) {
@@ -165,10 +160,10 @@ async function testTemplates() {
     ["debugger", ["log", "hypothesis"], []],
     ["planner", ["plan"], []],
   ];
-  for (const [name, mustHave, mustNotHave] of checks) {
+  for (const [name, mustHave, _mustNotHave] of checks) {
     const content = readFileSync(join(TEMPLATES_DIR, `${name}.md`), "utf-8").toLowerCase();
     const hasMust = mustHave.every((kw) => content.includes(kw));
-    assert(hasMust, `T2.3 ${name} contains keywords`, `missing: ${mustHave.filter(k => !content.includes(k))}`);
+    assert(hasMust, `T2.3 ${name} contains keywords`, `missing: ${mustHave.filter((k) => !content.includes(k))}`);
   }
 
   // T2.4 Role loader extension exists
@@ -187,8 +182,6 @@ async function testTemplates() {
 // ─── T3: Canary Metrics ────────────────────────────────────────
 
 async function testCanaryMetrics() {
-  console.log("\n── T3: Canary Metrics ──");
-
   // T3.1 Extension exists
   const canaryIdx = join(EXTENSIONS_DIR, "canary-monitor", "index.ts");
   const canaryPkg = join(EXTENSIONS_DIR, "canary-monitor", "package.json");
@@ -198,11 +191,11 @@ async function testCanaryMetrics() {
   // T3.2 Tool failure rate: 40% should alert
   const thrashTotal = await sql`
     SELECT COUNT(*) AS cnt FROM events
-    WHERE session_id = ${t('/test/canary-thrashing')} AND event_name = 'tool_execution_end'
+    WHERE session_id = ${t("/test/canary-thrashing")} AND event_name = 'tool_execution_end'
   `;
   const thrashErrors = await sql`
     SELECT COUNT(*) AS cnt FROM events
-    WHERE session_id = ${t('/test/canary-thrashing')} AND event_name = 'tool_execution_end' AND is_error = ${sql.typed(true as any, 16)}
+    WHERE session_id = ${t("/test/canary-thrashing")} AND event_name = 'tool_execution_end' AND is_error = ${sql.typed(true as any, 16)}
   `;
   const thrashRate = Number(thrashErrors[0].cnt) / Number(thrashTotal[0].cnt);
   assert(Math.abs(thrashRate - 0.4) < 0.01, "T3.2 Tool failure rate = 40%", `rate=${thrashRate}`);
@@ -211,11 +204,11 @@ async function testCanaryMetrics() {
   // T3.3 No false positive at 10%
   const healthyTotal = await sql`
     SELECT COUNT(*) AS cnt FROM events
-    WHERE session_id = ${t('/test/canary-healthy')} AND event_name = 'tool_execution_end'
+    WHERE session_id = ${t("/test/canary-healthy")} AND event_name = 'tool_execution_end'
   `;
   const healthyErrors = await sql`
     SELECT COUNT(*) AS cnt FROM events
-    WHERE session_id = ${t('/test/canary-healthy')} AND event_name = 'tool_execution_end' AND is_error = ${sql.typed(true as any, 16)}
+    WHERE session_id = ${t("/test/canary-healthy")} AND event_name = 'tool_execution_end' AND is_error = ${sql.typed(true as any, 16)}
   `;
   const healthyRate = Number(healthyErrors[0].cnt) / Number(healthyTotal[0].cnt);
   assert(healthyRate <= 0.3, "T3.3 No false positive at 10%", `rate=${healthyRate}`);
@@ -223,7 +216,7 @@ async function testCanaryMetrics() {
   // T3.4 Turn inflation: 8 turns
   const turnStarts = await sql`
     SELECT COUNT(*) AS cnt FROM events
-    WHERE session_id = ${t('/test/canary-inflated')} AND event_name = 'turn_start'
+    WHERE session_id = ${t("/test/canary-inflated")} AND event_name = 'turn_start'
   `;
   const turnCount = Number(turnStarts[0].cnt);
   assert(turnCount === 8, "T3.4 Turn count = 8", `turns=${turnCount}`);
@@ -240,7 +233,7 @@ async function testCanaryMetrics() {
   // T3.6 Retry storm: 4 consecutive bash
   const stormTools = await sql`
     SELECT tool_name FROM events
-    WHERE session_id = ${t('/test/canary-retry-storm')} AND event_name = 'tool_execution_start'
+    WHERE session_id = ${t("/test/canary-retry-storm")} AND event_name = 'tool_execution_start'
     ORDER BY seq ASC
   `;
   let consecutiveBash = 0;
@@ -253,13 +246,18 @@ async function testCanaryMetrics() {
   // T3.7 No retry storm with mixed tools
   const healthyTools = await sql`
     SELECT tool_name FROM events
-    WHERE session_id = ${t('/test/canary-healthy')} AND event_name = 'tool_execution_start'
+    WHERE session_id = ${t("/test/canary-healthy")} AND event_name = 'tool_execution_start'
     ORDER BY seq ASC
   `;
-  let maxConsec = 0, curConsec = 0, prevTool = "";
+  let maxConsec = 0,
+    curConsec = 0,
+    prevTool = "";
   for (const r of healthyTools) {
     if (r.tool_name === prevTool) curConsec++;
-    else { curConsec = 1; prevTool = r.tool_name; }
+    else {
+      curConsec = 1;
+      prevTool = r.tool_name;
+    }
     if (curConsec > maxConsec) maxConsec = curConsec;
   }
   assert(maxConsec < 3, "T3.7 No retry storm with mixed tools", `maxConsecutive=${maxConsec}`);
@@ -274,11 +272,11 @@ async function testCanaryMetrics() {
   // T3.11 Tool call density
   const densityTurns = await sql`
     SELECT turn_index FROM events
-    WHERE session_id = ${t('/test/canary-thrashing')} AND event_name = 'turn_start'
+    WHERE session_id = ${t("/test/canary-thrashing")} AND event_name = 'turn_start'
   `;
   const densityTools = await sql`
     SELECT COUNT(*) AS cnt FROM events
-    WHERE session_id = ${t('/test/canary-thrashing')} AND event_name = 'tool_execution_start'
+    WHERE session_id = ${t("/test/canary-thrashing")} AND event_name = 'tool_execution_start'
   `;
   const density = Number(densityTools[0].cnt) / Math.max(Number(densityTurns.length), 1);
   assert(density > 8, "T3.11 Tool density > 8/turn", `density=${density}`);
@@ -287,8 +285,6 @@ async function testCanaryMetrics() {
 // ─── T4: Habit Hooks ───────────────────────────────────────────
 
 async function testHabitHooks() {
-  console.log("\n── T4: Habit Hooks ──");
-
   // T4.1 Extension exists
   const habitIdx = join(EXTENSIONS_DIR, "habit-monitor", "index.ts");
   const habitPkg = join(EXTENSIONS_DIR, "habit-monitor", "package.json");
@@ -298,7 +294,7 @@ async function testHabitHooks() {
   // T4.2 Commit reminder: 5 edits no commit
   const noCommitTools = await sql`
     SELECT tool_name FROM events
-    WHERE session_id = ${t('/test/habit-no-commit')} AND event_name = 'tool_execution_start'
+    WHERE session_id = ${t("/test/habit-no-commit")} AND event_name = 'tool_execution_start'
     ORDER BY seq ASC
   `;
   const editCount = noCommitTools.filter((r: any) => r.tool_name === "write" || r.tool_name === "edit").length;
@@ -307,14 +303,14 @@ async function testHabitHooks() {
   // T4.3 Commit suppression — skip (needs bash_command="git commit")
   const noCommitBash = await sql`
     SELECT bash_command FROM events
-    WHERE session_id = ${t('/test/habit-no-commit')} AND bash_command IS NOT NULL
+    WHERE session_id = ${t("/test/habit-no-commit")} AND bash_command IS NOT NULL
   `;
   assert(noCommitBash.length === 0, "T4.3 No git commit in session", `bash commands found: ${noCommitBash.length}`);
 
   // T4.4 Test reminder: 6 edits no test
   const noTestTools = await sql`
     SELECT tool_name FROM events
-    WHERE session_id = ${t('/test/habit-no-test')} AND event_name = 'tool_execution_start'
+    WHERE session_id = ${t("/test/habit-no-test")} AND event_name = 'tool_execution_start'
     ORDER BY seq ASC
   `;
   const testEdits = noTestTools.filter((r: any) => r.tool_name === "write" || r.tool_name === "edit").length;
@@ -326,7 +322,7 @@ async function testHabitHooks() {
   // T4.6 Error streak: 3 consecutive
   const errStreak = await sql`
     SELECT is_error FROM events
-    WHERE session_id = ${t('/test/habit-error-streak')} AND event_name = 'tool_execution_end'
+    WHERE session_id = ${t("/test/habit-error-streak")} AND event_name = 'tool_execution_end'
     ORDER BY seq ASC
   `;
   let streak = 0;
@@ -339,10 +335,11 @@ async function testHabitHooks() {
   // T4.7 Interleaved success — healthy session should not have 3+ streak
   const healthyErrs = await sql`
     SELECT is_error FROM events
-    WHERE session_id = ${t('/test/canary-healthy')} AND event_name = 'tool_execution_end'
+    WHERE session_id = ${t("/test/canary-healthy")} AND event_name = 'tool_execution_end'
     ORDER BY seq ASC
   `;
-  let hStreak = 0, hMaxStreak = 0;
+  let hStreak = 0,
+    hMaxStreak = 0;
   for (const r of healthyErrs) {
     if (r.is_error) hStreak++;
     else hStreak = 0;
@@ -353,7 +350,7 @@ async function testHabitHooks() {
   // T4.8 Scope creep: 12 unique tool calls
   const scopeTools = await sql`
     SELECT tool_name FROM events
-    WHERE session_id = ${t('/test/habit-scope-creep')} AND event_name = 'tool_execution_start'
+    WHERE session_id = ${t("/test/habit-scope-creep")} AND event_name = 'tool_execution_start'
   `;
   assert(scopeTools.length >= 8, "T4.8 Scope creep: many tool calls", `count=${scopeTools.length}`);
 
@@ -366,14 +363,16 @@ async function testHabitHooks() {
     SELECT MAX(provider_payload_bytes) AS max_bytes FROM events
     WHERE provider_payload_bytes IS NOT NULL
   `;
-  assert(Number(realMax[0].max_bytes) > 150000, "T4.11 Fresh start hint on real data", `maxBytes=${realMax[0].max_bytes}`);
+  assert(
+    Number(realMax[0].max_bytes) > 150000,
+    "T4.11 Fresh start hint on real data",
+    `maxBytes=${realMax[0].max_bytes}`,
+  );
 }
 
 // ─── T5: Session Health Dashboard ──────────────────────────────
 
 async function testDashboard() {
-  console.log("\n── T5: Session Health Dashboard ──");
-
   // T5.1 Dashboard routes
   const { status: htmlStatus } = await fetchOk(`${UI_BASE}/dashboard`);
   const { status: apiStatus } = await fetchOk(`${UI_BASE}/api/dashboard`);
@@ -401,13 +400,28 @@ async function testDashboard() {
   // Import the module (we're running from test/ but the module is in the UI dir)
   const healthMod = await import("../xtdb-event-logger-ui/lib/health.ts");
 
-  const perfect = healthMod.computeHealthScore({ errorRate: 0, turnCount: 2, maxPayloadBytes: 30000, durationMs: 60000 });
+  const perfect = healthMod.computeHealthScore({
+    errorRate: 0,
+    turnCount: 2,
+    maxPayloadBytes: 30000,
+    durationMs: 60000,
+  });
   assert(perfect >= 90, "T5.3a Perfect session >= 90", `score=${perfect}`);
 
-  const mid = healthMod.computeHealthScore({ errorRate: 0.2, turnCount: 6, maxPayloadBytes: 120000, durationMs: 300000 });
+  const mid = healthMod.computeHealthScore({
+    errorRate: 0.2,
+    turnCount: 6,
+    maxPayloadBytes: 120000,
+    durationMs: 300000,
+  });
   assert(mid >= 40 && mid <= 70, "T5.3b Mediocre session 40-70", `score=${mid}`);
 
-  const bad = healthMod.computeHealthScore({ errorRate: 0.5, turnCount: 12, maxPayloadBytes: 400000, durationMs: 900000 });
+  const bad = healthMod.computeHealthScore({
+    errorRate: 0.5,
+    turnCount: 12,
+    maxPayloadBytes: 400000,
+    durationMs: 900000,
+  });
   assert(bad <= 30, "T5.3c Bad session <= 30", `score=${bad}`);
 
   // T5.4 Health colors
@@ -438,8 +452,6 @@ async function testDashboard() {
 // ─── T6: Knowledge Extraction ──────────────────────────────────
 
 async function testKnowledge() {
-  console.log("\n── T6: Knowledge Extraction ──");
-
   // T6.1 Knowledge query aggregation
   const knowledgeSid = encodeURIComponent("/test/knowledge-rich");
   const { text: apiText, status: apiStatus } = await fetchOk(`${UI_BASE}/api/sessions/${knowledgeSid}/knowledge`);
@@ -448,23 +460,23 @@ async function testKnowledge() {
   // Check aggregated data
   const toolEndCounts = await sql`
     SELECT tool_name, COUNT(*) AS cnt FROM events
-    WHERE session_id = ${t('/test/knowledge-rich')} AND event_name = 'tool_execution_end'
+    WHERE session_id = ${t("/test/knowledge-rich")} AND event_name = 'tool_execution_end'
     GROUP BY tool_name
   `;
   const toolMap: Record<string, number> = {};
   for (const r of toolEndCounts) toolMap[r.tool_name] = Number(r.cnt);
-  assert(toolMap["bash"] === 4, "T6.1b Bash count = 4", `got ${toolMap["bash"]}`);
-  assert(toolMap["write"] === 3, "T6.1c Write count = 3", `got ${toolMap["write"]}`);
+  assert(toolMap.bash === 4, "T6.1b Bash count = 4", `got ${toolMap.bash}`);
+  assert(toolMap.write === 3, "T6.1c Write count = 3", `got ${toolMap.write}`);
 
   const errorRows = await sql`
     SELECT COUNT(*) AS cnt FROM events
-    WHERE session_id = ${t('/test/knowledge-rich')} AND event_name = 'tool_execution_end' AND is_error = ${sql.typed(true as any, 16)}
+    WHERE session_id = ${t("/test/knowledge-rich")} AND event_name = 'tool_execution_end' AND is_error = ${sql.typed(true as any, 16)}
   `;
   assert(Number(errorRows[0].cnt) === 2, "T6.1d Error count = 2", `got ${errorRows[0].cnt}`);
 
   const turnRows = await sql`
     SELECT COUNT(*) AS cnt FROM events
-    WHERE session_id = ${t('/test/knowledge-rich')} AND event_name = 'turn_start'
+    WHERE session_id = ${t("/test/knowledge-rich")} AND event_name = 'turn_start'
   `;
   assert(Number(turnRows[0].cnt) === 5, "T6.1e Turn count = 5", `got ${turnRows[0].cnt}`);
 
@@ -479,7 +491,9 @@ async function testKnowledge() {
   assert(htmlStatus === 200, "T6.3 Knowledge HTML returns 200", `status=${htmlStatus}`);
 
   // T6.4 Knowledge for nonexistent session
-  const { status: notFoundStatus } = await fetchOk(`${UI_BASE}/sessions/${encodeURIComponent('/test/nonexistent')}/knowledge`);
+  const { status: notFoundStatus } = await fetchOk(
+    `${UI_BASE}/sessions/${encodeURIComponent("/test/nonexistent")}/knowledge`,
+  );
   assert(notFoundStatus === 404, "T6.4 Nonexistent session = 404", `status=${notFoundStatus}`);
 
   // T6.5–T6.6 require session shutdown — skip
@@ -494,10 +508,6 @@ async function testKnowledge() {
 // ─── Main ──────────────────────────────────────────────────────
 
 async function main() {
-  console.log("═══════════════════════════════════════════════════");
-  console.log("  Augmented Coding Patterns — Test Runner");
-  console.log("═══════════════════════════════════════════════════");
-
   await testInfrastructure();
   await testContextMarkers();
   await testTemplates();
@@ -506,21 +516,14 @@ async function main() {
   await testDashboard();
   await testKnowledge();
 
-  console.log("\n═══════════════════════════════════════════════════");
-  console.log(`  Results: ✅ ${passed} passed  ❌ ${failed} failed  ⏭️  ${skipped} skipped`);
-  console.log(`  Total: ${passed + failed + skipped} test cases`);
-  console.log("═══════════════════════════════════════════════════");
-
   if (failures.length > 0) {
-    console.log("\nFailures:");
-    for (const f of failures) console.log(`  ❌ ${f}`);
+    for (const _f of failures)
   }
 
   await sql.end();
   process.exit(failed > 0 ? 1 : 0);
 }
 
-main().catch((err) => {
-  console.error("Test runner failed:", err);
+main().catch((_err) => {
   process.exit(1);
 });

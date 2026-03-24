@@ -12,8 +12,10 @@ async function get<T>(url: string, timeout = 5000): Promise<T | null> {
     const r = await fetch(url, { signal: c.signal });
     clearTimeout(t);
     if (!r.ok) return null;
-    return await r.json() as T;
-  } catch { return null; }
+    return (await r.json()) as T;
+  } catch {
+    return null;
+  }
 }
 
 // :3333 Event Logger API — all accept optional projectId for scoping
@@ -22,17 +24,20 @@ function pq(projectId?: string): string {
 }
 function pqs(projectId?: string, extra?: string): string {
   const parts = [pq(projectId), extra].filter(Boolean);
-  return parts.length ? "?" + parts.join("&") : "";
+  return parts.length ? `?${parts.join("&")}` : "";
 }
 
 export const fetchSessionList = (projectId?: string) => get<any[]>(`${EVENT_API}/api/sessions/list${pqs(projectId)}`);
-export const fetchSessionEvents = (id: string) => get<any[]>(`${EVENT_API}/api/sessions/${encodeURIComponent(id)}/events`);
+export const fetchSessionEvents = (id: string) =>
+  get<any[]>(`${EVENT_API}/api/sessions/${encodeURIComponent(id)}/events`);
 export const fetchStats = (projectId?: string) => get<any>(`${EVENT_API}/api/stats${pqs(projectId)}`);
 export const fetchDashboard = (projectId?: string) => get<any>(`${EVENT_API}/api/dashboard${pqs(projectId)}`);
-export const fetchDecisions = (limit = 50, projectId?: string) => get<any[]>(`${EVENT_API}/api/decisions${pqs(projectId, `limit=${limit}`)}`);
+export const fetchDecisions = (limit = 50, projectId?: string) =>
+  get<any[]>(`${EVENT_API}/api/decisions${pqs(projectId, `limit=${limit}`)}`);
 export const fetchArtifacts = (projectId?: string) => get<any[]>(`${EVENT_API}/api/artifacts${pqs(projectId)}`);
 export const fetchEvent = (id: string) => get<any>(`${EVENT_API}/api/events/${encodeURIComponent(id)}`);
-export const fetchArtifactVersions = (path: string) => get<any[]>(`${EVENT_API}/api/artifact-versions?path=${encodeURIComponent(path)}`);
+export const fetchArtifactVersions = (path: string) =>
+  get<any[]>(`${EVENT_API}/api/artifact-versions?path=${encodeURIComponent(path)}`);
 
 // Errors
 export const fetchErrors = (opts?: { severity?: string; component?: string; limit?: number; projectId?: string }) => {
@@ -42,7 +47,7 @@ export const fetchErrors = (opts?: { severity?: string; component?: string; limi
   if (opts?.component) params.set("component", opts.component);
   if (opts?.limit) params.set("limit", String(opts.limit));
   const qs = params.toString();
-  return get<any[]>(`${EVENT_API}/api/errors${qs ? "?" + qs : ""}`);
+  return get<any[]>(`${EVENT_API}/api/errors${qs ? `?${qs}` : ""}`);
 };
 export const fetchErrorSummary = (projectId?: string) => get<any>(`${EVENT_API}/api/errors/summary${pqs(projectId)}`);
 
@@ -51,7 +56,8 @@ export const fetchProjects = () => get<any[]>(`${EVENT_API}/api/projects`);
 export const fetchProjectDetail = (id: string) => get<any>(`${EVENT_API}/api/projects/${encodeURIComponent(id)}`);
 
 // Projections (for flow page)
-export const fetchProjections = (sessionId: string) => get<any[]>(`${EVENT_API}/api/projections/${encodeURIComponent(sessionId)}`);
+export const fetchProjections = (sessionId: string) =>
+  get<any[]>(`${EVENT_API}/api/projections/${encodeURIComponent(sessionId)}`);
 
 // Knowledge
 export const fetchKnowledge = async (sessionId: string): Promise<string | null> => {
@@ -62,7 +68,9 @@ export const fetchKnowledge = async (sessionId: string): Promise<string | null> 
     clearTimeout(t);
     if (!r.ok) return null;
     return await r.text();
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 };
 
 // Test runs
@@ -80,7 +88,9 @@ export async function checkChatHealth(): Promise<boolean> {
     const r = await fetch(CHAT_HTTP, { signal: c.signal });
     clearTimeout(t);
     return r.ok;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 // :7001 QLever SPARQL
@@ -100,7 +110,9 @@ export async function checkQleverHealth(): Promise<boolean> {
     });
     clearTimeout(t);
     return r.ok;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 export async function sparqlQuery(query: string): Promise<any> {
@@ -129,18 +141,28 @@ async function probeHttp(url: string, timeout = 3000): Promise<boolean> {
     const r = await fetch(url, { signal: c.signal });
     clearTimeout(t);
     return r.ok || r.status < 500; // 401/403 means service is up
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 async function probeTcp(host: string, port: number, timeout = 2000): Promise<boolean> {
   try {
     const { createConnection } = await import("node:net");
     return new Promise((resolve) => {
-      const sock = createConnection({ host, port, timeout }, () => { sock.destroy(); resolve(true); });
+      const sock = createConnection({ host, port, timeout }, () => {
+        sock.destroy();
+        resolve(true);
+      });
       sock.on("error", () => resolve(false));
-      sock.on("timeout", () => { sock.destroy(); resolve(false); });
+      sock.on("timeout", () => {
+        sock.destroy();
+        resolve(false);
+      });
     });
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 export interface ContainerStatus {
@@ -152,22 +174,59 @@ export interface ContainerStatus {
 
 export async function checkAllContainers(): Promise<ContainerStatus[]> {
   const checks: Array<{ name: string; port: string; role: string; check: Promise<boolean> }> = [
-    { name: "Redpanda", port: "9092", role: "Kafka broker", check: probeTcp(process.env.REDPANDA_HOST ?? "localhost", Number(process.env.REDPANDA_PORT ?? "19092")) },
-    { name: "Garage S3", port: "3900", role: "Object store", check: probeHttp(`${process.env.GARAGE_URL ?? "http://localhost:3900"}/health`) },
-    { name: "XTDB Primary", port: "5432", role: "Database (write)", check: probeHttp(`${process.env.XTDB_PRIMARY_HEALTH ?? "http://localhost:8083"}/healthz/alive`) },
-    { name: "XTDB Replica", port: "5432", role: "Database (read)", check: probeHttp(`${process.env.XTDB_REPLICA_HEALTH ?? "http://localhost:8084"}/healthz/alive`) },
-    { name: "Keycloak", port: "8180", role: "Auth server", check: probeHttp(`${process.env.KEYCLOAK_URL ?? "http://localhost:8180"}/health/ready`) },
+    {
+      name: "Redpanda",
+      port: "9092",
+      role: "Kafka broker",
+      check: probeTcp(process.env.REDPANDA_HOST ?? "localhost", Number(process.env.REDPANDA_PORT ?? "19092")),
+    },
+    {
+      name: "Garage S3",
+      port: "3900",
+      role: "Object store",
+      check: probeHttp(`${process.env.GARAGE_URL ?? "http://localhost:3900"}/health`),
+    },
+    {
+      name: "XTDB Primary",
+      port: "5432",
+      role: "Database (write)",
+      check: probeHttp(`${process.env.XTDB_PRIMARY_HEALTH ?? "http://localhost:8083"}/healthz/alive`),
+    },
+    {
+      name: "XTDB Replica",
+      port: "5432",
+      role: "Database (read)",
+      check: probeHttp(`${process.env.XTDB_REPLICA_HEALTH ?? "http://localhost:8084"}/healthz/alive`),
+    },
+    {
+      name: "Keycloak",
+      port: "8180",
+      role: "Auth server",
+      check: probeHttp(`${process.env.KEYCLOAK_URL ?? "http://localhost:8180"}/health/ready`),
+    },
     { name: "QLever", port: "7001", role: "SPARQL endpoint", check: checkQleverHealth() },
-    { name: "Soft Serve", port: "23232", role: "Git server", check: probeHttp(process.env.SOFT_SERVE_HTTP ?? "http://localhost:23232") },
-    { name: "Zot Registry", port: "5000", role: "OCI registry", check: probeHttp(`${process.env.ZOT_URL ?? "http://localhost:5050"}/v2/`) },
+    {
+      name: "Soft Serve",
+      port: "23232",
+      role: "Git server",
+      check: probeHttp(process.env.SOFT_SERVE_HTTP ?? "http://localhost:23232"),
+    },
+    {
+      name: "Zot Registry",
+      port: "5000",
+      role: "OCI registry",
+      check: probeHttp(`${process.env.ZOT_URL ?? "http://localhost:5050"}/v2/`),
+    },
   ];
 
-  const results = await Promise.all(checks.map(async (c) => ({
-    name: c.name,
-    port: c.port,
-    role: c.role,
-    ok: await c.check,
-  })));
+  const results = await Promise.all(
+    checks.map(async (c) => ({
+      name: c.name,
+      port: c.port,
+      role: c.role,
+      ok: await c.check,
+    })),
+  );
 
   return results;
 }
@@ -184,17 +243,19 @@ const APP_SERVICES = [
 ];
 
 export async function checkAppServices(): Promise<{ name: string; port: number; ok: boolean }[]> {
-  return Promise.all(APP_SERVICES.map(async (svc) => {
-    const url = `http://${svc.name}:${svc.port}${svc.path}`;
-    const ok = await probeHttp(url);
-    return { name: svc.name, port: svc.port, ok };
-  }));
+  return Promise.all(
+    APP_SERVICES.map(async (svc) => {
+      const url = `http://${svc.name}:${svc.port}${svc.path}`;
+      const ok = await probeHttp(url);
+      return { name: svc.name, port: svc.port, ok };
+    }),
+  );
 }
 
 // :3335 Ops API
 export const fetchHealth = () => get<any>(`${OPS_API}/api/health`);
 export const fetchBackups = () => get<any[]>(`${OPS_API}/api/backups`);
-export const fetchIncidents = (q = "") => get<any[]>(`${OPS_API}/api/incidents${q ? "?" + q : ""}`);
+export const fetchIncidents = (q = "") => get<any[]>(`${OPS_API}/api/incidents${q ? `?${q}` : ""}`);
 export const fetchScheduler = () => get<any>(`${OPS_API}/api/scheduler/status`);
 export const fetchReplication = () => get<any>(`${OPS_API}/api/replication`);
 export const fetchLifecycleEvents = (n = 20) => get<any[]>(`${OPS_API}/api/lifecycle/events?limit=${n}`);

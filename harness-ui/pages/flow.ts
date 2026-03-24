@@ -4,7 +4,7 @@
 
 import { layout } from "../components/layout.ts";
 import { fetchProjections } from "../lib/api.ts";
-import { relativeTime, escapeHtml } from "../lib/format.ts";
+import { escapeHtml, relativeTime } from "../lib/format.ts";
 
 const TYPE_COLORS: Record<string, string> = {
   AgentTaskRequested: "#3b82f6",
@@ -22,11 +22,13 @@ function parseJsonArray(val: unknown): string[] {
   try {
     const arr = typeof val === "string" ? JSON.parse(val) : val;
     return Array.isArray(arr) ? arr : [];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function trunc(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s;
 }
 
 function renderCardBody(p: any): string {
@@ -71,11 +73,16 @@ function renderCardBody(p: any): string {
 
 function hasContent(p: any): boolean {
   switch (p.type) {
-    case "AgentTaskRequested": return !!(p.prompt || p.prompt_text);
-    case "AgentReasoningTrace": return true;
-    case "AgentResultProduced": return !!(p.output_summary || p.total_turns);
-    case "ProjectStateChanged": return !!(p.mutations || p.mutating_tool_count);
-    default: return false;
+    case "AgentTaskRequested":
+      return !!(p.prompt || p.prompt_text);
+    case "AgentReasoningTrace":
+      return true;
+    case "AgentResultProduced":
+      return !!(p.output_summary || p.total_turns);
+    case "ProjectStateChanged":
+      return !!(p.mutations || p.mutating_tool_count);
+    default:
+      return false;
   }
 }
 
@@ -86,10 +93,11 @@ export async function renderFlow(sessionId: string, projectId?: string): Promise
   const withContent = projections.filter(hasContent);
   const emptyCount = projections.length - withContent.length;
 
-  const cards = withContent.map((p: any) => {
-    const color = typeColor(p.type);
-    const typeName = p.type?.replace(/([A-Z])/g, " $1").trim() ?? "Unknown";
-    return `<div class="flow-card" style="--type-color:${color}">
+  const cards = withContent
+    .map((p: any) => {
+      const color = typeColor(p.type);
+      const typeName = p.type?.replace(/([A-Z])/g, " $1").trim() ?? "Unknown";
+      return `<div class="flow-card" style="--type-color:${color}">
       <div class="flow-card-header">
         <span class="flow-type-badge" style="background:color-mix(in srgb, ${color} 20%, transparent);color:${color};border:1px solid color-mix(in srgb, ${color} 30%, transparent)">${escapeHtml(typeName)}</span>
         <span class="flow-task-id" style="color:var(--text-dim);font-size:11px">${escapeHtml(p.task_id ?? "")}</span>
@@ -97,11 +105,13 @@ export async function renderFlow(sessionId: string, projectId?: string): Promise
       </div>
       <div class="flow-card-body">${renderCardBody(p)}</div>
     </div>`;
-  }).join("\n");
+    })
+    .join("\n");
 
-  const emptyNote = emptyCount > 0
-    ? `<p style="color:var(--text-dim);font-size:12px;padding:0 4px">${emptyCount} empty projection${emptyCount > 1 ? "s" : ""} collapsed</p>`
-    : "";
+  const emptyNote =
+    emptyCount > 0
+      ? `<p style="color:var(--text-dim);font-size:12px;padding:0 4px">${emptyCount} empty projection${emptyCount > 1 ? "s" : ""} collapsed</p>`
+      : "";
 
   const content = `
     <div class="page-header">
@@ -120,5 +130,10 @@ export async function renderFlow(sessionId: string, projectId?: string): Promise
     </main>
   `;
 
-  return layout(content, { title: `Flow — ${name}`, activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions", projectId, activeSection: "sessions" });
+  return layout(content, {
+    title: `Flow — ${name}`,
+    activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions",
+    projectId,
+    activeSection: "sessions",
+  });
 }

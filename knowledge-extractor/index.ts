@@ -1,6 +1,6 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
 
 // ─── Knowledge Extractor Extension ────────────────────────────────
 // On session_shutdown, generates a summary markdown file from
@@ -59,9 +59,8 @@ export default function (pi: ExtensionAPI) {
     if (eventCount === 0) return; // Nothing to report
 
     // Generate markdown
-    const durationStr = durationMs < 60_000
-      ? `${Math.round(durationMs / 1000)}s`
-      : `${Math.round(durationMs / 60_000)}m`;
+    const durationStr =
+      durationMs < 60_000 ? `${Math.round(durationMs / 1000)}s` : `${Math.round(durationMs / 60_000)}m`;
 
     const uniqueFiles = [...new Set(filesModified)];
     const uniqueCmds = [...new Set(bashCommands)];
@@ -103,7 +102,7 @@ export default function (pi: ExtensionAPI) {
       lines.push(`_No bash commands recorded._`);
     }
 
-    const md = lines.join("\n") + "\n";
+    const md = `${lines.join("\n")}\n`;
 
     // Write .knowledge.md next to session file
     try {

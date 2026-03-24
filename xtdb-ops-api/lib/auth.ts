@@ -3,7 +3,7 @@
  * Validates Bearer tokens against Keycloak's JWKS endpoint.
  */
 import type { MiddlewareHandler } from "hono";
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { createRemoteJWKSet, type JWTPayload, jwtVerify } from "jose";
 
 const KEYCLOAK_URL = process.env.KEYCLOAK_URL ?? "http://localhost:8180";
 const KEYCLOAK_REALM = process.env.KEYCLOAK_REALM ?? "harness";
@@ -73,7 +73,7 @@ export function authMiddleware(): MiddlewareHandler {
 
     // Skip public path prefixes (dynamic routes used by ops.js)
     const publicPrefixes = ["/api/backup/", "/api/backups/", "/dashboard"];
-    if (publicPrefixes.some(p => c.req.path.startsWith(p))) return next();
+    if (publicPrefixes.some((p) => c.req.path.startsWith(p))) return next();
 
     const authHeader = c.req.header("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
@@ -88,7 +88,7 @@ export function authMiddleware(): MiddlewareHandler {
       });
       (c as any).user = extractUser(payload);
       return next();
-    } catch (err) {
+    } catch (_err) {
       return c.json({ error: "Invalid or expired token" }, 401);
     }
   };

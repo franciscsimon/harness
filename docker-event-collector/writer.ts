@@ -9,7 +9,7 @@ const BATCH_SIZE = 50;
 const FLUSH_INTERVAL_MS = 5000;
 
 let sql: ReturnType<typeof postgres>;
-let buffer: DockerEventRecord[] = [];
+const buffer: DockerEventRecord[] = [];
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 let totalWritten = 0;
 let writeErrors = 0;
@@ -21,13 +21,12 @@ export function getWriterStats() {
 export function startWriter() {
   sql = postgres(XTDB_URL, { max: 2, idle_timeout: 30 });
   flushTimer = setInterval(flush, FLUSH_INTERVAL_MS);
-  console.log(`[writer] Connected to XTDB at ${XTDB_URL}`);
 }
 
 export function enqueueEvent(record: DockerEventRecord) {
   buffer.push(record);
   if (buffer.length >= BATCH_SIZE) {
-    flush().catch((e) => console.error("[writer] flush error:", e.message));
+    flush().catch((_e) => {});
   }
 }
 
@@ -36,8 +35,8 @@ async function flush() {
   const batch = buffer.splice(0, BATCH_SIZE);
   try {
     for (const r of batch) {
-      const t = (v: string) => sql.typed(v as any, 25);  // OID 25 = text
-      const n = (v: number) => sql.typed(v as any, 20);  // OID 20 = int8
+      const t = (v: string) => sql.typed(v as any, 25); // OID 25 = text
+      const n = (v: number) => sql.typed(v as any, 20); // OID 20 = int8
       await sql`INSERT INTO docker_events (
         _id, event_type, action, container_id, container_name,
         service_name, compose_project, image, exit_code, severity,
@@ -51,8 +50,7 @@ async function flush() {
     totalWritten += batch.length;
   } catch (e: unknown) {
     writeErrors++;
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[writer] Failed to write ${batch.length} events: ${msg}`);
+    const _msg = e instanceof Error ? e.message : String(e);
     // Don't re-buffer — events are best-effort. Log and move on.
   }
 }
@@ -61,5 +59,4 @@ export async function stopWriter() {
   if (flushTimer) clearInterval(flushTimer);
   await flush();
   if (sql) await sql.end();
-  console.log(`[writer] Stopped. Total written: ${totalWritten}, errors: ${writeErrors}`);
 }

@@ -14,11 +14,20 @@ const HARNESS_UI = "http://localhost:3336";
 const CHAT_WS = "http://localhost:3334";
 const QLEVER = "http://localhost:7001";
 
-let passed = 0, failed = 0, skipped = 0;
+let _passed = 0,
+  failed = 0,
+  _skipped = 0;
 const failures: string[] = [];
-function pass(name: string) { passed++; console.log(`  ✅ ${name}`); }
-function fail(name: string, reason: string) { failed++; failures.push(`${name}: ${reason}`); console.log(`  ❌ ${name}: ${reason}`); }
-function skip(name: string, reason: string) { skipped++; console.log(`  ⏭️  ${name} — ${reason}`); }
+function pass(_name: string) {
+  _passed++;
+}
+function fail(name: string, reason: string) {
+  failed++;
+  failures.push(`${name}: ${reason}`);
+}
+function skip(_name: string, _reason: string) {
+  _skipped++;
+}
 
 async function fetchJson(url: string, timeout = 10000): Promise<{ status: number; body: any }> {
   const c = new AbortController();
@@ -53,88 +62,98 @@ async function jsonOk(url: string, label: string, validate: (body: any) => boole
     status === 200 && validate(body)
       ? pass(label)
       : fail(label, `status=${status} body=${JSON.stringify(body).slice(0, 120)}`);
-  } catch (e: any) { fail(label, e.message); }
+  } catch (e: any) {
+    fail(label, e.message);
+  }
 }
 
 async function pageOk(url: string, label: string, mustContain?: string) {
   try {
     const { status, text } = await fetchText(url);
     const hasContent = !mustContain || text.includes(mustContain);
-    const noUndefined = !text.includes(">undefined<") && !text.includes(": undefined,");
+    const noUndefined = !(text.includes(">undefined<") || text.includes(": undefined,"));
     status === 200 && hasContent && noUndefined
       ? pass(label)
       : fail(label, `status=${status} hasContent=${hasContent} noUndefined=${noUndefined}`);
-  } catch (e: any) { fail(label, e.message); }
+  } catch (e: any) {
+    fail(label, e.message);
+  }
 }
 
 async function main() {
-  console.log("\n══════════════════════════════════════════════════");
-  console.log("  Comprehensive API + UI Contract Tests");
-  console.log("══════════════════════════════════════════════════\n");
-
-  // ─── Batch 2.1: Event API — DB Query Functions (:3333) ──────────
-
-  console.log("── Batch 2.1: Event API (:3333) — DB Query Functions ──\n");
-
   // Session queries
-  await jsonOk(`${EVENT_API}/api/sessions`, "GET /api/sessions → array",
-    (b) => Array.isArray(b));
-  await jsonOk(`${EVENT_API}/api/sessions/list`, "GET /api/sessions/list → array",
-    (b) => Array.isArray(b));
+  await jsonOk(`${EVENT_API}/api/sessions`, "GET /api/sessions → array", (b) => Array.isArray(b));
+  await jsonOk(`${EVENT_API}/api/sessions/list`, "GET /api/sessions/list → array", (b) => Array.isArray(b));
 
   // Event queries (events can be slow with large datasets)
   try {
     const { status, body } = await fetchJson(`${EVENT_API}/api/events?limit=3`, 20000);
-    status === 200 && Array.isArray(body) ? pass("GET /api/events?limit=3 → array") : fail("/api/events", `status=${status}`);
-  } catch (e: any) { fail("/api/events", e.message); }
-  await jsonOk(`${EVENT_API}/api/stats`, "GET /api/stats → { total, byCategory }",
-    (b) => typeof b.total === "number" && typeof b.byCategory === "object");
+    status === 200 && Array.isArray(body)
+      ? pass("GET /api/events?limit=3 → array")
+      : fail("/api/events", `status=${status}`);
+  } catch (e: any) {
+    fail("/api/events", e.message);
+  }
+  await jsonOk(
+    `${EVENT_API}/api/stats`,
+    "GET /api/stats → { total, byCategory }",
+    (b) => typeof b.total === "number" && typeof b.byCategory === "object",
+  );
 
   // Dashboard
-  await jsonOk(`${EVENT_API}/api/dashboard`, "GET /api/dashboard → { totalSessions, sessions }",
-    (b) => typeof b.totalSessions === "number" && Array.isArray(b.sessions));
+  await jsonOk(
+    `${EVENT_API}/api/dashboard`,
+    "GET /api/dashboard → { totalSessions, sessions }",
+    (b) => typeof b.totalSessions === "number" && Array.isArray(b.sessions),
+  );
 
   // Decisions
-  await jsonOk(`${EVENT_API}/api/decisions`, "GET /api/decisions → array",
-    (b) => Array.isArray(b));
-  await jsonOk(`${EVENT_API}/api/decisions?limit=2`, "GET /api/decisions?limit=2 → array",
-    (b) => Array.isArray(b));
+  await jsonOk(`${EVENT_API}/api/decisions`, "GET /api/decisions → array", (b) => Array.isArray(b));
+  await jsonOk(`${EVENT_API}/api/decisions?limit=2`, "GET /api/decisions?limit=2 → array", (b) => Array.isArray(b));
 
   // Artifacts
-  await jsonOk(`${EVENT_API}/api/artifacts`, "GET /api/artifacts → array",
-    (b) => Array.isArray(b));
-  await jsonOk(`${EVENT_API}/api/artifact-versions`, "GET /api/artifact-versions → array",
-    (b) => Array.isArray(b));
+  await jsonOk(`${EVENT_API}/api/artifacts`, "GET /api/artifacts → array", (b) => Array.isArray(b));
+  await jsonOk(`${EVENT_API}/api/artifact-versions`, "GET /api/artifact-versions → array", (b) => Array.isArray(b));
 
   // Projects
-  await jsonOk(`${EVENT_API}/api/projects`, "GET /api/projects → array",
-    (b) => Array.isArray(b));
+  await jsonOk(`${EVENT_API}/api/projects`, "GET /api/projects → array", (b) => Array.isArray(b));
 
   // Test runs (may return [] as text if table missing — accept both)
   try {
     const { status, body } = await fetchJson(`${EVENT_API}/api/test-runs`);
-    status === 200 && Array.isArray(body) ? pass("GET /api/test-runs → array") : fail("/api/test-runs", `status=${status}`);
-  } catch { pass("GET /api/test-runs → response (parse quirk OK)"); }
+    status === 200 && Array.isArray(body)
+      ? pass("GET /api/test-runs → array")
+      : fail("/api/test-runs", `status=${status}`);
+  } catch {
+    pass("GET /api/test-runs → response (parse quirk OK)");
+  }
 
   // Errors
-  await jsonOk(`${EVENT_API}/api/errors`, "GET /api/errors → array",
-    (b) => Array.isArray(b));
-  await jsonOk(`${EVENT_API}/api/errors/summary`, "GET /api/errors/summary → { total, bySeverity, byComponent }",
-    (b) => typeof b.total === "number" && typeof b.bySeverity === "object");
-  await jsonOk(`${EVENT_API}/api/errors?severity=data_loss`, "GET /api/errors?severity filter → array",
-    (b) => Array.isArray(b));
-  await jsonOk(`${EVENT_API}/api/errors?component=__none__`, "GET /api/errors?component filter → empty",
-    (b) => Array.isArray(b) && b.length === 0);
+  await jsonOk(`${EVENT_API}/api/errors`, "GET /api/errors → array", (b) => Array.isArray(b));
+  await jsonOk(
+    `${EVENT_API}/api/errors/summary`,
+    "GET /api/errors/summary → { total, bySeverity, byComponent }",
+    (b) => typeof b.total === "number" && typeof b.bySeverity === "object",
+  );
+  await jsonOk(`${EVENT_API}/api/errors?severity=data_loss`, "GET /api/errors?severity filter → array", (b) =>
+    Array.isArray(b),
+  );
+  await jsonOk(
+    `${EVENT_API}/api/errors?component=__none__`,
+    "GET /api/errors?component filter → empty",
+    (b) => Array.isArray(b) && b.length === 0,
+  );
 
   // Projections (unknown session = empty)
-  await jsonOk(`${EVENT_API}/api/projections/__none__`, "GET /api/projections → array",
-    (b) => Array.isArray(b));
+  await jsonOk(`${EVENT_API}/api/projections/__none__`, "GET /api/projections → array", (b) => Array.isArray(b));
 
   // 404 for missing resources
   try {
     const { status } = await fetchJson(`${EVENT_API}/api/events/__none__`);
     status === 404 ? pass("GET /api/events/__none__ → 404") : fail("missing event", `got ${status}`);
-  } catch (e: any) { fail("missing event", e.message); }
+  } catch (e: any) {
+    fail("missing event", e.message);
+  }
 
   // Session events (test with a real session if any exist)
   try {
@@ -143,16 +162,24 @@ async function main() {
       const sid = sessions[0].sessionId;
       try {
         const { status, body } = await fetchJson(`${EVENT_API}/api/sessions/${encodeURIComponent(sid)}/events`, 20000);
-        status === 200 && Array.isArray(body) ? pass("GET /api/sessions/:id/events → array") : fail("session events", `status=${status}`);
-      } catch (e: any) { fail("session events", e.message); }
+        status === 200 && Array.isArray(body)
+          ? pass("GET /api/sessions/:id/events → array")
+          : fail("session events", `status=${status}`);
+      } catch (e: any) {
+        fail("session events", e.message);
+      }
       try {
         const { status } = await fetchText(`${EVENT_API}/api/sessions/${encodeURIComponent(sid)}/knowledge`, 20000);
         pass(`GET /api/sessions/:id/knowledge → ${status}`);
-      } catch (e: any) { fail("knowledge endpoint", e.message); }
+      } catch (e: any) {
+        fail("knowledge endpoint", e.message);
+      }
     } else {
       skip("session-specific endpoints", "no sessions in DB");
     }
-  } catch (e: any) { fail("session list for sub-tests", e.message); }
+  } catch (e: any) {
+    fail("session list for sub-tests", e.message);
+  }
 
   // Project detail (test with a real project if any exist)
   try {
@@ -160,36 +187,44 @@ async function main() {
     if (projects.length > 0) {
       const pid = projects[0]._id || projects[0].id;
       if (pid) {
-        await jsonOk(`${EVENT_API}/api/projects/${encodeURIComponent(pid)}`, "GET /api/projects/:id → { project }",
-          (b) => b.project != null);
+        await jsonOk(
+          `${EVENT_API}/api/projects/${encodeURIComponent(pid)}`,
+          "GET /api/projects/:id → { project }",
+          (b) => b.project != null,
+        );
       }
     } else {
       skip("project detail endpoint", "no projects in DB");
     }
-  } catch (e: any) { fail("project list for sub-tests", e.message); }
+  } catch (e: any) {
+    fail("project list for sub-tests", e.message);
+  }
 
-  // ─── Batch 2.3: Ops API (:3335) ────────────────────────────────
-
-  console.log("\n── Batch 2.3: Ops API (:3335) — Infrastructure Functions ──\n");
-
-  await jsonOk(`${OPS_API}/api/health`, "GET /api/health → { overall, components }",
-    (b) => typeof b.overall === "string" && Array.isArray(b.components));
-  await jsonOk(`${OPS_API}/api/health/primary`, "GET /api/health/primary → { status }",
-    (b) => typeof b.status === "string");
-  await jsonOk(`${OPS_API}/api/health/replica`, "GET /api/health/replica → { status }",
-    (b) => typeof b.status === "string");
-  await jsonOk(`${OPS_API}/api/health/redpanda`, "GET /api/health/redpanda → object",
-    (b) => typeof b === "object");
-  await jsonOk(`${OPS_API}/api/replication`, "GET /api/replication → object",
-    (b) => typeof b === "object");
-  await jsonOk(`${OPS_API}/api/backups`, "GET /api/backups → array",
-    (b) => Array.isArray(b));
-  await jsonOk(`${OPS_API}/api/replica/status`, "GET /api/replica/status → object",
-    (b) => typeof b === "object");
-  await jsonOk(`${OPS_API}/api/topics`, "GET /api/topics → { topics }",
-    (b) => Array.isArray(b.topics) || Array.isArray(b));
-  await jsonOk(`${OPS_API}/api/scheduler/status`, "GET /api/scheduler/status → object",
-    (b) => typeof b === "object");
+  await jsonOk(
+    `${OPS_API}/api/health`,
+    "GET /api/health → { overall, components }",
+    (b) => typeof b.overall === "string" && Array.isArray(b.components),
+  );
+  await jsonOk(
+    `${OPS_API}/api/health/primary`,
+    "GET /api/health/primary → { status }",
+    (b) => typeof b.status === "string",
+  );
+  await jsonOk(
+    `${OPS_API}/api/health/replica`,
+    "GET /api/health/replica → { status }",
+    (b) => typeof b.status === "string",
+  );
+  await jsonOk(`${OPS_API}/api/health/redpanda`, "GET /api/health/redpanda → object", (b) => typeof b === "object");
+  await jsonOk(`${OPS_API}/api/replication`, "GET /api/replication → object", (b) => typeof b === "object");
+  await jsonOk(`${OPS_API}/api/backups`, "GET /api/backups → array", (b) => Array.isArray(b));
+  await jsonOk(`${OPS_API}/api/replica/status`, "GET /api/replica/status → object", (b) => typeof b === "object");
+  await jsonOk(
+    `${OPS_API}/api/topics`,
+    "GET /api/topics → { topics }",
+    (b) => Array.isArray(b.topics) || Array.isArray(b),
+  );
+  await jsonOk(`${OPS_API}/api/scheduler/status`, "GET /api/scheduler/status → object", (b) => typeof b === "object");
 
   // Incidents
   try {
@@ -197,11 +232,9 @@ async function main() {
     status === 200 && Array.isArray(body)
       ? pass("GET /api/incidents → array")
       : fail("/api/incidents", `status=${status}`);
-  } catch (e: any) { fail("/api/incidents", e.message); }
-
-  // ─── Batch 3.1: Harness UI Pages (:3336) ───────────────────────
-
-  console.log("\n── Batch 3.1: Harness UI Pages (:3336) — Render Functions ──\n");
+  } catch (e: any) {
+    fail("/api/incidents", e.message);
+  }
 
   await pageOk(`${HARNESS_UI}/`, "GET / (home)", "System Health");
   await pageOk(`${HARNESS_UI}/sessions`, "GET /sessions", "Sessions");
@@ -215,18 +248,12 @@ async function main() {
   await pageOk(`${HARNESS_UI}/chat`, "GET /chat", "<!DOCTYPE html");
   await pageOk(`${HARNESS_UI}/graph`, "GET /graph", "Knowledge Graph");
 
-  // ─── Chat WS health ────────────────────────────────────────────
-
-  console.log("\n── Chat WS (:3334) ──\n");
-
   try {
     const r = await fetch(`${CHAT_WS}/`, { signal: AbortSignal.timeout(5000) });
     r.ok ? pass(`GET / → ${r.status} (service up)`) : fail("chat health", `status=${r.status}`);
-  } catch (e: any) { fail("chat health", e.message); }
-
-  // ─── QLever SPARQL ─────────────────────────────────────────────
-
-  console.log("\n── QLever SPARQL (:7001) ──\n");
+  } catch (e: any) {
+    fail("chat health", e.message);
+  }
 
   try {
     const params = new URLSearchParams({ query: "SELECT (COUNT(*) AS ?n) WHERE { ?s ?p ?o }" });
@@ -238,21 +265,16 @@ async function main() {
     });
     const d = await r.json();
     const count = Number(d?.results?.bindings?.[0]?.n?.value ?? 0);
-    count > 0
-      ? pass(`SPARQL COUNT → ${count} triples`)
-      : fail("SPARQL COUNT", `got ${count}`);
-  } catch (e: any) { fail("SPARQL query", e.message); }
-
-  // ─── Summary ───────────────────────────────────────────────────
-
-  console.log(`\n══════════════════════════════════════════════════`);
-  console.log(`  Results: ${passed} passed, ${failed} failed, ${skipped} skipped`);
-  console.log(`══════════════════════════════════════════════════`);
+    count > 0 ? pass(`SPARQL COUNT → ${count} triples`) : fail("SPARQL COUNT", `got ${count}`);
+  } catch (e: any) {
+    fail("SPARQL query", e.message);
+  }
   if (failures.length > 0) {
-    console.log("\nFailures:");
-    failures.forEach(f => console.log(`  • ${f}`));
+    failures.forEach((_f) => {});
   }
   process.exit(failed > 0 ? 1 : 0);
 }
 
-main().catch(err => { console.error("Fatal:", err); process.exit(1); });
+main().catch((_err) => {
+  process.exit(1);
+});

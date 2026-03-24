@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:45509016-ab5f-48aa-a1c5-864503644f07",
-      "@type": [
-        "ev:BeforeProviderRequest"
-      ],
+      "@type": ["ev:BeforeProviderRequest"],
       "ev:eventName": [
         {
           "@value": "before_provider_request"
@@ -74,9 +72,7 @@
     },
     {
       "@id": "_:env_45509016-ab5f-48aa-a1c5-864503644f07",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

@@ -42,9 +42,25 @@ export type ServerMessage =
   | { type: "agent_end" }
   | { type: "turn_start" }
   | { type: "turn_end" }
-  | { type: "session_info"; sessionId: string; sessionFile?: string; model: string; provider?: string; thinkingLevel: string; isStreaming: boolean; sessionName?: string }
+  | {
+      type: "session_info";
+      sessionId: string;
+      sessionFile?: string;
+      model: string;
+      provider?: string;
+      thinkingLevel: string;
+      isStreaming: boolean;
+      sessionName?: string;
+    }
   | { type: "session_list"; sessions: Array<{ id: string; path: string; firstMessage: string; messageCount: number }> }
-  | { type: "history"; messages: Array<{ role: string; text: string; toolCalls?: Array<{ name: string; input: string; output: string; isError: boolean }> }> }
+  | {
+      type: "history";
+      messages: Array<{
+        role: string;
+        text: string;
+        toolCalls?: Array<{ name: string; input: string; output: string; isError: boolean }>;
+      }>;
+    }
   | { type: "error"; message: string }
   | { type: "status"; state: "idle" | "streaming" | "initializing" | "compacting" }
   | { type: "cwd"; cwd: string }
@@ -56,7 +72,15 @@ export type ServerMessage =
   | { type: "compact_done"; summary: string }
   | { type: "context_usage"; tokens: number | null; contextWindow: number; percent: number | null }
   // P2: Session stats
-  | { type: "session_stats"; userMessages: number; assistantMessages: number; toolCalls: number; totalMessages: number; tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number }; cost: number }
+  | {
+      type: "session_stats";
+      userMessages: number;
+      assistantMessages: number;
+      toolCalls: number;
+      totalMessages: number;
+      tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+      cost: number;
+    }
   // P3: Auto-compaction/retry events
   | { type: "auto_compact_start"; reason: string }
   | { type: "auto_compact_end"; aborted: boolean; summary?: string; error?: string }
@@ -73,7 +97,11 @@ export type ServerMessage =
   | { type: "settings_update"; autoCompact: boolean; autoRetry: boolean };
 
 export function parseClientMessage(raw: string): ClientMessage | null {
-  try { return JSON.parse(raw); } catch { return null; }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 export function send(ws: { send: (data: string) => void }, msg: ServerMessage): void {

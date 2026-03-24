@@ -17,7 +17,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
 
 export function relativeTime(tsStr: string): string {
   const ts = Number(tsStr);
-  if (!ts || isNaN(ts)) return "—";
+  if (!ts || Number.isNaN(ts)) return "—";
   const diff = Date.now() - ts;
   if (diff < 1000) return "just now";
   if (diff < 60_000) return `${Math.floor(diff / 1000)}s ago`;
@@ -66,7 +66,7 @@ const FIELD_PICKERS: Record<string, (r: EventRow) => Record<string, string>> = {
     const f: Record<string, string> = {};
     const delta = r.stream_delta;
     if (delta) {
-      f.delta = String(delta).length > 60 ? String(delta).slice(0, 57) + "..." : String(delta);
+      f.delta = String(delta).length > 60 ? `${String(delta).slice(0, 57)}...` : String(delta);
     } else {
       Object.assign(f, pick(r, ["stream_delta_type", "stream_delta_len"]));
     }
@@ -127,7 +127,7 @@ function pick(r: EventRow, keys: string[]): Record<string, string> {
   for (const k of keys) {
     const v = r[k];
     if (v != null && v !== "") {
-      out[k] = String(v).length > 80 ? String(v).slice(0, 77) + "..." : String(v);
+      out[k] = String(v).length > 80 ? `${String(v).slice(0, 77)}...` : String(v);
     }
   }
   return out;
@@ -157,10 +157,10 @@ function preview(r: EventRow, key: string, max = 60): string | null {
     }
     if (!text) text = s;
     const flat = String(text).replace(/\s+/g, " ").trim();
-    return flat.length > max ? flat.slice(0, max - 1) + "…" : flat;
+    return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
   } catch {
     const flat = s.replace(/\s+/g, " ").trim();
-    return flat.length > max ? flat.slice(0, max - 1) + "…" : flat;
+    return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
   }
 }
 
@@ -173,10 +173,22 @@ export function getDisplayFields(row: EventRow): Record<string, string> {
 // For the detail view — returns all non-null, non-core columns.
 
 const CORE_KEYS = new Set([
-  "_id", "environment", "event_name", "category", "can_intercept",
-  "schema_version", "ts", "seq", "session_id", "cwd", "jsonld",
+  "_id",
+  "environment",
+  "event_name",
+  "category",
+  "can_intercept",
+  "schema_version",
+  "ts",
+  "seq",
+  "session_id",
+  "cwd",
+  "jsonld",
   // XTDB system columns (appear via SELECT *)
-  "_system_from", "_system_to", "_valid_from", "_valid_to",
+  "_system_from",
+  "_system_to",
+  "_valid_from",
+  "_valid_to",
 ]);
 
 export function getPopulatedFields(row: EventRow): Record<string, any> {

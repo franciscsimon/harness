@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:2429c3e2-53b1-4136-b594-d5d28ce61e64",
-      "@type": [
-        "ev:ToolExecutionStart"
-      ],
+      "@type": ["ev:ToolExecutionStart"],
       "ev:eventName": [
         {
           "@value": "tool_execution_start"
@@ -78,9 +76,7 @@
     },
     {
       "@id": "_:env_2429c3e2-53b1-4136-b594-d5d28ce61e64",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

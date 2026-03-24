@@ -50,7 +50,7 @@ export interface CIStepResult {
   status: "passed" | "failed" | "skipped";
   durationMs: number;
   exitCode: number;
-  output?: string;  // combined stdout+stderr (last 10KB)
+  output?: string; // combined stdout+stderr (last 10KB)
 }
 
 // ─── Record a CI run ─────────────────────────────────────────────
@@ -73,15 +73,11 @@ export async function recordCIRun(input: CIRunInput): Promise<string> {
     "code:commitHash": input.commitHash,
     "code:commitMessage": input.commitMessage ?? "",
     "code:pusher": input.pusher ?? "",
-    "schema:actionStatus": input.status === "passed"
-      ? "schema:CompletedActionStatus"
-      : "schema:FailedActionStatus",
+    "schema:actionStatus": input.status === "passed" ? "schema:CompletedActionStatus" : "schema:FailedActionStatus",
     "code:steps": input.steps.map((s) => ({
       "@type": "code:CIStep",
       "schema:name": s.name,
-      "schema:actionStatus": s.status === "passed"
-        ? "schema:CompletedActionStatus"
-        : "schema:FailedActionStatus",
+      "schema:actionStatus": s.status === "passed" ? "schema:CompletedActionStatus" : "schema:FailedActionStatus",
       "code:exitCode": s.exitCode,
       "code:durationMs": s.durationMs,
     })),

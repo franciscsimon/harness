@@ -1,5 +1,5 @@
+import { JSONLD_CONTEXT, piId, piRef, xsdBool, xsdInt, xsdLong } from "../lib/jsonld/context.ts";
 import type { ProjectRecord, SessionProjectRecord } from "./types.ts";
-import { JSONLD_CONTEXT, piId, piRef, xsdLong, xsdInt, xsdBool } from "../lib/jsonld/context.ts";
 
 /**
  * Build JSON-LD document for a project record (doap:Project).

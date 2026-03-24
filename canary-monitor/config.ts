@@ -1,13 +1,13 @@
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface CanaryThresholds {
-  toolFailureRate: number;     // fraction, default 0.3
-  maxTurnsPerRun: number;      // default 5
-  contextBloatBytes: number;   // default 100_000
-  retryStormCount: number;     // default 3
-  maxDurationMs: number;       // default 3_600_000 (60 min)
-  maxToolsPerTurn: number;     // default 8
+  toolFailureRate: number; // fraction, default 0.3
+  maxTurnsPerRun: number; // default 5
+  contextBloatBytes: number; // default 100_000
+  retryStormCount: number; // default 3
+  maxDurationMs: number; // default 3_600_000 (60 min)
+  maxToolsPerTurn: number; // default 8
 }
 
 const DEFAULTS: CanaryThresholds = {

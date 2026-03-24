@@ -1,9 +1,8 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
-import { JSONLD_CONTEXT, piId, piRef } from "../lib/jsonld/context.ts";
+import { JSONLD_CONTEXT, piId } from "../lib/jsonld/context.ts";
 
 // ─── Requirements Tracker Extension ───────────────────────────────
 // Track project requirements and link them to artifacts/decisions.
@@ -12,7 +11,7 @@ let sql: Sql | null = null;
 async function db(): Promise<Sql> {
   if (!sql) {
     sql = connectXtdb();
-    if (!await ensureConnected(sql)) throw new Error("XTDB unreachable");
+    if (!(await ensureConnected(sql))) throw new Error("XTDB unreachable");
   }
   return sql;
 }
@@ -144,10 +143,10 @@ async function handleList(parts: string[], ctx: any): Promise<void> {
   }
 
   if (rows.length === 0) {
-    ctx.ui.notify(statusFilter
-      ? `No requirements with status "${statusFilter}".`
-      : "No requirements found for this project.",
-      "info");
+    ctx.ui.notify(
+      statusFilter ? `No requirements with status "${statusFilter}".` : "No requirements found for this project.",
+      "info",
+    );
     return;
   }
 
@@ -302,7 +301,11 @@ async function handleCoverage(_parts: string[], ctx: any): Promise<void> {
   }
 
   const counts: Record<string, number> = {
-    proposed: 0, accepted: 0, implemented: 0, verified: 0, rejected: 0,
+    proposed: 0,
+    accepted: 0,
+    implemented: 0,
+    verified: 0,
+    rejected: 0,
   };
   for (const r of rows) {
     if (r.status in counts) counts[r.status]++;
@@ -310,15 +313,13 @@ async function handleCoverage(_parts: string[], ctx: any): Promise<void> {
 
   const total = rows.length;
   const denominator = total - counts.rejected;
-  const coverage = denominator > 0
-    ? ((counts.implemented + counts.verified) / denominator * 100).toFixed(1)
-    : "0.0";
+  const coverage = denominator > 0 ? (((counts.implemented + counts.verified) / denominator) * 100).toFixed(1) : "0.0";
 
   ctx.ui.notify(
     `📊 Requirement Coverage for ${projectId}\n` +
-    `Total: ${total} | Proposed: ${counts.proposed} | Accepted: ${counts.accepted} | ` +
-    `Implemented: ${counts.implemented} | Verified: ${counts.verified} | Rejected: ${counts.rejected}\n` +
-    `Coverage: ${coverage}% (implemented+verified / total-rejected)`,
+      `Total: ${total} | Proposed: ${counts.proposed} | Accepted: ${counts.accepted} | ` +
+      `Implemented: ${counts.implemented} | Verified: ${counts.verified} | Rejected: ${counts.rejected}\n` +
+      `Coverage: ${coverage}% (implemented+verified / total-rejected)`,
     "info",
   );
 }
@@ -455,12 +456,12 @@ export default function (pi: ExtensionAPI) {
         default:
           ctx.ui.notify(
             "Usage: /req <add|list|status|link|coverage|import>\n" +
-            "  add <title> [priority] [description]\n" +
-            "  list [status]\n" +
-            "  status <id> <new_status>\n" +
-            "  link <req_id> <entity_type> <entity_id>\n" +
-            "  coverage — Show requirement coverage stats\n" +
-            "  import <file> — Import requirements from markdown",
+              "  add <title> [priority] [description]\n" +
+              "  list [status]\n" +
+              "  status <id> <new_status>\n" +
+              "  link <req_id> <entity_type> <entity_id>\n" +
+              "  coverage — Show requirement coverage stats\n" +
+              "  import <file> — Import requirements from markdown",
             "info",
           );
       }
@@ -471,7 +472,11 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_shutdown", async () => {
     if (sql) {
-      try { await sql.end(); } catch { /* cleanup — safe to ignore */ }
+      try {
+        await sql.end();
+      } catch {
+        /* cleanup — safe to ignore */
+      }
       sql = null;
     }
   });

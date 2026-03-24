@@ -1,8 +1,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { ids } from "../lib/jsonld/ids.ts";
-import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
 import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
 import { captureError } from "../lib/errors.ts";
+import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
+import { ids } from "../lib/jsonld/ids.ts";
 
 // ─── In-memory state collected during session ──────────────────────
 
@@ -40,7 +40,10 @@ export default function (pi: ExtensionAPI) {
     if (sql) return sql;
     try {
       sql = connectXtdb();
-      if (!await ensureConnected(sql)) { sql = null; return null; }
+      if (!(await ensureConnected(sql))) {
+        sql = null;
+        return null;
+      }
       await sql`INSERT INTO session_postmortems (
         _id, project_id, session_id, goal, what_worked, what_failed,
         files_changed, error_count, turn_count, ts, jsonld
@@ -87,7 +90,12 @@ export default function (pi: ExtensionAPI) {
         const input = e?.input ?? e?.args;
         if (input?.path) state.filesChanged.add(input.path);
       } catch (err) {
-        captureError({ component: "session-postmortem", operation: "track file changes", error: err, severity: "degraded" });
+        captureError({
+          component: "session-postmortem",
+          operation: "track file changes",
+          error: err,
+          severity: "degraded",
+        });
       }
     }
 
@@ -97,7 +105,12 @@ export default function (pi: ExtensionAPI) {
         const input = e?.input ?? e?.args;
         if (input?.command) state.bashCommands.push(String(input.command).slice(0, 200));
       } catch (err) {
-        captureError({ component: "session-postmortem", operation: "track bash commands", error: err, severity: "degraded" });
+        captureError({
+          component: "session-postmortem",
+          operation: "track bash commands",
+          error: err,
+          severity: "degraded",
+        });
       }
     }
   });
@@ -109,7 +122,14 @@ export default function (pi: ExtensionAPI) {
 
     // Only persist if there was meaningful activity
     if (state.turnCount === 0) {
-      if (sql) { try { await sql.end(); } catch { /* cleanup — safe to ignore */ } sql = null; }
+      if (sql) {
+        try {
+          await sql.end();
+        } catch {
+          /* cleanup — safe to ignore */
+        }
+        sql = null;
+      }
       return;
     }
 
@@ -121,32 +141,54 @@ export default function (pi: ExtensionAPI) {
     const files = [...state.filesChanged];
 
     // Derive what worked / what failed from collected state
-    const whatWorked = files.length > 0
-      ? `Modified ${files.length} file(s): ${files.map(f => f.split("/").pop()).join(", ")}`
-      : "No files modified";
+    const whatWorked =
+      files.length > 0
+        ? `Modified ${files.length} file(s): ${files.map((f) => f.split("/").pop()).join(", ")}`
+        : "No files modified";
 
-    const whatFailed = state.failedTools.length > 0
-      ? state.failedTools.slice(0, 5).map(f => `${f.tool}: ${f.error.slice(0, 100)}`).join("; ")
-      : "No tool failures";
+    const whatFailed =
+      state.failedTools.length > 0
+        ? state.failedTools
+            .slice(0, 5)
+            .map((f) => `${f.tool}: ${f.error.slice(0, 100)}`)
+            .join("; ")
+        : "No tool failures";
 
-    let artifactVersionCount = 0, decisionCount = 0, delegationCount = 0;
+    let artifactVersionCount = 0,
+      decisionCount = 0,
+      delegationCount = 0;
     try {
       const [av] = await db`SELECT COUNT(*)::int AS c FROM artifact_versions WHERE session_id = ${sessionId}`;
       artifactVersionCount = av?.c ?? 0;
     } catch (err) {
-      captureError({ component: "session-postmortem", operation: "SELECT artifact_versions count", error: err, severity: "degraded" });
+      captureError({
+        component: "session-postmortem",
+        operation: "SELECT artifact_versions count",
+        error: err,
+        severity: "degraded",
+      });
     }
     try {
       const [dc] = await db`SELECT COUNT(*)::int AS c FROM decisions WHERE session_id = ${sessionId}`;
       decisionCount = dc?.c ?? 0;
     } catch (err) {
-      captureError({ component: "session-postmortem", operation: "SELECT decisions count", error: err, severity: "degraded" });
+      captureError({
+        component: "session-postmortem",
+        operation: "SELECT decisions count",
+        error: err,
+        severity: "degraded",
+      });
     }
     try {
       const [dl] = await db`SELECT COUNT(*)::int AS c FROM delegations WHERE parent_session_id = ${sessionId}`;
       delegationCount = dl?.c ?? 0;
     } catch (err) {
-      captureError({ component: "session-postmortem", operation: "SELECT delegations count", error: err, severity: "degraded" });
+      captureError({
+        component: "session-postmortem",
+        operation: "SELECT delegations count",
+        error: err,
+        severity: "degraded",
+      });
     }
 
     const jsonld = JSON.stringify({
@@ -180,10 +222,15 @@ export default function (pi: ExtensionAPI) {
         ${t(JSON.stringify(files))}, ${n(state.errorCount)}, ${n(state.turnCount)},
         ${n(now)}, ${t(jsonld)}
       )`;
-    } catch (err) {
-      console.error(`[session-postmortem] persist failed: ${err}`);
-    }
+    } catch (_err) {}
 
-    if (sql) { try { await sql.end(); } catch { /* cleanup — safe to ignore */ } sql = null; }
+    if (sql) {
+      try {
+        await sql.end();
+      } catch {
+        /* cleanup — safe to ignore */
+      }
+      sql = null;
+    }
   });
 }

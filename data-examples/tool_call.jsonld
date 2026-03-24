@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:1cd346ff-814f-47a0-bc05-377791059d56",
-      "@type": [
-        "ev:ToolCall"
-      ],
+      "@type": ["ev:ToolCall"],
       "ev:eventName": [
         {
           "@value": "tool_call"
@@ -83,9 +81,7 @@
     },
     {
       "@id": "_:env_1cd346ff-814f-47a0-bc05-377791059d56",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

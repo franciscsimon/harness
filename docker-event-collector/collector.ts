@@ -3,9 +3,9 @@
 // Reconnects with backfill on disconnect.
 
 import * as http from "node:http";
-import { transformEvent, type DockerRawEvent } from "./transform.ts";
-import { enqueueEvent } from "./writer.ts";
 import { checkAlerts } from "./alerting.ts";
+import { type DockerRawEvent, transformEvent } from "./transform.ts";
+import { enqueueEvent } from "./writer.ts";
 
 const DOCKER_SOCKET = process.env.DOCKER_SOCKET ?? "/var/run/docker.sock";
 const RECONNECT_DELAY_MS = 5000;
@@ -27,8 +27,6 @@ function connect() {
   const since = lastSeenTimestamp > 0 ? `?since=${lastSeenTimestamp}` : "";
   const path = `/v1.46/events${since}`;
 
-  console.log(`[collector] Connecting to Docker socket: ${DOCKER_SOCKET} ${since ? `(backfill from ${since})` : "(live)"}`);
-
   const req = http.request(
     {
       socketPath: DOCKER_SOCKET,
@@ -38,13 +36,11 @@ function connect() {
     },
     (res) => {
       if (res.statusCode !== 200) {
-        console.error(`[collector] Docker API returned ${res.statusCode}`);
         scheduleReconnect();
         return;
       }
 
       isConnected = true;
-      console.log(`[collector] Connected — streaming events`);
 
       let partial = "";
 
@@ -64,28 +60,24 @@ function connect() {
             enqueueEvent(record);
             checkAlerts(record);
           } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            console.error(`[collector] Parse error: ${msg}`);
+            const _msg = e instanceof Error ? e.message : String(e);
           }
         }
       });
 
       res.on("end", () => {
-        console.log("[collector] Stream ended");
         isConnected = false;
         scheduleReconnect();
       });
 
-      res.on("error", (e) => {
-        console.error(`[collector] Stream error: ${e.message}`);
+      res.on("error", (_e) => {
         isConnected = false;
         scheduleReconnect();
       });
-    }
+    },
   );
 
-  req.on("error", (e) => {
-    console.error(`[collector] Connection error: ${e.message}`);
+  req.on("error", (_e) => {
     isConnected = false;
     scheduleReconnect();
   });
@@ -95,11 +87,9 @@ function connect() {
 
 function scheduleReconnect() {
   reconnectCount++;
-  console.log(`[collector] Reconnecting in ${RECONNECT_DELAY_MS}ms (attempt #${reconnectCount})`);
   setTimeout(connect, RECONNECT_DELAY_MS);
 }
 
 export function stopCollector() {
   isConnected = false;
-  console.log(`[collector] Stopped. Total received: ${totalReceived}`);
 }

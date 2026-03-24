@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:f0c502a4-cc6c-4cdf-920b-f1b877e32ec4",
-      "@type": [
-        "ev:MessageStart"
-      ],
+      "@type": ["ev:MessageStart"],
       "ev:eventName": [
         {
           "@value": "message_start"
@@ -73,9 +71,7 @@
     },
     {
       "@id": "_:env_f0c502a4-cc6c-4cdf-920b-f1b877e32ec4",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

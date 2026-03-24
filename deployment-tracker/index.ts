@@ -1,6 +1,6 @@
+import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { randomUUID } from "node:crypto";
 import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
 import { JSONLD_CONTEXT, piId, piRef } from "../lib/jsonld/context.ts";
 
@@ -11,7 +11,7 @@ let sql: Sql | null = null;
 async function db(): Promise<Sql> {
   if (!sql) {
     sql = connectXtdb();
-    if (!await ensureConnected(sql)) throw new Error("XTDB unreachable");
+    if (!(await ensureConnected(sql))) throw new Error("XTDB unreachable");
   }
   return sql;
 }
@@ -51,11 +51,17 @@ const STATUS_ICONS: Record<string, string> = {
 
 async function handleEnvAdd(args: string, ctx: any): Promise<void> {
   const projectId = getProjectId();
-  if (!projectId) { ctx.ui.notify("No active project.", "error"); return; }
+  if (!projectId) {
+    ctx.ui.notify("No active project.", "error");
+    return;
+  }
 
   const parts = args.trim().split(/\s+/);
   const name = parts[0];
-  if (!name) { ctx.ui.notify("Usage: /env add <name> [url]", "error"); return; }
+  if (!name) {
+    ctx.ui.notify("Usage: /env add <name> [url]", "error");
+    return;
+  }
   const url = parts[1] ?? null;
 
   // Infer env_type from name
@@ -99,7 +105,10 @@ async function handleEnvAdd(args: string, ctx: any): Promise<void> {
 
 async function handleEnvList(ctx: any): Promise<void> {
   const projectId = getProjectId();
-  if (!projectId) { ctx.ui.notify("No active project.", "error"); return; }
+  if (!projectId) {
+    ctx.ui.notify("No active project.", "error");
+    return;
+  }
 
   const s = await db();
   let rows: any[];
@@ -145,7 +154,9 @@ async function generateChangelog(projectId: string, version: string): Promise<st
     if (relRows.length > 0) {
       cutoffTs = typeof relRows[0].ts === "string" ? Number(relRows[0].ts) : relRows[0].ts;
     }
-  } catch { /* no previous releases */ }
+  } catch {
+    /* no previous releases */
+  }
 
   let decisions: any[] = [];
   try {
@@ -154,7 +165,9 @@ async function generateChangelog(projectId: string, version: string): Promise<st
       WHERE project_id = ${t(s, projectId)} AND ts > ${n(s, cutoffTs)}
       ORDER BY ts ASC
     `;
-  } catch { /* table may not exist */ }
+  } catch {
+    /* table may not exist */
+  }
 
   let artifacts: any[] = [];
   try {
@@ -163,7 +176,9 @@ async function generateChangelog(projectId: string, version: string): Promise<st
       WHERE ts > ${n(s, cutoffTs)}
       ORDER BY ts ASC
     `;
-  } catch { /* table may not exist */ }
+  } catch {
+    /* table may not exist */
+  }
 
   if (decisions.length === 0 && artifacts.length === 0) return null;
 
@@ -195,11 +210,17 @@ async function generateChangelog(projectId: string, version: string): Promise<st
 
 async function handleReleaseCreate(args: string, ctx: any): Promise<void> {
   const projectId = getProjectId();
-  if (!projectId) { ctx.ui.notify("No active project.", "error"); return; }
+  if (!projectId) {
+    ctx.ui.notify("No active project.", "error");
+    return;
+  }
 
   const parts = args.trim().split(/\s+/);
   const version = parts[0];
-  if (!version) { ctx.ui.notify("Usage: /release create <version> [changelog]", "error"); return; }
+  if (!version) {
+    ctx.ui.notify("Usage: /release create <version> [changelog]", "error");
+    return;
+  }
   let changelog = parts.slice(1).join(" ") || null;
 
   // Auto-generate changelog from decisions + artifacts since last release
@@ -247,7 +268,10 @@ async function handleReleaseCreate(args: string, ctx: any): Promise<void> {
 
 async function handleReleaseChangelog(args: string, ctx: any): Promise<void> {
   const projectId = getProjectId();
-  if (!projectId) { ctx.ui.notify("No active project.", "error"); return; }
+  if (!projectId) {
+    ctx.ui.notify("No active project.", "error");
+    return;
+  }
 
   const version = args.trim() || null;
   const s = await db();
@@ -339,9 +363,7 @@ async function handleReleaseChangelog(args: string, ctx: any): Promise<void> {
     }
   }
 
-  const cutoffDate = cutoffTs > 0
-    ? new Date(cutoffTs).toISOString().slice(0, 10)
-    : "the beginning";
+  const cutoffDate = cutoffTs > 0 ? new Date(cutoffTs).toISOString().slice(0, 10) : "the beginning";
 
   lines.push("");
   lines.push("---");
@@ -354,11 +376,17 @@ async function handleReleaseChangelog(args: string, ctx: any): Promise<void> {
 
 async function handleDeploy(args: string, ctx: any): Promise<void> {
   const projectId = getProjectId();
-  if (!projectId) { ctx.ui.notify("No active project.", "error"); return; }
+  if (!projectId) {
+    ctx.ui.notify("No active project.", "error");
+    return;
+  }
 
   const parts = args.trim().split(/\s+/);
   const envName = parts[0];
-  if (!envName) { ctx.ui.notify("Usage: /deploy <environment> [version]", "error"); return; }
+  if (!envName) {
+    ctx.ui.notify("Usage: /deploy <environment> [version]", "error");
+    return;
+  }
   const version = parts[1] ?? null;
 
   const s = await db();
@@ -437,15 +465,15 @@ async function handleDeploy(args: string, ctx: any): Promise<void> {
   }
 
   const versionLabel = version ? ` v${version}` : "";
-  ctx.ui.notify(
-    `🚀 Deployed${versionLabel} → **${envName}** (succeeded) [${shortId(id)}]`,
-    "success",
-  );
+  ctx.ui.notify(`🚀 Deployed${versionLabel} → **${envName}** (succeeded) [${shortId(id)}]`, "success");
 }
 
 async function handleDeployHistory(args: string, ctx: any): Promise<void> {
   const projectId = getProjectId();
-  if (!projectId) { ctx.ui.notify("No active project.", "error"); return; }
+  if (!projectId) {
+    ctx.ui.notify("No active project.", "error");
+    return;
+  }
 
   const envFilter = args.trim() || null;
   const s = await db();

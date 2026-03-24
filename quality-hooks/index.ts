@@ -1,10 +1,9 @@
+import { existsSync, readFileSync } from "node:fs";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
-import { readFileSync, existsSync } from "node:fs";
-import { runFileChecks, checkDiffSize, type Violation } from "./checks.ts";
-import { createMockPi } from "./mock-pi.ts";
 import { recordTestRun } from "../lib/test-recorder.ts";
+import { checkDiffSize, runFileChecks } from "./checks.ts";
+import { createMockPi } from "./mock-pi.ts";
 
 // ─── Quality Hooks Extension ──────────────────────────────────────
 // Deterministic code quality checks that fire on write/edit.
@@ -15,7 +14,7 @@ import { recordTestRun } from "../lib/test-recorder.ts";
 
 export default function (pi: ExtensionAPI) {
   let enabled = true;
-  let snoozedChecks = new Set<string>();
+  const snoozedChecks = new Set<string>();
   let violationCount = 0;
   let totalChecked = 0;
   const pendingArgs = new Map<string, any>();
@@ -79,10 +78,12 @@ export default function (pi: ExtensionAPI) {
       violationCount += active.length;
 
       // Format as actionable prompt (the habit-hooks pattern)
-      const prompt = active.map((v) => {
-        const loc = v.line ? ` (line ${v.line})` : "";
-        return `🙂💬 [${v.check}]${loc}: ${v.message}`;
-      }).join("\n");
+      const prompt = active
+        .map((v) => {
+          const loc = v.line ? ` (line ${v.line})` : "";
+          return `🙂💬 [${v.check}]${loc}: ${v.message}`;
+        })
+        .join("\n");
 
       ctx.ui.notify(`🪝 Quality check on ${path.split("/").pop()}:\n${prompt}`, "warn");
     } catch {}
@@ -90,17 +91,24 @@ export default function (pi: ExtensionAPI) {
     // Extension load check — verify extension can load against mock API
     if (path.includes("/extensions/") && path.endsWith("/index.ts")) {
       try {
-        const mod = await import(path + "?t=" + Date.now());
+        const mod = await import(`${path}?t=${Date.now()}`);
         const factory = mod.default;
         if (typeof factory !== "function") {
-          ctx.ui.notify(`🪝 [ext-load] ${path.split("/").pop()}: default export is ${typeof factory}, expected function`, "warn");
+          ctx.ui.notify(
+            `🪝 [ext-load] ${path.split("/").pop()}: default export is ${typeof factory}, expected function`,
+            "warn",
+          );
         } else {
           const { pi: mockPi } = createMockPi();
           await Promise.resolve(factory(mockPi));
         }
       } catch (err: any) {
         const msg = err.message?.split("\n")[0] ?? String(err);
-        if (msg.includes("Unknown ExtensionAPI method") || msg.includes("is not a function") || msg.includes("is not defined")) {
+        if (
+          msg.includes("Unknown ExtensionAPI method") ||
+          msg.includes("is not a function") ||
+          msg.includes("is not defined")
+        ) {
           violationCount++;
           ctx.ui.notify(`🪝 [ext-load] 🔴 API ERROR: ${msg}`, "warn");
         }
@@ -132,24 +140,33 @@ export default function (pi: ExtensionAPI) {
   // Detects test commands (npm test, npx jiti test, jest, vitest, etc.)
   // and captures pass/fail counts to test_runs table.
   const TEST_CMD_PATTERNS = [
-    /npm\s+test/, /npx\s+jiti\s+.*test/, /npx\s+jest/, /npx\s+vitest/,
-    /jest\b/, /vitest\b/, /mocha\b/, /node\s+.*test/,
+    /npm\s+test/,
+    /npx\s+jiti\s+.*test/,
+    /npx\s+jest/,
+    /npx\s+vitest/,
+    /jest\b/,
+    /vitest\b/,
+    /mocha\b/,
+    /node\s+.*test/,
   ];
 
   pi.on("tool_execution_end", async (event, _ctx) => {
     const e = event as any;
     if (e.toolName !== "bash" || e.isError === undefined) return;
     const cmd = String(pendingArgs.get(e.toolCallId)?.command ?? "");
-    if (!TEST_CMD_PATTERNS.some(p => p.test(cmd))) return;
+    if (!TEST_CMD_PATTERNS.some((p) => p.test(cmd))) return;
 
     const output = String(e.content ?? "");
     // Parse common test output patterns
     const passMatch = output.match(/(\d+)\s+(?:passed|passing|✅)/i);
     const failMatch = output.match(/(\d+)\s+(?:failed|failing|❌)/i);
-    const passed = passMatch ? parseInt(passMatch[1], 10) : (e.isError ? 0 : 1);
-    const failed = failMatch ? parseInt(failMatch[1], 10) : (e.isError ? 1 : 0);
+    const passed = passMatch ? parseInt(passMatch[1], 10) : e.isError ? 0 : 1;
+    const failed = failMatch ? parseInt(failMatch[1], 10) : e.isError ? 1 : 0;
 
-    const suiteName = cmd.replace(/^npx\s+jiti\s+/, "").replace(/^npm\s+test\s*/, "npm test").slice(0, 100);
+    const suiteName = cmd
+      .replace(/^npx\s+jiti\s+/, "")
+      .replace(/^npm\s+test\s*/, "npm test")
+      .slice(0, 100);
     const projectId = (globalThis as any).__piCurrentProject?.projectId ?? "";
 
     try {
@@ -161,16 +178,26 @@ export default function (pi: ExtensionAPI) {
         failed,
         durationMs: 0,
         status: failed > 0 ? "failed" : "passed",
-        errorSummary: failed > 0 ? output.split("\n").filter(l => l.includes("❌") || l.includes("FAIL")).slice(0, 5).join("; ") : undefined,
+        errorSummary:
+          failed > 0
+            ? output
+                .split("\n")
+                .filter((l) => l.includes("❌") || l.includes("FAIL"))
+                .slice(0, 5)
+                .join("; ")
+            : undefined,
       });
-    } catch { /* best-effort recording */ }
+    } catch {
+      /* best-effort recording */
+    }
   });
 
   // ── Tool: quality_check — LLM can call this directly ──
   pi.registerTool({
     name: "quality_check",
     label: "Quality Check",
-    description: "Run deterministic quality checks on a file: comments, file size, function size, duplication, dead code",
+    description:
+      "Run deterministic quality checks on a file: comments, file size, function size, duplication, dead code",
     promptSnippet: "Run code quality checks (comments, size, duplication) on a file",
     promptGuidelines: [
       "Use quality_check after writing or editing code files to verify quality.",
@@ -194,10 +221,12 @@ export default function (pi: ExtensionAPI) {
         };
       }
 
-      const report = violations.map((v) => {
-        const loc = v.line ? `:${v.line}` : "";
-        return `[${v.severity}] ${v.check}${loc}: ${v.message}`;
-      }).join("\n");
+      const report = violations
+        .map((v) => {
+          const loc = v.line ? `:${v.line}` : "";
+          return `[${v.severity}] ${v.check}${loc}: ${v.message}`;
+        })
+        .join("\n");
 
       return {
         content: [{ type: "text", text: `🪝 Found ${violations.length} issue(s) in ${path}:\n\n${report}` }],
@@ -212,9 +241,7 @@ export default function (pi: ExtensionAPI) {
     label: "Diff Size Check",
     description: "Check if staged git changes are too large for a single commit",
     promptSnippet: "Check if git staged changes are small enough to commit",
-    promptGuidelines: [
-      "Use diff_check before committing to verify the change is appropriately sized.",
-    ],
+    promptGuidelines: ["Use diff_check before committing to verify the change is appropriately sized."],
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, _signal, _onUpdate, _ctx) {
       const result = await pi.exec("git", ["diff", "--cached", "--stat"], {});
@@ -244,13 +271,14 @@ export default function (pi: ExtensionAPI) {
   // ── /quality command ──
   pi.registerCommand("quality", {
     description: "Manage quality hooks",
-    getArgumentCompletions: (prefix: string) => [
-      { value: "status", label: "status — Show quality hook stats" },
-      { value: "on", label: "on — Enable quality hooks" },
-      { value: "off", label: "off — Disable quality hooks" },
-      { value: "snooze", label: "snooze <check> — Snooze a check type" },
-      { value: "unsnooze", label: "unsnooze <check> — Re-enable a check type" },
-    ].filter((i) => i.value.startsWith(prefix)),
+    getArgumentCompletions: (prefix: string) =>
+      [
+        { value: "status", label: "status — Show quality hook stats" },
+        { value: "on", label: "on — Enable quality hooks" },
+        { value: "off", label: "off — Disable quality hooks" },
+        { value: "snooze", label: "snooze <check> — Snooze a check type" },
+        { value: "unsnooze", label: "unsnooze <check> — Re-enable a check type" },
+      ].filter((i) => i.value.startsWith(prefix)),
     handler: async (args, ctx) => {
       const parts = args?.trim().split(/\s+/) ?? ["status"];
       const cmd = parts[0] ?? "status";
@@ -269,7 +297,10 @@ export default function (pi: ExtensionAPI) {
       }
       if (cmd === "snooze") {
         const check = parts[1];
-        if (!check) { ctx.ui.notify("Usage: /quality snooze <check-name>", "error"); return; }
+        if (!check) {
+          ctx.ui.notify("Usage: /quality snooze <check-name>", "error");
+          return;
+        }
         snoozedChecks.add(check);
         ctx.ui.notify(`Snoozed: ${check}`, "info");
         return;
@@ -286,10 +317,10 @@ export default function (pi: ExtensionAPI) {
       const snoozed = snoozedChecks.size > 0 ? `\n  Snoozed: ${[...snoozedChecks].join(", ")}` : "";
       ctx.ui.notify(
         `🪝 Quality Hooks:\n` +
-        `  Enabled: ${enabled}\n` +
-        `  Files checked: ${totalChecked}\n` +
-        `  Violations found: ${violationCount}\n` +
-        `  Checks: comments, file-size, function-size, duplication, dead-code, diff-size${snoozed}`,
+          `  Enabled: ${enabled}\n` +
+          `  Files checked: ${totalChecked}\n` +
+          `  Violations found: ${violationCount}\n` +
+          `  Checks: comments, file-size, function-size, duplication, dead-code, diff-size${snoozed}`,
         "info",
       );
     },

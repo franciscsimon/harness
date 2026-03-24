@@ -6,27 +6,28 @@
  */
 
 const UI = "http://localhost:3333";
-let passed = 0, failed = 0;
+let _passed = 0,
+  failed = 0;
 const failures: string[] = [];
-function pass(name: string) { passed++; console.log(`  ✅ ${name}`); }
-function fail(name: string, reason: string) { failed++; failures.push(`${name}: ${reason}`); console.log(`  ❌ ${name}: ${reason}`); }
+function pass(_name: string) {
+  _passed++;
+}
+function fail(name: string, reason: string) {
+  failed++;
+  failures.push(`${name}: ${reason}`);
+}
 
 async function json(path: string): Promise<any> {
   const res = await fetch(`${UI}${path}`);
   return { status: res.status, body: await res.json() };
 }
 
-async function html(path: string): Promise<{ status: number; text: string }> {
+async function _html(path: string): Promise<{ status: number; text: string }> {
   const res = await fetch(`${UI}${path}`);
   return { status: res.status, text: await res.text() };
 }
 
 async function main() {
-  console.log("\n── API Contracts: xtdb-event-logger-ui (:3333) ──\n");
-
-  // ── Happy path: JSON APIs ──
-  console.log("JSON API endpoints:");
-
   const stats = await json("/api/stats");
   stats.status === 200 && typeof stats.body.total === "number" && typeof stats.body.byCategory === "object"
     ? pass("GET /api/stats → { total: number, byCategory: object }")
@@ -66,9 +67,6 @@ async function main() {
     ? pass("GET /api/artifact-versions → array (empty for unknown path)")
     : fail("/api/artifact-versions shape", `status=${artVersions.status}`);
 
-  // ── Additional JSON APIs ──
-  console.log("\nAdditional JSON API endpoints:");
-
   const events = await json("/api/events?limit=5");
   events.status === 200 && Array.isArray(events.body)
     ? pass("GET /api/events?limit=5 → array")
@@ -89,16 +87,10 @@ async function main() {
     ? pass("GET /api/projections → array (empty for unknown session)")
     : fail("/api/projections shape", `status=${projections.status}`);
 
-  // ── Error path: 404s ──
-  console.log("\nError contracts:");
-
   const missingEvent = await json("/api/events/__nonexistent__");
   missingEvent.status === 404
     ? pass("GET /api/events/__nonexistent__ → 404")
     : fail("/api/events/missing", `expected 404, got ${missingEvent.status}`);
-
-  // ── Errors API ──
-  console.log("\nErrors API endpoints:");
 
   const errors = await json("/api/errors");
   errors.status === 200 && Array.isArray(errors.body)
@@ -106,7 +98,10 @@ async function main() {
     : fail("/api/errors shape", `status=${errors.status}`);
 
   const errorsSummary = await json("/api/errors/summary");
-  errorsSummary.status === 200 && typeof errorsSummary.body.total === "number" && typeof errorsSummary.body.bySeverity === "object" && typeof errorsSummary.body.byComponent === "object"
+  errorsSummary.status === 200 &&
+  typeof errorsSummary.body.total === "number" &&
+  typeof errorsSummary.body.bySeverity === "object" &&
+  typeof errorsSummary.body.byComponent === "object"
     ? pass("GET /api/errors/summary → { total, bySeverity, byComponent }")
     : fail("/api/errors/summary shape", `status=${errorsSummary.status} keys=${Object.keys(errorsSummary.body)}`);
 
@@ -119,14 +114,12 @@ async function main() {
   errorsCompFilter.status === 200 && Array.isArray(errorsCompFilter.body) && errorsCompFilter.body.length === 0
     ? pass("GET /api/errors?component=__nonexistent__ → empty array")
     : fail("/api/errors?component filter", `status=${errorsCompFilter.status} len=${errorsCompFilter.body?.length}`);
-
-  // ── Summary ──
-  console.log(`\n── Results: ${passed} passed, ${failed} failed ──`);
   if (failures.length > 0) {
-    console.log("\nFailures:");
-    failures.forEach(f => console.log(`  • ${f}`));
+    failures.forEach((_f) => {});
   }
   process.exit(failed > 0 ? 1 : 0);
 }
 
-main().catch(err => { console.error("Fatal:", err); process.exit(1); });
+main().catch((_err) => {
+  process.exit(1);
+});

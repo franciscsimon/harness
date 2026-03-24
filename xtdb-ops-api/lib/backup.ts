@@ -1,13 +1,21 @@
-import { exec } from "./exec.ts";
 import { randomUUID } from "node:crypto";
-import { readFileSync, writeFileSync, statSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import postgres from "postgres";
+import { exec } from "./exec.ts";
 
 let _sql: ReturnType<typeof postgres> | null = null;
 function db() {
   if (!_sql) {
-    _sql = postgres({ host: "localhost", port: 5433, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30 });
+    _sql = postgres({
+      host: "localhost",
+      port: 5433,
+      database: "xtdb",
+      user: "xtdb",
+      password: "xtdb",
+      max: 1,
+      idle_timeout: 30,
+    });
   }
   return _sql;
 }
@@ -21,7 +29,9 @@ async function recordBackup(job: BackupJob, archivePath: string | null) {
     const now = Date.now();
     let sizeBytes: number | null = null;
     if (archivePath) {
-      try { sizeBytes = statSync(archivePath).size; } catch {}
+      try {
+        sizeBytes = statSync(archivePath).size;
+      } catch {}
     }
     await s`INSERT INTO backup_records (
       _id, backup_type, archive_path, size_bytes, table_count,
@@ -33,16 +43,11 @@ async function recordBackup(job: BackupJob, archivePath: string | null) {
       ${n(new Date(job.startedAt).getTime())}, ${n(job.completedAt ? new Date(job.completedAt).getTime() : null)},
       ${n(now)}, ${t("{}")}
     )`;
-    console.log(`[backup] Recorded backup ${id} (${job.type}, ${job.status})`);
-  } catch (err) {
-    console.warn(`[backup] Failed to record backup: ${err}`);
-  }
+  } catch (_err) {}
 }
 
 const HARNESS_DIR = process.env.HARNESS_DIR ?? "/Users/opunix/harness";
-const BACKUP_BASE =
-  process.env.BACKUP_DIR ??
-  `${process.env.HOME ?? "/Users/opunix"}/backups/xtdb`;
+const BACKUP_BASE = process.env.BACKUP_DIR ?? `${process.env.HOME ?? "/Users/opunix"}/backups/xtdb`;
 
 export interface BackupJob {
   id: string;
@@ -84,33 +89,29 @@ export function startSnapshotBackup(): string {
       await new Promise((r) => setTimeout(r, 5000));
 
       job.progress.push("2/5 Stopping replica...");
-      const stop = await exec(
-        "docker",
-        ["compose", "stop", "xtdb-replica"],
-        { cwd: HARNESS_DIR, timeout: 30_000 },
-      );
-      if (stop.exitCode !== 0)
-        throw new Error(`Stop failed: ${stop.stderr.trim()}`);
+      const stop = await exec("docker", ["compose", "stop", "xtdb-replica"], { cwd: HARNESS_DIR, timeout: 30_000 });
+      if (stop.exitCode !== 0) throw new Error(`Stop failed: ${stop.stderr.trim()}`);
 
       job.progress.push("3/5 Exporting snapshot from replica storage...");
-      const volResult = await exec("docker", [
-        "volume",
-        "ls",
-        "-q",
-        "--filter",
-        "name=xtdb-replica-data",
-      ]);
+      const volResult = await exec("docker", ["volume", "ls", "-q", "--filter", "name=xtdb-replica-data"]);
       const volume = volResult.stdout.trim().split("\n")[0];
 
       const exportResult = await exec(
         "docker",
         [
-          "run", "--rm",
-          "--network", "harness_default",
-          "-v", `${volume}:/var/lib/xtdb`,
-          "-v", `${HARNESS_DIR}/xtdb-export.yaml:/usr/local/lib/xtdb/xtdb-export.yaml:ro`,
+          "run",
+          "--rm",
+          "--network",
+          "harness_default",
+          "-v",
+          `${volume}:/var/lib/xtdb`,
+          "-v",
+          `${HARNESS_DIR}/xtdb-export.yaml:/usr/local/lib/xtdb/xtdb-export.yaml:ro`,
           "ghcr.io/xtdb/xtdb-aws:2.1.0",
-          "export-snapshot", "xtdb", "-f", "xtdb-export.yaml",
+          "export-snapshot",
+          "xtdb",
+          "-f",
+          "xtdb-export.yaml",
         ],
         { timeout: 300_000 },
       );
@@ -124,13 +125,20 @@ export function startSnapshotBackup(): string {
       await exec("mkdir", ["-p", BACKUP_BASE]);
 
       // Find the latest export dir inside the volume
-      const findResult = await exec("docker", [
-        "run", "--rm",
-        "-v", `${volume}:/var/lib/xtdb:ro`,
-        "alpine",
-        "sh", "-c",
-        "ls -1t /var/lib/xtdb/buffers/v06/exports/ 2>/dev/null | head -1",
-      ], { timeout: 10_000 });
+      const findResult = await exec(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "-v",
+          `${volume}:/var/lib/xtdb:ro`,
+          "alpine",
+          "sh",
+          "-c",
+          "ls -1t /var/lib/xtdb/buffers/v06/exports/ 2>/dev/null | head -1",
+        ],
+        { timeout: 10_000 },
+      );
       const latestExport = findResult.stdout.trim();
 
       if (!latestExport) {
@@ -139,14 +147,22 @@ export function startSnapshotBackup(): string {
 
       // Tar the export from inside the volume to the host backup dir
       const archive = `${BACKUP_BASE}/snapshot-${ts}.tar.gz`;
-      const tarResult = await exec("docker", [
-        "run", "--rm",
-        "-v", `${volume}:/var/lib/xtdb:ro`,
-        "-v", `${BACKUP_BASE}:/backup`,
-        "alpine",
-        "sh", "-c",
-        `tar czf /backup/snapshot-${ts}.tar.gz -C /var/lib/xtdb/buffers/v06/exports/${latestExport} .`,
-      ], { timeout: 120_000 });
+      const tarResult = await exec(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "-v",
+          `${volume}:/var/lib/xtdb:ro`,
+          "-v",
+          `${BACKUP_BASE}:/backup`,
+          "alpine",
+          "sh",
+          "-c",
+          `tar czf /backup/snapshot-${ts}.tar.gz -C /var/lib/xtdb/buffers/v06/exports/${latestExport} .`,
+        ],
+        { timeout: 120_000 },
+      );
 
       if (tarResult.exitCode !== 0) {
         throw new Error(`Tar failed: ${tarResult.stderr.trim()}`);
@@ -206,9 +222,23 @@ export function startCsvBackup(): string {
       const tablesResult = await exec(
         "docker",
         [
-          "run", "--rm", "--network", "host", "postgres:16-alpine",
-          "psql", "-h", "localhost", "-p", "5433", "-U", "xtdb", "-d", "xtdb",
-          "--csv", "-t", "-A",
+          "run",
+          "--rm",
+          "--network",
+          "host",
+          "postgres:16-alpine",
+          "psql",
+          "-h",
+          "localhost",
+          "-p",
+          "5433",
+          "-U",
+          "xtdb",
+          "-d",
+          "xtdb",
+          "--csv",
+          "-t",
+          "-A",
           "-c",
           "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'",
         ],
@@ -224,11 +254,27 @@ export function startCsvBackup(): string {
         await exec(
           "docker",
           [
-            "run", "--rm", "--network", "host",
-            "-v", `${backupDir}:/out`,
+            "run",
+            "--rm",
+            "--network",
+            "host",
+            "-v",
+            `${backupDir}:/out`,
             "postgres:16-alpine",
-            "psql", "-h", "localhost", "-p", "5433", "-U", "xtdb", "-d", "xtdb",
-            "--csv", "-c", `SELECT * FROM "${table}"`, "-o", `/out/${table}.csv`,
+            "psql",
+            "-h",
+            "localhost",
+            "-p",
+            "5433",
+            "-U",
+            "xtdb",
+            "-d",
+            "xtdb",
+            "--csv",
+            "-c",
+            `SELECT * FROM "${table}"`,
+            "-o",
+            `/out/${table}.csv`,
           ],
           { timeout: 60_000 },
         );
@@ -236,11 +282,7 @@ export function startCsvBackup(): string {
 
       job.progress.push("Compressing...");
       const archive = `${BACKUP_BASE}/csv-${ts}.tar.gz`;
-      await exec(
-        "tar",
-        ["czf", archive, "-C", BACKUP_BASE, `csv-${ts}`],
-        { timeout: 120_000 },
-      );
+      await exec("tar", ["czf", archive, "-C", BACKUP_BASE, `csv-${ts}`], { timeout: 120_000 });
       await exec("rm", ["-rf", backupDir]);
 
       job.status = "completed";
@@ -261,9 +303,7 @@ export function startCsvBackup(): string {
   return jobId;
 }
 
-export async function restoreFromArchive(
-  archivePath: string,
-): Promise<{ success: boolean; message: string }> {
+export async function restoreFromArchive(archivePath: string): Promise<{ success: boolean; message: string }> {
   const result = await exec(
     "bash",
     [
@@ -299,7 +339,7 @@ function incrementEpoch(): number {
 
   for (const name of configs) {
     const path = join(HARNESS_DIR, name);
-    let content = readFileSync(path, "utf8");
+    const content = readFileSync(path, "utf8");
 
     // Find current epoch
     const match = content.match(/epoch:\s*(\d+)/);
@@ -318,10 +358,7 @@ function incrementEpoch(): number {
       content = content.replace(/epoch:\s*\d+/, `epoch: ${newEpoch}`);
     } else {
       // Add epoch after autoCreateTopic line
-      content = content.replace(
-        /(autoCreateTopic:\s*true)/,
-        `$1\n  epoch: ${newEpoch}`,
-      );
+      content = content.replace(/(autoCreateTopic:\s*true)/, `$1\n  epoch: ${newEpoch}`);
     }
     writeFileSync(path, content, "utf8");
   }
@@ -349,74 +386,88 @@ export function startSnapshotRestore(archivePath: string): string {
         cwd: HARNESS_DIR,
         timeout: 30_000,
       });
-      if (stopR.exitCode !== 0)
-        throw new Error(`Stop replica failed: ${stopR.stderr.trim()}`);
+      if (stopR.exitCode !== 0) throw new Error(`Stop replica failed: ${stopR.stderr.trim()}`);
 
       job.progress.push("2/8 Stopping primary...");
-      const stopP = await exec(
-        "docker",
-        ["compose", "stop", "xtdb-primary"],
-        { cwd: HARNESS_DIR, timeout: 30_000 },
-      );
-      if (stopP.exitCode !== 0)
-        throw new Error(`Stop primary failed: ${stopP.stderr.trim()}`);
+      const stopP = await exec("docker", ["compose", "stop", "xtdb-primary"], { cwd: HARNESS_DIR, timeout: 30_000 });
+      if (stopP.exitCode !== 0) throw new Error(`Stop primary failed: ${stopP.stderr.trim()}`);
 
       job.progress.push("3/8 Clearing primary storage volume...");
-      const primaryVol = await exec("docker", [
-        "volume",
-        "ls",
-        "-q",
-        "--filter",
-        "name=xtdb-primary-data",
-      ]);
+      const primaryVol = await exec("docker", ["volume", "ls", "-q", "--filter", "name=xtdb-primary-data"]);
       const pVol = primaryVol.stdout.trim().split("\n")[0];
 
-      await exec("docker", [
-        "run", "--rm",
-        "-v", `${pVol}:/var/lib/xtdb`,
-        "alpine",
-        "sh", "-c", "rm -rf /var/lib/xtdb/buffers && mkdir -p /var/lib/xtdb/buffers",
-      ], { timeout: 30_000 });
+      await exec(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "-v",
+          `${pVol}:/var/lib/xtdb`,
+          "alpine",
+          "sh",
+          "-c",
+          "rm -rf /var/lib/xtdb/buffers && mkdir -p /var/lib/xtdb/buffers",
+        ],
+        { timeout: 30_000 },
+      );
 
       job.progress.push("4/8 Extracting snapshot into primary storage...");
-      await exec("docker", [
-        "run", "--rm",
-        "-v", `${pVol}:/var/lib/xtdb`,
-        "-v", `${archivePath}:/backup.tar.gz:ro`,
-        "alpine",
-        "sh", "-c", "tar xzf /backup.tar.gz -C /var/lib/xtdb/buffers/",
-      ], { timeout: 120_000 });
+      await exec(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "-v",
+          `${pVol}:/var/lib/xtdb`,
+          "-v",
+          `${archivePath}:/backup.tar.gz:ro`,
+          "alpine",
+          "sh",
+          "-c",
+          "tar xzf /backup.tar.gz -C /var/lib/xtdb/buffers/",
+        ],
+        { timeout: 120_000 },
+      );
 
       job.progress.push("5/8 Clearing replica storage volume...");
-      const replicaVol = await exec("docker", [
-        "volume",
-        "ls",
-        "-q",
-        "--filter",
-        "name=xtdb-replica-data",
-      ]);
+      const replicaVol = await exec("docker", ["volume", "ls", "-q", "--filter", "name=xtdb-replica-data"]);
       const rVol = replicaVol.stdout.trim().split("\n")[0];
 
-      await exec("docker", [
-        "run", "--rm",
-        "-v", `${rVol}:/var/lib/xtdb`,
-        "alpine",
-        "sh", "-c", "rm -rf /var/lib/xtdb/buffers && mkdir -p /var/lib/xtdb/buffers",
-      ], { timeout: 30_000 });
+      await exec(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "-v",
+          `${rVol}:/var/lib/xtdb`,
+          "alpine",
+          "sh",
+          "-c",
+          "rm -rf /var/lib/xtdb/buffers && mkdir -p /var/lib/xtdb/buffers",
+        ],
+        { timeout: 30_000 },
+      );
 
       // Also extract into replica so it doesn't need to rebuild from scratch
-      await exec("docker", [
-        "run", "--rm",
-        "-v", `${rVol}:/var/lib/xtdb`,
-        "-v", `${archivePath}:/backup.tar.gz:ro`,
-        "alpine",
-        "sh", "-c", "tar xzf /backup.tar.gz -C /var/lib/xtdb/buffers/",
-      ], { timeout: 120_000 });
+      await exec(
+        "docker",
+        [
+          "run",
+          "--rm",
+          "-v",
+          `${rVol}:/var/lib/xtdb`,
+          "-v",
+          `${archivePath}:/backup.tar.gz:ro`,
+          "alpine",
+          "sh",
+          "-c",
+          "tar xzf /backup.tar.gz -C /var/lib/xtdb/buffers/",
+        ],
+        { timeout: 120_000 },
+      );
 
       job.progress.push("6/8 Clearing Kafka topic and incrementing epoch...");
-      await exec("docker", [
-        "exec", "redpanda", "rpk", "topic", "delete", "xtdb-log",
-      ], { timeout: 10_000 });
+      await exec("docker", ["exec", "redpanda", "rpk", "topic", "delete", "xtdb-log"], { timeout: 10_000 });
 
       const newEpoch = incrementEpoch();
       job.progress.push(`Epoch set to ${newEpoch} in both configs.`);

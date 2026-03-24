@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:5edbd225-d2a8-442c-b54a-84455e50d85d",
-      "@type": [
-        "ev:TurnEnd"
-      ],
+      "@type": ["ev:TurnEnd"],
       "ev:eventName": [
         {
           "@value": "turn_end"
@@ -80,9 +78,7 @@
     },
     {
       "@id": "_:env_5edbd225-d2a8-442c-b54a-84455e50d85d",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

@@ -1,12 +1,12 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
-import { loadWorkflowDir, type WorkflowDef, type WorkflowStep } from "./rdf/workflow-graph.ts";
+import { StringEnum } from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
 import { JSONLD_CONTEXT, piId, piRef } from "../lib/jsonld/context.ts";
+import { loadWorkflowDir, type WorkflowDef, type WorkflowStep } from "./rdf/workflow-graph.ts";
 
 // ─── Workflow Engine Extension ────────────────────────────────────
 // Composable workflow templates using Schema.org Action + PROV-O.
@@ -24,9 +24,9 @@ interface StepState {
 interface WorkflowState {
   active: boolean;
   workflowName: string;
-  currentStep: number;  // 1-based position
+  currentStep: number; // 1-based position
   stepStates: StepState[];
-  task: string;         // User's original task description
+  task: string; // User's original task description
 }
 
 export default function (pi: ExtensionAPI) {
@@ -40,7 +40,7 @@ export default function (pi: ExtensionAPI) {
   async function db(): Promise<Sql> {
     if (!sql) {
       sql = connectXtdb();
-      if (!await ensureConnected(sql)) throw new Error("XTDB unreachable");
+      if (!(await ensureConnected(sql))) throw new Error("XTDB unreachable");
     }
     return sql;
   }
@@ -51,7 +51,7 @@ export default function (pi: ExtensionAPI) {
 
   function progressBar(): string {
     if (!state.active || state.stepStates.length === 0) return "";
-    const done = state.stepStates.filter(s => s.status === "done" || s.status === "skipped").length;
+    const done = state.stepStates.filter((s) => s.status === "done" || s.status === "skipped").length;
     const total = state.stepStates.length;
     const filled = Math.round((done / total) * 5);
     return `[${"■".repeat(filled)}${"□".repeat(5 - filled)}] ${done}/${total}`;
@@ -60,7 +60,7 @@ export default function (pi: ExtensionAPI) {
   function currentStepDef(): WorkflowStep | undefined {
     if (!state.active) return undefined;
     const wf = workflows.get(state.workflowName);
-    return wf?.steps.find(s => s.position === state.currentStep);
+    return wf?.steps.find((s) => s.position === state.currentStep);
   }
 
   function statusPayload() {
@@ -89,17 +89,18 @@ export default function (pi: ExtensionAPI) {
     const loaded = await loadWorkflowDir(WORKFLOWS_DIR);
     for (const [name, def] of loaded) workflows.set(name, def);
     if (workflows.size > 0) {
-      console.log(`[workflow-engine] Loaded ${workflows.size} workflows: ${[...workflows.keys()].join(", ")}`);
     }
   }
 
   function formatWorkflowList(): string {
     if (workflows.size === 0) return "No workflows loaded. Add .jsonld files to ~/.pi/agent/workflows/";
     const lines = [...workflows.entries()].map(([name, wf]) => {
-      const chain = wf.steps.map(s => s.agentRole).join(" → ");
+      const chain = wf.steps.map((s) => s.agentRole).join(" → ");
       return `  ${name}: ${wf.description}\n    ${chain}`;
     });
-    const status = state.active ? `\nActive: ${state.workflowName} (step ${state.currentStep})` : "\nNo active workflow.";
+    const status = state.active
+      ? `\nActive: ${state.workflowName} (step ${state.currentStep})`
+      : "\nNo active workflow.";
     return `Available workflows:\n${lines.join("\n")}${status}`;
   }
 
@@ -185,7 +186,7 @@ export default function (pi: ExtensionAPI) {
       active: true,
       workflowName: name,
       currentStep: 1,
-      stepStates: wf.steps.map(s => ({ position: s.position, status: "pending" as const })),
+      stepStates: wf.steps.map((s) => ({ position: s.position, status: "pending" as const })),
       task,
     };
 
@@ -222,20 +223,20 @@ export default function (pi: ExtensionAPI) {
         status, current_step, total_steps, started_ts, completed_ts, ts, jsonld
       ) VALUES (
         ${t(wfRunId)}, ${t(projectId)}, ${t(null)},
-        ${t(name)}, ${t(task)}, ${t('running')},
+        ${t(name)}, ${t(task)}, ${t("running")},
         ${n(1)}, ${n(wf.steps.length)},
         ${n(now)}, ${n(null)}, ${n(now)}, ${t(jsonld)}
       )`;
-    } catch (err) {
-      console.warn(`[workflow-engine] XTDB write failed: ${err}`);
-    }
+    } catch (_err) {}
 
     ctx.ui.setStatus("workflow", JSON.stringify(statusPayload()));
 
     const step = wf.steps[0];
-    return `🔄 Workflow "${name}" activated — ${wf.steps.length} steps\n` +
+    return (
+      `🔄 Workflow "${name}" activated — ${wf.steps.length} steps\n` +
       `Starting step 1: ${step.name} (${step.agentRole})\n` +
-      `Task: ${task}`;
+      `Task: ${task}`
+    );
   }
 
   // ─── Advance to next step ───────────────────────────────────────
@@ -247,14 +248,14 @@ export default function (pi: ExtensionAPI) {
     if (!wf) return "Workflow definition not found.";
 
     // Mark current as done
-    const curIdx = state.stepStates.findIndex(s => s.position === state.currentStep);
+    const curIdx = state.stepStates.findIndex((s) => s.position === state.currentStep);
     if (curIdx >= 0) {
       state.stepStates[curIdx].status = "done";
       state.stepStates[curIdx].endedAt = Date.now();
     }
 
     // Find next pending step
-    const nextIdx = state.stepStates.findIndex(s => s.status === "pending");
+    const nextIdx = state.stepStates.findIndex((s) => s.status === "pending");
     if (nextIdx < 0) {
       state.active = false;
       saveState();
@@ -273,10 +274,10 @@ export default function (pi: ExtensionAPI) {
             _id, workflow_run_id, step_name, agent_role, position,
             status, started_ts, completed_ts, ts, jsonld
           ) VALUES (
-            ${t(stepId)}, ${t(wfRunId)}, ${t(wf.steps[curIdx]?.name ?? 'unknown')},
-            ${t(wf.steps[curIdx]?.agentRole ?? 'unknown')}, ${n(state.stepStates[curIdx]?.position ?? 0)},
-            ${t('done')}, ${n(state.stepStates[curIdx]?.startedAt ?? now)},
-            ${n(now)}, ${n(now)}, ${t('{}')}
+            ${t(stepId)}, ${t(wfRunId)}, ${t(wf.steps[curIdx]?.name ?? "unknown")},
+            ${t(wf.steps[curIdx]?.agentRole ?? "unknown")}, ${n(state.stepStates[curIdx]?.position ?? 0)},
+            ${t("done")}, ${n(state.stepStates[curIdx]?.startedAt ?? now)},
+            ${n(now)}, ${n(now)}, ${t("{}")}
           )`;
 
           const projectId = (globalThis as any).__piCurrentProject?.projectId ?? null;
@@ -286,15 +287,13 @@ export default function (pi: ExtensionAPI) {
           ) VALUES (
             ${t(wfRunId)}, ${t(projectId)}, ${t(null)},
             ${t(state.workflowName)}, ${t(state.task)},
-            ${t('completed')},
+            ${t("completed")},
             ${n(state.currentStep)}, ${n(wf.steps.length)},
             ${n(state.stepStates[0]?.startedAt ?? now)},
-            ${n(now)}, ${n(now)}, ${t('{}')}
+            ${n(now)}, ${n(now)}, ${t("{}")}
           )`;
         }
-      } catch (err) {
-        console.warn(`[workflow-engine] XTDB step write failed: ${err}`);
-      }
+      } catch (_err) {}
 
       return `✅ Workflow "${state.workflowName}" complete — all ${wf.steps.length} steps done.`;
     }
@@ -319,10 +318,10 @@ export default function (pi: ExtensionAPI) {
           _id, workflow_run_id, step_name, agent_role, position,
           status, started_ts, completed_ts, ts, jsonld
         ) VALUES (
-          ${t(stepId)}, ${t(wfRunId)}, ${t(wf.steps[curIdx]?.name ?? 'unknown')},
-          ${t(wf.steps[curIdx]?.agentRole ?? 'unknown')}, ${n(state.stepStates[curIdx]?.position ?? 0)},
-          ${t('done')}, ${n(state.stepStates[curIdx]?.startedAt ?? now)},
-          ${n(now)}, ${n(now)}, ${t('{}')}
+          ${t(stepId)}, ${t(wfRunId)}, ${t(wf.steps[curIdx]?.name ?? "unknown")},
+          ${t(wf.steps[curIdx]?.agentRole ?? "unknown")}, ${n(state.stepStates[curIdx]?.position ?? 0)},
+          ${t("done")}, ${n(state.stepStates[curIdx]?.startedAt ?? now)},
+          ${n(now)}, ${n(now)}, ${t("{}")}
         )`;
 
         const projectId = (globalThis as any).__piCurrentProject?.projectId ?? null;
@@ -332,15 +331,13 @@ export default function (pi: ExtensionAPI) {
         ) VALUES (
           ${t(wfRunId)}, ${t(projectId)}, ${t(null)},
           ${t(state.workflowName)}, ${t(state.task)},
-          ${t('running')},
+          ${t("running")},
           ${n(state.currentStep)}, ${n(wf.steps.length)},
           ${n(state.stepStates[0]?.startedAt ?? now)},
-          ${n(null)}, ${n(now)}, ${t('{}')}
+          ${n(null)}, ${n(now)}, ${t("{}")}
         )`;
       }
-    } catch (err) {
-      console.warn(`[workflow-engine] XTDB step write failed: ${err}`);
-    }
+    } catch (_err) {}
 
     const step = wf.steps[nextIdx];
     const prompt = step.promptTemplate
@@ -356,7 +353,7 @@ export default function (pi: ExtensionAPI) {
   async function skipStep(ctx: any): Promise<string> {
     if (!state.active) return "No active workflow.";
 
-    const curIdx = state.stepStates.findIndex(s => s.position === state.currentStep);
+    const curIdx = state.stepStates.findIndex((s) => s.position === state.currentStep);
     if (curIdx >= 0) {
       state.stepStates[curIdx].status = "skipped";
       state.stepStates[curIdx].endedAt = Date.now();
@@ -388,17 +385,15 @@ export default function (pi: ExtensionAPI) {
           ) VALUES (
             ${t(wfRunId)}, ${t(projectId)}, ${t(null)},
             ${t(name)}, ${t(prevTask)},
-            ${t('abandoned')},
+            ${t("abandoned")},
             ${n(state.currentStep)}, ${n(prevWf?.steps.length ?? 0)},
             ${n(state.stepStates[0]?.startedAt ?? now)},
-            ${n(now)}, ${n(now)}, ${t('{}')}
+            ${n(now)}, ${n(now)}, ${t("{}")}
           )`;
         };
-        abandon().catch(err => console.warn(`[workflow-engine] XTDB abandon write failed: ${err}`));
+        abandon().catch((_err) => {});
       }
-    } catch (err) {
-      console.warn(`[workflow-engine] XTDB abandon write failed: ${err}`);
-    }
+    } catch (_err) {}
 
     state = emptyState();
     wfRunId = null;
@@ -419,18 +414,32 @@ export default function (pi: ExtensionAPI) {
       switch (sub) {
         case "list": {
           await ensureWorkflowsLoaded();
-          msg = formatWorkflowList(); break;
+          msg = formatWorkflowList();
+          break;
         }
         case "start": {
           const name = parts[1];
           const task = parts.slice(2).join(" ");
-          if (!name) { msg = "Usage: /workflow start <name> <task description>"; break; }
-          if (!task) { msg = "Please provide a task description: /workflow start feature-build Add user authentication"; break; }
-          msg = await activateWorkflow(name, task, ctx); break;
+          if (!name) {
+            msg = "Usage: /workflow start <name> <task description>";
+            break;
+          }
+          if (!task) {
+            msg = "Please provide a task description: /workflow start feature-build Add user authentication";
+            break;
+          }
+          msg = await activateWorkflow(name, task, ctx);
+          break;
         }
-        case "advance": msg = await advanceStep(ctx); break;
-        case "skip": msg = await skipStep(ctx); break;
-        case "abandon": msg = abandonWorkflow(ctx); break;
+        case "advance":
+          msg = await advanceStep(ctx);
+          break;
+        case "skip":
+          msg = await skipStep(ctx);
+          break;
+        case "abandon":
+          msg = abandonWorkflow(ctx);
+          break;
         case "status":
           msg = state.active
             ? `Workflow: ${state.workflowName} — Step ${state.currentStep} — ${progressBar()}`
@@ -463,13 +472,24 @@ export default function (pi: ExtensionAPI) {
           break;
         }
         case "start": {
-          if (!params.workflowName || !params.task) { msg = "Need workflowName and task."; break; }
-          msg = await activateWorkflow(params.workflowName, params.task, ctx); break;
+          if (!(params.workflowName && params.task)) {
+            msg = "Need workflowName and task.";
+            break;
+          }
+          msg = await activateWorkflow(params.workflowName, params.task, ctx);
+          break;
         }
-        case "advance": msg = await advanceStep(ctx); break;
-        case "skip": msg = await skipStep(ctx); break;
-        case "abandon": msg = abandonWorkflow(ctx); break;
-        default: msg = "Unknown action.";
+        case "advance":
+          msg = await advanceStep(ctx);
+          break;
+        case "skip":
+          msg = await skipStep(ctx);
+          break;
+        case "abandon":
+          msg = abandonWorkflow(ctx);
+          break;
+        default:
+          msg = "Unknown action.";
       }
       return { content: [{ type: "text" as const, text: msg }] };
     },
@@ -478,7 +498,14 @@ export default function (pi: ExtensionAPI) {
   // ─── Clean up DB connection on shutdown ──────────────────────────
 
   pi.on("session_shutdown", async () => {
-    if (sql) { try { await sql.end(); } catch { /* cleanup — safe to ignore */ } sql = null; }
+    if (sql) {
+      try {
+        await sql.end();
+      } catch {
+        /* cleanup — safe to ignore */
+      }
+      sql = null;
+    }
   });
 
   // ─── Auto-advance on agent_end if transition is "auto" ──────────
@@ -487,8 +514,7 @@ export default function (pi: ExtensionAPI) {
     if (!state.active) return;
     const step = currentStepDef();
     if (step?.transitionMode === "auto") {
-      const msg = await advanceStep(ctx);
-      console.log(`[workflow-engine] Auto-advanced: ${msg}`);
+      const _msg = await advanceStep(ctx);
     }
   });
 }

@@ -1,12 +1,12 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createHash, randomUUID } from "node:crypto";
-import { resolve, relative, extname } from "node:path";
-import { ensureDb, typed, typedNum, closeDb } from "./db.js";
-import { captureVersion, cleanupArtifacts, clearVersionState } from "./versioning.js";
-import { cmdList, cmdRestore, cmdHistory } from "./commands.js";
-import { cmdExportProvenance } from "./provenance.js";
-import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
+import { extname, relative, resolve } from "node:path";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { captureError } from "../lib/errors.ts";
+import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
+import { cmdHistory, cmdList, cmdRestore } from "./commands.js";
+import { closeDb, ensureDb, typed, typedNum } from "./db.js";
+import { cmdExportProvenance } from "./provenance.js";
+import { captureVersion, cleanupArtifacts, clearVersionState } from "./versioning.js";
 
 interface PendingCall {
   toolName: string;
@@ -24,7 +24,7 @@ export default function (pi: ExtensionAPI) {
     const tool = e?.toolName;
     const input = e?.input;
     const callId = e?.toolCallId;
-    if (!input?.path || !callId) return;
+    if (!(input?.path && callId)) return;
 
     if (tool === "read" && extname(input.path).toLowerCase() === ".md") {
       trackArtifactRead(input.path, callId);
@@ -52,7 +52,12 @@ export default function (pi: ExtensionAPI) {
       await db`INSERT INTO artifact_reads (_id, session_id, path, tool_call_id, ts)
         VALUES (${t(id)}, ${t(sessionId)}, ${t(absPath)}, ${t(callId)}, ${n(Date.now())})`;
     } catch (err) {
-      captureError({ component: "artifact-tracker", operation: "INSERT artifact_reads", error: err, severity: "data_loss" });
+      captureError({
+        component: "artifact-tracker",
+        operation: "INSERT artifact_reads",
+        error: err,
+        severity: "data_loss",
+      });
     }
   }
 
@@ -84,10 +89,14 @@ export default function (pi: ExtensionAPI) {
 
     const jsonld = JSON.stringify({
       "@context": JSONLD_CONTEXT,
-      "@id": `urn:pi:${id}`, "@type": "prov:Entity",
+      "@id": `urn:pi:${id}`,
+      "@type": "prov:Entity",
       "prov:wasGeneratedBy": { "@id": `urn:pi:toolcall:${callId}` },
-      "ev:projectId": projectId, "ev:path": absPath, "ev:contentHash": hash,
-      "ev:kind": kind, "ev:operation": call.toolName,
+      "ev:projectId": projectId,
+      "ev:path": absPath,
+      "ev:contentHash": hash,
+      "ev:kind": kind,
+      "ev:operation": call.toolName,
       "ev:ts": { "@value": String(now), "@type": "xsd:long" },
     });
 
@@ -98,9 +107,7 @@ export default function (pi: ExtensionAPI) {
         ${t(id)}, ${t(projectId)}, ${t(sessionId)}, ${t(absPath)}, ${t(hash)}, ${t(kind)},
         ${t(call.toolName)}, ${t(callId)}, ${n(now)}, ${t(jsonld)}
       )`;
-    } catch (err) {
-      console.error(`[artifact-tracker] persist failed: ${err}`);
-    }
+    } catch (_err) {}
 
     if (kind === "doc" && ext === "md") {
       await captureVersion(pi, db, sessionId, absPath, relPath, call.toolName, callId, now, id);
@@ -120,7 +127,10 @@ export default function (pi: ExtensionAPI) {
     description: "List, restore, or view history of archived .md artifacts",
     handler: async (args, ctx) => {
       const db = await ensureDb();
-      if (!db) { ctx.ui.notify("XTDB not available", "error"); return; }
+      if (!db) {
+        ctx.ui.notify("XTDB not available", "error");
+        return;
+      }
       const sessionId = (globalThis as any).__piLastEvent?.sessionId ?? null;
       const parts = (args ?? "").trim().split(/\s+/);
       const sub = parts[0] || "list";

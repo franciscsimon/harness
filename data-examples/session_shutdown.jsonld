@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:de55fb00-36ee-472f-b67e-28eb54e3edf3",
-      "@type": [
-        "ev:SessionShutdown"
-      ],
+      "@type": ["ev:SessionShutdown"],
       "ev:eventName": [
         {
           "@value": "session_shutdown"
@@ -68,9 +66,7 @@
     },
     {
       "@id": "_:env_de55fb00-36ee-472f-b67e-28eb54e3edf3",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

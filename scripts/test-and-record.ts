@@ -5,7 +5,7 @@
  */
 
 import { execSync } from "node:child_process";
-import { recordTestRun, closeRecorder } from "../lib/test-recorder.ts";
+import { closeRecorder, recordTestRun } from "../lib/test-recorder.ts";
 
 interface Suite {
   name: string;
@@ -20,15 +20,10 @@ const SUITES: Suite[] = [
 ];
 
 async function main() {
-  console.log("\n╔══════════════════════════════════════════╗");
-  console.log("║  Contract Tests + XTDB Recording         ║");
-  console.log("╚══════════════════════════════════════════╝\n");
-
-  let totalPassed = 0;
+  let _totalPassed = 0;
   let totalFailed = 0;
 
   for (const suite of SUITES) {
-    console.log(`━━━ ${suite.name} ━━━`);
     const start = Date.now();
     let output = "";
     let exitCode = 0;
@@ -40,10 +35,8 @@ async function main() {
         encoding: "utf-8",
         timeout: 30_000,
       });
-      console.log(output);
     } catch (err: any) {
       output = err.stdout ?? "";
-      console.log(output);
       exitCode = err.status ?? 1;
     }
 
@@ -51,20 +44,23 @@ async function main() {
 
     // Parse pass/fail counts from output like "── Results: 22 passed, 0 failed ──"
     const resultsMatch = output.match(/(\d+)\s+passed,\s+(\d+)\s+failed/);
-    const passed = resultsMatch ? parseInt(resultsMatch[1], 10) : (exitCode === 0 ? 1 : 0);
-    const failed = resultsMatch ? parseInt(resultsMatch[2], 10) : (exitCode !== 0 ? 1 : 0);
+    const passed = resultsMatch ? parseInt(resultsMatch[1], 10) : exitCode === 0 ? 1 : 0;
+    const failed = resultsMatch ? parseInt(resultsMatch[2], 10) : exitCode !== 0 ? 1 : 0;
     const status = failed > 0 ? "failed" : "passed";
 
     // Extract failure messages
-    const failureLines = output.split("\n").filter(l => l.includes("❌")).map(l => l.trim());
+    const failureLines = output
+      .split("\n")
+      .filter((l) => l.includes("❌"))
+      .map((l) => l.trim());
     const errorSummary = failureLines.length > 0 ? failureLines.join("; ") : undefined;
 
-    totalPassed += passed;
+    _totalPassed += passed;
     totalFailed += failed;
 
     // Record to XTDB
     try {
-      const id = await recordTestRun({
+      const _id = await recordTestRun({
         projectId: "proj:harness",
         suiteName: suite.name,
         runner: "jiti",
@@ -74,18 +70,13 @@ async function main() {
         status,
         errorSummary,
       });
-      console.log(`  📝 Recorded: ${id} (${passed}✅ ${failed}❌ ${durationMs}ms)\n`);
-    } catch (err) {
-      console.error(`  ⚠️ Failed to record test run: ${err}\n`);
-    }
+    } catch (_err) {}
   }
-
-  console.log("╔══════════════════════════════════════════╗");
-  console.log(`║  Total: ${totalPassed} passed, ${totalFailed} failed              ║`);
-  console.log("╚══════════════════════════════════════════╝");
 
   await closeRecorder();
   process.exit(totalFailed > 0 ? 1 : 0);
 }
 
-main().catch(err => { console.error("Fatal:", err); process.exit(1); });
+main().catch((_err) => {
+  process.exit(1);
+});

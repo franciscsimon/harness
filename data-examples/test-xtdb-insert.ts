@@ -3,7 +3,7 @@
  */
 import postgres from "postgres";
 
-const LIVE = process.env.HOME + "/.pi/agent/extensions/xtdb-event-logger";
+const LIVE = `${process.env.HOME}/.pi/agent/extensions/xtdb-event-logger`;
 
 async function main() {
   // Import handler + serialization from live extension
@@ -17,13 +17,58 @@ async function main() {
 
   // Test handlers and insert results
   const handlers = [
-    { name: "message-update", raw: { message: { role: "assistant", content: [{ type: "text", text: "Hello from schema v2 test" }] }, assistantMessageEvent: { type: "text", delta: "Hello from schema v2 test" } } },
-    { name: "tool-call", raw: { toolName: "bash", toolCallId: "test-tc1", input: { command: "echo schema v2 full content" } } },
-    { name: "tool-result", raw: { toolName: "bash", toolCallId: "test-tc1", isError: false, input: { command: "echo test" }, content: [{ type: "text", text: "schema v2 full output" }], details: { exitCode: 0, stdout: "test output" } } },
-    { name: "tool-execution-end", raw: { toolName: "bash", toolCallId: "test-tc1", isError: false, result: { content: [{ type: "text", text: "exec end output" }], details: { exitCode: 0 } } } },
-    { name: "turn-end", raw: { turnIndex: 99, message: { role: "assistant", content: [{ type: "text", text: "Turn response text" }] }, toolResults: [{ toolName: "bash", content: [{ type: "text", text: "tool result in turn" }] }] } },
-    { name: "before-agent-start", raw: { prompt: "User prompt here", systemPrompt: "You are a test system prompt for schema v2", images: [] } },
-    { name: "context", raw: { messages: [{ role: "user", content: [{ type: "text", text: "context message" }] }, { role: "assistant", content: [{ type: "text", text: "response" }] }] } },
+    {
+      name: "message-update",
+      raw: {
+        message: { role: "assistant", content: [{ type: "text", text: "Hello from schema v2 test" }] },
+        assistantMessageEvent: { type: "text", delta: "Hello from schema v2 test" },
+      },
+    },
+    {
+      name: "tool-call",
+      raw: { toolName: "bash", toolCallId: "test-tc1", input: { command: "echo schema v2 full content" } },
+    },
+    {
+      name: "tool-result",
+      raw: {
+        toolName: "bash",
+        toolCallId: "test-tc1",
+        isError: false,
+        input: { command: "echo test" },
+        content: [{ type: "text", text: "schema v2 full output" }],
+        details: { exitCode: 0, stdout: "test output" },
+      },
+    },
+    {
+      name: "tool-execution-end",
+      raw: {
+        toolName: "bash",
+        toolCallId: "test-tc1",
+        isError: false,
+        result: { content: [{ type: "text", text: "exec end output" }], details: { exitCode: 0 } },
+      },
+    },
+    {
+      name: "turn-end",
+      raw: {
+        turnIndex: 99,
+        message: { role: "assistant", content: [{ type: "text", text: "Turn response text" }] },
+        toolResults: [{ toolName: "bash", content: [{ type: "text", text: "tool result in turn" }] }],
+      },
+    },
+    {
+      name: "before-agent-start",
+      raw: { prompt: "User prompt here", systemPrompt: "You are a test system prompt for schema v2", images: [] },
+    },
+    {
+      name: "context",
+      raw: {
+        messages: [
+          { role: "user", content: [{ type: "text", text: "context message" }] },
+          { role: "assistant", content: [{ type: "text", text: "response" }] },
+        ],
+      },
+    },
   ];
 
   for (const { name, raw } of handlers) {
@@ -34,9 +79,16 @@ async function main() {
     const eventName = name.replace(/-/g, "_");
 
     const event = {
-      id, eventName, category: "tool" as any, canIntercept: false,
-      schemaVersion: 2, ts: Date.now(), seq: 0,
-      sessionId: "test-v2", cwd: "/tmp", fields,
+      id,
+      eventName,
+      category: "tool" as any,
+      canIntercept: false,
+      schemaVersion: 2,
+      ts: Date.now(),
+      seq: 0,
+      sessionId: "test-v2",
+      cwd: "/tmp",
+      fields,
     };
 
     // Generate JSON-LD
@@ -97,12 +149,7 @@ async function main() {
       ${t(f.compactBranchEntries ?? null)},
       ${t(jsonld)}
     )`;
-
-    console.log(`✅ ${eventName} inserted`);
   }
-
-  // Now query back the data
-  console.log("\n═══ Verify: query new columns from XTDB ═══\n");
 
   const rows = await sql`
     SELECT event_name, schema_version,
@@ -114,12 +161,10 @@ async function main() {
   `;
 
   for (const row of rows) {
-    console.log(`── ${row.event_name} (v${row.schema_version}) ──`);
     for (const [k, v] of Object.entries(row)) {
       if (k === "event_name" || k === "schema_version") continue;
       if (v !== null) {
-        const val = String(v);
-        console.log(`  ${k}: ${val.slice(0, 80)}${val.length > 80 ? "..." : ""}`);
+        const _val = String(v);
       }
     }
   }
@@ -127,4 +172,6 @@ async function main() {
   await sql.end();
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((_e) => {
+  process.exit(1);
+});

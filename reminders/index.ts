@@ -1,6 +1,6 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
 
 // ─── Reminders Extension ──────────────────────────────────────────
 // Auto-inject user-defined rules into every prompt via context event.
@@ -12,7 +12,7 @@ const DEFAULT_REMINDERS_PATH = join(process.env.HOME ?? "~", ".pi", "agent", "re
 const MAX_REMINDERS = 10; // Hard cap to prevent context rot
 
 export default function (pi: ExtensionAPI) {
-  let remindersPath = DEFAULT_REMINDERS_PATH;
+  const remindersPath = DEFAULT_REMINDERS_PATH;
   let turnCounter = 0;
 
   // ── Helpers ──
@@ -20,7 +20,11 @@ export default function (pi: ExtensionAPI) {
   function ensureFile(): void {
     if (!existsSync(remindersPath)) {
       mkdirSync(dirname(remindersPath), { recursive: true });
-      writeFileSync(remindersPath, "# Reminders\n\n<!-- Add one reminder per line. Max 10. These are injected into every prompt. -->\n\n", "utf-8");
+      writeFileSync(
+        remindersPath,
+        "# Reminders\n\n<!-- Add one reminder per line. Max 10. These are injected into every prompt. -->\n\n",
+        "utf-8",
+      );
     }
   }
 
@@ -35,8 +39,9 @@ export default function (pi: ExtensionAPI) {
 
   function writeReminders(reminders: string[]): void {
     ensureFile();
-    const header = "# Reminders\n\n<!-- Add one reminder per line. Max 10. These are injected into every prompt. -->\n\n";
-    writeFileSync(remindersPath, header + reminders.join("\n") + "\n", "utf-8");
+    const header =
+      "# Reminders\n\n<!-- Add one reminder per line. Max 10. These are injected into every prompt. -->\n\n";
+    writeFileSync(remindersPath, `${header + reminders.join("\n")}\n`, "utf-8");
   }
 
   // ── Inject reminders into context on every turn ──
@@ -60,8 +65,8 @@ export default function (pi: ExtensionAPI) {
 
     if (active.length === 0) return;
 
-    const reminderText = "⚡ REMINDERS (injected every turn — follow these):\n" +
-      active.map((r, i) => `${i + 1}. ${r}`).join("\n");
+    const reminderText =
+      "⚡ REMINDERS (injected every turn — follow these):\n" + active.map((r, i) => `${i + 1}. ${r}`).join("\n");
 
     // Prepend as a system-level reminder message
     const messages = [...event.messages];
@@ -105,7 +110,10 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         const lines = reminders.map((r, i) => `  ${i + 1}. ${r}`);
-        ctx.ui.notify(`📌 Reminders (${reminders.length}/${MAX_REMINDERS}):\n${lines.join("\n")}\n\nFile: ${remindersPath}`, "info");
+        ctx.ui.notify(
+          `📌 Reminders (${reminders.length}/${MAX_REMINDERS}):\n${lines.join("\n")}\n\nFile: ${remindersPath}`,
+          "info",
+        );
         return;
       }
 

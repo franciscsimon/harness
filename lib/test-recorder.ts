@@ -19,8 +19,8 @@
  *   });
  */
 
-import postgres from "postgres";
 import { randomUUID } from "node:crypto";
+import postgres from "postgres";
 import { JSONLD_CONTEXT, piId } from "./jsonld/context.ts";
 
 const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
@@ -31,9 +31,14 @@ let sql: ReturnType<typeof postgres> | null = null;
 function db() {
   if (!sql) {
     sql = postgres({
-      host: XTDB_HOST, port: XTDB_PORT,
-      database: "xtdb", user: "xtdb", password: "xtdb",
-      max: 2, idle_timeout: 30, connect_timeout: 10,
+      host: XTDB_HOST,
+      port: XTDB_PORT,
+      database: "xtdb",
+      user: "xtdb",
+      password: "xtdb",
+      max: 2,
+      idle_timeout: 30,
+      connect_timeout: 10,
     });
   }
   return sql;

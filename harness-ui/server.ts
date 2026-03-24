@@ -1,33 +1,31 @@
-import { Hono } from "hono";
-import { serve } from "@hono/node-server";
-import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
-import { join, dirname } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { renderHome } from "./pages/home.ts";
-import { renderSessions } from "./pages/sessions.ts";
-import { renderSessionDetail } from "./pages/session-detail.ts";
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
+import { renderArtifacts, renderArtifactVersions } from "./pages/artifacts.ts";
+import { renderAuth } from "./pages/auth.ts";
+import { renderBuildDetail, renderBuilds } from "./pages/builds.ts";
+import { renderChat } from "./pages/chat.ts";
+import { renderCIRunDetail } from "./pages/ci-run-detail.ts";
+import { renderCIRuns } from "./pages/ci-runs.ts";
 import { renderDashboard } from "./pages/dashboard.ts";
 import { renderDecisions } from "./pages/decisions.ts";
-import { renderArtifacts, renderArtifactVersions } from "./pages/artifacts.ts";
-
-import { renderOps } from "./pages/ops.ts";
-import { renderChat } from "./pages/chat.ts";
-import { renderAuth } from "./pages/auth.ts";
+import { renderDeploys } from "./pages/deploys.ts";
+import { renderDockerEvents } from "./pages/docker-events.ts";
 import { renderErrors } from "./pages/errors.ts";
 import { renderEventDetail } from "./pages/event-detail.ts";
 import { renderFlow } from "./pages/flow.ts";
-import { renderKnowledgePage } from "./pages/knowledge.ts";
-import { renderStream } from "./pages/stream.ts";
-import { renderGraph } from "./pages/graph.ts";
-import { renderCIRuns } from "./pages/ci-runs.ts";
-import { renderCIRunDetail } from "./pages/ci-run-detail.ts";
-import { renderBuilds, renderBuildDetail } from "./pages/builds.ts";
 import { renderGitRepos } from "./pages/git.ts";
-import { renderDeploys } from "./pages/deploys.ts";
-import { renderDockerEvents } from "./pages/docker-events.ts";
 import { renderGitDetail } from "./pages/git-detail.ts";
+import { renderGraph } from "./pages/graph.ts";
+import { renderHome } from "./pages/home.ts";
+import { renderKnowledgePage } from "./pages/knowledge.ts";
+import { renderOps } from "./pages/ops.ts";
+import { renderSessionDetail } from "./pages/session-detail.ts";
+import { renderSessions } from "./pages/sessions.ts";
+import { renderStream } from "./pages/stream.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -51,12 +49,12 @@ const STATIC_TYPES: Record<string, string> = {
 app.get("/static/:file", (c) => {
   const file = c.req.param("file");
   if (file.includes("..") || file.includes("/")) return c.text("Not found", 404);
-  const ext = "." + file.split(".").pop();
+  const ext = `.${file.split(".").pop()}`;
   const contentType = STATIC_TYPES[ext];
   if (!contentType) return c.text("Not found", 404);
   try {
     const content = readFileSync(join(__dirname, "static", file), "utf-8");
-    return c.body(content, 200, { "Content-Type": contentType + "; charset=utf-8" });
+    return c.body(content, 200, { "Content-Type": `${contentType}; charset=utf-8` });
   } catch {
     return c.text("Not found", 404);
   }
@@ -115,7 +113,9 @@ app.post("/projects/:projectId/builds/trigger", async (c) => {
       body: JSON.stringify({ repo: "harness", trigger: "manual" }),
       signal: AbortSignal.timeout(5000),
     });
-  } catch { /* intentionally silent — best-effort trigger */ }
+  } catch {
+    /* intentionally silent — best-effort trigger */
+  }
   return c.redirect(`/projects/${projectId}/builds`);
 });
 
@@ -224,7 +224,7 @@ app.get("/api/events/stream", async (c) => {
 // Events REST proxy
 app.get("/api/events", async (c) => {
   try {
-    const qs = c.req.url.includes("?") ? "?" + c.req.url.split("?")[1] : "";
+    const qs = c.req.url.includes("?") ? `?${c.req.url.split("?")[1]}` : "";
     const r = await fetch(`${EVENT_API}/api/events${qs}`, { signal: AbortSignal.timeout(10_000) });
     const data = await r.json();
     return c.json(data, r.status as any);
@@ -252,7 +252,7 @@ app.post("/api/ci/enqueue", async (c) => {
     const body = await c.req.json();
     const { repo, ref, commit, commitHash, commitMessage, pusher } = body;
     const hash = commitHash ?? commit;
-    if (!repo || !hash) return c.json({ error: "Missing repo or commitHash" }, 400);
+    if (!(repo && hash)) return c.json({ error: "Missing repo or commitHash" }, 400);
 
     const { randomUUID } = await import("node:crypto");
     const { mkdirSync, writeFileSync } = await import("node:fs");
@@ -308,13 +308,18 @@ app.get("/api/git/backups", async (c) => {
     const { join: pathJoin } = await import("node:path");
     const { readdirSync, statSync } = await import("node:fs");
     const backupDir = pathJoin(__dirname, "..", "data", "backups");
-    const files = readdirSync(backupDir).filter(f => f.startsWith("git-repos-") && f.endsWith(".tar.gz")).sort().reverse();
-    const backups = files.map(f => {
+    const files = readdirSync(backupDir)
+      .filter((f) => f.startsWith("git-repos-") && f.endsWith(".tar.gz"))
+      .sort()
+      .reverse();
+    const backups = files.map((f) => {
       const st = statSync(pathJoin(backupDir, f));
       return { filename: f, sizeBytes: st.size, created: st.mtime.toISOString() };
     });
     return c.json(backups);
-  } catch { return c.json([]); }
+  } catch {
+    return c.json([]);
+  }
 });
 
 app.post("/api/git/restore", async (c) => {
@@ -344,7 +349,9 @@ app.get("/api/pc/processes", async (c) => {
     const r = await fetch(`${PC_API}/processes`, { signal: AbortSignal.timeout(5000) });
     if (!r.ok) return c.json({ error: `PC returned ${r.status}` }, 502);
     return c.json(await r.json());
-  } catch { return c.json({ error: "process-compose not reachable" }, 503); }
+  } catch {
+    return c.json({ error: "process-compose not reachable" }, 503);
+  }
 });
 
 app.post("/api/pc/restart/:name", async (c) => {
@@ -352,7 +359,9 @@ app.post("/api/pc/restart/:name", async (c) => {
     const name = c.req.param("name");
     const r = await fetch(`${PC_API}/process/restart/${name}`, { method: "POST", signal: AbortSignal.timeout(10000) });
     return c.json({ success: r.ok, status: r.status });
-  } catch { return c.json({ error: "process-compose not reachable" }, 503); }
+  } catch {
+    return c.json({ error: "process-compose not reachable" }, 503);
+  }
 });
 
 app.post("/api/pc/stop/:name", async (c) => {
@@ -360,7 +369,9 @@ app.post("/api/pc/stop/:name", async (c) => {
     const name = c.req.param("name");
     const r = await fetch(`${PC_API}/process/stop/${name}`, { method: "PATCH", signal: AbortSignal.timeout(10000) });
     return c.json({ success: r.ok, status: r.status });
-  } catch { return c.json({ error: "process-compose not reachable" }, 503); }
+  } catch {
+    return c.json({ error: "process-compose not reachable" }, 503);
+  }
 });
 
 app.post("/api/pc/start/:name", async (c) => {
@@ -368,7 +379,9 @@ app.post("/api/pc/start/:name", async (c) => {
     const name = c.req.param("name");
     const r = await fetch(`${PC_API}/process/start/${name}`, { method: "POST", signal: AbortSignal.timeout(10000) });
     return c.json({ success: r.ok, status: r.status });
-  } catch { return c.json({ error: "process-compose not reachable" }, 503); }
+  } catch {
+    return c.json({ error: "process-compose not reachable" }, 503);
+  }
 });
 
 app.get("/api/pc/logs/:name", async (c) => {
@@ -377,7 +390,9 @@ app.get("/api/pc/logs/:name", async (c) => {
     const r = await fetch(`${PC_API}/process/logs/${name}?limit=100`, { signal: AbortSignal.timeout(5000) });
     if (!r.ok) return c.json({ error: `PC returned ${r.status}` }, 502);
     return c.json(await r.json());
-  } catch { return c.json({ error: "process-compose not reachable" }, 503); }
+  } catch {
+    return c.json({ error: "process-compose not reachable" }, 503);
+  }
 });
 
 // Deploy API — trigger rolling container deploy
@@ -385,12 +400,9 @@ app.post("/api/deploy", async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
     const { commitHash, service, trigger = "manual" } = body as any;
-    console.log(`[Deploy] Triggered by ${trigger}${commitHash ? ` for ${commitHash.slice(0, 8)}` : ""}${service ? ` (service: ${service})` : ""}`);
 
     // Read service definitions from embedded config
-    const services = service
-      ? [service]
-      : ["event-api", "chat-ws", "ops-api", "harness-ui", "ci-runner"];
+    const services = service ? [service] : ["event-api", "chat-ws", "ops-api", "harness-ui", "ci-runner"];
 
     const results: { name: string; ok: boolean; error?: string }[] = [];
 
@@ -403,14 +415,12 @@ app.post("/api/deploy", async (c) => {
           stdio: ["pipe", "pipe", "pipe"],
         });
         results.push({ name: svcName, ok: true });
-        console.log(`[Deploy] ✅ ${svcName} deployed`);
       } catch (e: any) {
         results.push({ name: svcName, ok: false, error: e.stderr?.slice(0, 200) ?? String(e).slice(0, 200) });
-        console.error(`[Deploy] ❌ ${svcName} failed: ${e.stderr?.slice(0, 100)}`);
       }
     }
 
-    const allOk = results.every(r => r.ok);
+    const allOk = results.every((r) => r.ok);
     return c.json({ success: allOk, trigger, commitHash, services: results }, allOk ? 200 : 207);
   } catch (e: any) {
     return c.json({ error: e.message }, 500);
@@ -433,8 +443,7 @@ app.get("/api/deploy/history", async (c) => {
 app.post("/api/ci/notify", async (c) => {
   try {
     const body = await c.req.json();
-    const emoji = body.status === "passed" ? "✅" : "❌";
-    console.log(`[CI] ${emoji} ${body.repo}@${body.commitHash?.slice(0, 8)} — ${body.status} (${body.durationMs}ms, ${body.stepsFailed}/${body.stepsTotal} failed)`);
+    const _emoji = body.status === "passed" ? "✅" : "❌";
     return c.json({ received: true });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 400);
@@ -456,7 +465,12 @@ app.post("/api/graph/refresh", async (c) => {
       const out = execSync(cmd, { cwd: root, timeout: 120_000, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
       results.push({ step: name, ok: true, duration: Date.now() - t0, output: out.slice(-200) });
     } catch (e: any) {
-      results.push({ step: name, ok: false, duration: Date.now() - t0, output: (e.stderr || e.message || "").slice(-300) });
+      results.push({
+        step: name,
+        ok: false,
+        duration: Date.now() - t0,
+        output: (e.stderr || e.message || "").slice(-300),
+      });
       break;
     }
   }
@@ -491,7 +505,7 @@ app.get("/api/auth/status", async (c) => {
     }
     const data = JSON.parse(readFileSync(authPath, "utf-8"));
     // Return provider names only, never tokens
-    const providers = Object.keys(data).filter(k => data[k]?.type);
+    const providers = Object.keys(data).filter((k) => data[k]?.type);
     return c.json({ configured: true, providers });
   } catch (e) {
     return c.json({ configured: false, error: (e as Error).message }, 500);
@@ -515,7 +529,7 @@ app.post("/api/auth/upload", async (c) => {
     const authPath = join(CHAT_AUTH_DIR, "auth.json");
     writeFileSync(authPath, JSON.stringify(authJson, null, 2), "utf-8");
     chmodSync(authPath, 0o600);
-    return c.json({ success: true, providers: keys.filter(k => authJson[k]?.type) });
+    return c.json({ success: true, providers: keys.filter((k) => authJson[k]?.type) });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
   }
@@ -534,6 +548,4 @@ app.post("/api/auth/delete", async (c) => {
 
 // ── Start ──────────────────────────────────────────────────────────
 
-serve({ fetch: app.fetch, port: UI_PORT }, () => {
-  console.log(`🖥️  Harness UI running on http://localhost:${UI_PORT}`);
-});
+serve({ fetch: app.fetch, port: UI_PORT }, () => {});

@@ -1,18 +1,27 @@
 #!/usr/bin/env npx jiti
+
 // ─── Lifecycle Management Test Suite ───────────────────────────
 // Tests: CI webhook, incidents CRUD, backup scheduler, shared libs,
 //        dashboard UI, lifecycle SSE, extensions deployment.
 // Run: cd ~/harness/test && npx jiti lifecycle.ts
 // Requires: XTDB running on :5433, ops API running on :3335
 
-import postgres from "postgres";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import postgres from "postgres";
 
 const OPS_BASE = "http://localhost:3335";
-const sql = postgres({ host: "localhost", port: 5433, database: "xtdb", user: "xtdb", password: "xtdb", max: 2, idle_timeout: 10 });
-const t = (v: string | null) => sql.typed(v as any, 25);
-const n = (v: number | null) => sql.typed(v as any, 20);
+const sql = postgres({
+  host: "localhost",
+  port: 5433,
+  database: "xtdb",
+  user: "xtdb",
+  password: "xtdb",
+  max: 2,
+  idle_timeout: 10,
+});
+const _t = (v: string | null) => sql.typed(v as any, 25);
+const _n = (v: number | null) => sql.typed(v as any, 20);
 
 const HOME = process.env.HOME ?? "~";
 const EXT_DIR = join(HOME, ".pi", "agent", "extensions");
@@ -20,15 +29,24 @@ const WORKFLOWS_DIR = join(HOME, ".pi", "agent", "workflows");
 
 // ── Test Framework ─────────────────────────────────────────────
 
-let passed = 0;
+let _passed = 0;
 let failed = 0;
-let skipped = 0;
+let _skipped = 0;
 const failures: string[] = [];
 
-function ok(name: string) { passed++; console.log(`  ✅ ${name}`); }
-function fail(name: string, reason: string) { failed++; failures.push(`${name}: ${reason}`); console.log(`  ❌ ${name} — ${reason}`); }
-function skip(name: string, reason: string) { skipped++; console.log(`  ⏭️  ${name} — ${reason}`); }
-function assert(cond: boolean, name: string, reason: string) { cond ? ok(name) : fail(name, reason); }
+function ok(_name: string) {
+  _passed++;
+}
+function fail(name: string, reason: string) {
+  failed++;
+  failures.push(`${name}: ${reason}`);
+}
+function skip(_name: string, _reason: string) {
+  _skipped++;
+}
+function assert(cond: boolean, name: string, reason: string) {
+  cond ? ok(name) : fail(name, reason);
+}
 
 async function fetchJson(url: string, opts?: RequestInit): Promise<{ status: number; body: any }> {
   try {
@@ -52,8 +70,6 @@ async function fetchText(url: string): Promise<{ status: number; text: string }>
 // ── L0: Infrastructure Prerequisites ───────────────────────────
 
 async function testInfra() {
-  console.log("\n── L0: Infrastructure ──");
-
   // L0.1 XTDB connection
   try {
     const rows = await sql`SELECT 1 as ok`;
@@ -77,8 +93,6 @@ async function testInfra() {
 // ── L1: Shared Libs ────────────────────────────────────────────
 
 async function testSharedLibs() {
-  console.log("\n── L1: Shared Libs ──");
-
   // L1.1 JSONLD_CONTEXT has all required namespaces
   const ctx = await import(join(HOME, "harness", "lib", "jsonld", "context.ts"));
   const requiredNs = ["ev", "prov", "schema", "xsd", "rdf", "doap", "foaf"];
@@ -88,20 +102,20 @@ async function testSharedLibs() {
   }
 
   // L1.2 ID generation helpers
-  const ids = await import(join(HOME, "harness", "lib", "jsonld", "ids.ts"));
+  const _ids = await import(join(HOME, "harness", "lib", "jsonld", "ids.ts"));
   const fnNames = ["piId", "piRef"];
   for (const fn of fnNames) {
     assert(typeof ctx[fn] === "function", `L1.2 ${fn} exported from context`, "not a function");
   }
 
   // L1.3 No remaining local JSONLD_CONTEXT duplicates (only re-exports allowed)
-  const mustUseShared = [
-    "xtdb-event-logger/rdf/namespaces.ts",
-    "workflow-engine/rdf/namespaces.ts",
-  ];
+  const mustUseShared = ["xtdb-event-logger/rdf/namespaces.ts", "workflow-engine/rdf/namespaces.ts"];
   for (const file of mustUseShared) {
     const fullPath = join(HOME, "harness", file);
-    if (!existsSync(fullPath)) { skip(`L1.3 ${file}`, "file not found"); continue; }
+    if (!existsSync(fullPath)) {
+      skip(`L1.3 ${file}`, "file not found");
+      continue;
+    }
     const content = readFileSync(fullPath, "utf-8");
     const hasImport = content.includes("from") && content.includes("lib/jsonld/context");
     const hasLocalDef = /export const JSONLD_CONTEXT\s*=\s*\{/.test(content);
@@ -113,13 +127,7 @@ async function testSharedLibs() {
 // ── L2: Extensions Deployed ────────────────────────────────────
 
 async function testExtensions() {
-  console.log("\n── L2: Lifecycle Extensions ──");
-
-  const lifecycleExts = [
-    "project-lifecycle",
-    "requirements-tracker",
-    "deployment-tracker",
-  ];
+  const lifecycleExts = ["project-lifecycle", "requirements-tracker", "deployment-tracker"];
 
   for (const ext of lifecycleExts) {
     const extDir = join(EXT_DIR, ext);
@@ -135,8 +143,6 @@ async function testExtensions() {
 // ── L3: Workflow Templates ─────────────────────────────────────
 
 async function testWorkflows() {
-  console.log("\n── L3: Workflow Templates ──");
-
   const expected = ["feature", "bugfix", "refactor", "release", "onboarding", "incident-response", "decommission"];
 
   for (const name of expected) {
@@ -166,8 +172,6 @@ async function testWorkflows() {
 // ── L4: CI Webhook ─────────────────────────────────────────────
 
 async function testCIWebhook() {
-  console.log("\n── L4: CI Webhook ──");
-
   // L4.1 Missing fields rejected
   const { status: s1 } = await fetchJson(`${OPS_BASE}/api/ci/events`, {
     method: "POST",
@@ -234,10 +238,11 @@ async function testCIWebhook() {
   assert(s4 === 200, "L4.4 release.published accepted", `status=${s4}`);
 
   // L4.5 Verify data landed in XTDB (wait a moment for XTDB eventual consistency)
-  await new Promise(r => setTimeout(r, 2000));
+  await new Promise((r) => setTimeout(r, 2000));
 
   try {
-    const testRows = await sql`SELECT * FROM test_runs WHERE project_id = 'test-lifecycle-suite' ORDER BY ts DESC LIMIT 1`;
+    const testRows =
+      await sql`SELECT * FROM test_runs WHERE project_id = 'test-lifecycle-suite' ORDER BY ts DESC LIMIT 1`;
     assert(testRows.length > 0, "L4.5a test_runs record exists", "no rows");
     if (testRows.length > 0) {
       assert(testRows[0].suite === "unit-tests", "L4.5b suite=unit-tests", `got ${testRows[0].suite}`);
@@ -247,14 +252,16 @@ async function testCIWebhook() {
   }
 
   try {
-    const deployRows = await sql`SELECT * FROM deployments WHERE project_id = 'test-lifecycle-suite' ORDER BY ts DESC LIMIT 1`;
+    const deployRows =
+      await sql`SELECT * FROM deployments WHERE project_id = 'test-lifecycle-suite' ORDER BY ts DESC LIMIT 1`;
     assert(deployRows.length > 0, "L4.5c deployments record exists", "no rows");
   } catch (err) {
     fail("L4.5c deployments query", String(err));
   }
 
   try {
-    const releaseRows = await sql`SELECT * FROM releases WHERE project_id = 'test-lifecycle-suite' ORDER BY ts DESC LIMIT 1`;
+    const releaseRows =
+      await sql`SELECT * FROM releases WHERE project_id = 'test-lifecycle-suite' ORDER BY ts DESC LIMIT 1`;
     assert(releaseRows.length > 0, "L4.5d releases record exists", "no rows");
   } catch (err) {
     fail("L4.5d releases query", String(err));
@@ -262,7 +269,8 @@ async function testCIWebhook() {
 
   // L4.6 Lifecycle events emitted
   try {
-    const levRows = await sql`SELECT * FROM lifecycle_events WHERE project_id = 'test-lifecycle-suite' ORDER BY ts DESC LIMIT 5`;
+    const levRows =
+      await sql`SELECT * FROM lifecycle_events WHERE project_id = 'test-lifecycle-suite' ORDER BY ts DESC LIMIT 5`;
     assert(levRows.length >= 3, "L4.6 lifecycle_events emitted (>=3)", `found ${levRows.length}`);
   } catch (err) {
     fail("L4.6 lifecycle_events query", String(err));
@@ -277,8 +285,6 @@ async function testCIWebhook() {
 // ── L5: Incidents CRUD ─────────────────────────────────────────
 
 async function testIncidents() {
-  console.log("\n── L5: Incidents CRUD ──");
-
   // L5.1 Create incident
   const { status: s1, body: inc } = await fetchJson(`${OPS_BASE}/api/incidents`, {
     method: "POST",
@@ -335,8 +341,6 @@ async function testIncidents() {
 // ── L6: Backup Scheduler ───────────────────────────────────────
 
 async function testScheduler() {
-  console.log("\n── L6: Backup Scheduler ──");
-
   // L6.1 Scheduler status
   const { status: s1, body: status } = await fetchJson(`${OPS_BASE}/api/scheduler/status`);
   assert(s1 === 200, "L6.1 Scheduler status 200", `status=${s1}`);
@@ -362,8 +366,6 @@ async function testScheduler() {
 // ── L7: Dashboard UI ──────────────────────────────────────────
 
 async function testDashboard() {
-  console.log("\n── L7: Dashboard UI ──");
-
   // L7.1 Portfolio page loads
   const { status: s1, text: html } = await fetchText(`${OPS_BASE}/dashboard`);
   assert(s1 === 200, "L7.1 Dashboard loads", `status=${s1}`);
@@ -405,8 +407,6 @@ async function testDashboard() {
 // ── L8: XTDB Table Existence ───────────────────────────────────
 
 async function testTables() {
-  console.log("\n── L8: XTDB Tables ──");
-
   const expectedTables = [
     "projects",
     "lifecycle_events",
@@ -435,16 +435,17 @@ async function testTables() {
 // ── L9: Projects Schema ────────────────────────────────────────
 
 async function testProjectSchema() {
-  console.log("\n── L9: Project Schema ──");
-
   try {
     const projects = await sql`SELECT * FROM projects LIMIT 1`;
     if (projects.length > 0) {
       const p = projects[0];
       assert("lifecycle_phase" in p, "L9.1 lifecycle_phase column", "missing");
       assert("config_json" in p, "L9.2 config_json column", "missing");
-      assert(["active", "planning", "maintenance", "deprecated", "decommissioned"].includes(p.lifecycle_phase),
-        "L9.3 lifecycle_phase valid value", `got ${p.lifecycle_phase}`);
+      assert(
+        ["active", "planning", "maintenance", "deprecated", "decommissioned"].includes(p.lifecycle_phase),
+        "L9.3 lifecycle_phase valid value",
+        `got ${p.lifecycle_phase}`,
+      );
     } else {
       skip("L9.1-3 Project schema", "no projects in database");
     }
@@ -456,7 +457,6 @@ async function testProjectSchema() {
 // ── Cleanup ────────────────────────────────────────────────────
 
 async function cleanup() {
-  console.log("\n── Cleanup ──");
   try {
     // Remove test data
     await sql`DELETE FROM test_runs WHERE project_id = 'test-lifecycle-suite'`;
@@ -464,19 +464,12 @@ async function cleanup() {
     await sql`DELETE FROM releases WHERE project_id = 'test-lifecycle-suite'`;
     await sql`DELETE FROM lifecycle_events WHERE project_id = 'test-lifecycle-suite'`;
     await sql`DELETE FROM incidents WHERE project_id = 'test-lifecycle-suite'`;
-    console.log("  🧹 Test data cleaned up");
-  } catch (err) {
-    console.log(`  ⚠️  Cleanup partial: ${err}`);
-  }
+  } catch (_err) {}
 }
 
 // ── Runner ─────────────────────────────────────────────────────
 
 async function main() {
-  console.log("🧪 Lifecycle Management Test Suite");
-  console.log(`   XTDB: localhost:5433 | Ops API: ${OPS_BASE}`);
-  console.log(`   Time: ${new Date().toISOString()}`);
-
   await testInfra();
   await testSharedLibs();
   await testExtensions();
@@ -488,20 +481,14 @@ async function main() {
   await testTables();
   await testProjectSchema();
   await cleanup();
-
-  console.log(`\n${"═".repeat(50)}`);
-  console.log(`  ✅ ${passed} passed  ❌ ${failed} failed  ⏭️  ${skipped} skipped`);
   if (failures.length > 0) {
-    console.log("\n  Failures:");
-    for (const f of failures) console.log(`    • ${f}`);
+    for (const _f of failures)
   }
-  console.log(`${"═".repeat(50)}`);
 
   await sql.end();
   process.exit(failed > 0 ? 1 : 0);
 }
 
-main().catch((err) => {
-  console.error("Fatal:", err);
+main().catch((_err) => {
   process.exit(2);
 });

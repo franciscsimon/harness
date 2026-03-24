@@ -18,7 +18,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
 
 export function relativeTime(tsStr: string | number): string {
   const ts = Number(tsStr);
-  if (!ts || isNaN(ts)) return "—";
+  if (!ts || Number.isNaN(ts)) return "—";
   const diff = Date.now() - ts;
   if (diff < 0) return "just now";
   if (diff < 1000) return "just now";
@@ -32,7 +32,7 @@ export function relativeTime(tsStr: string | number): string {
 
 export function formatDate(tsStr: string | number): string {
   const ts = Number(tsStr);
-  if (!ts || isNaN(ts)) return "—";
+  if (!ts || Number.isNaN(ts)) return "—";
   return new Date(ts).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
@@ -44,8 +44,8 @@ export function formatDate(tsStr: string | number): string {
 // ─── Number Formatting ─────────────────────────────────────────
 
 export function formatNumber(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
 }
 
@@ -53,7 +53,7 @@ export function formatNumber(n: number): string {
 
 export function truncate(s: string, max = 80): string {
   if (s.length <= max) return s;
-  return s.slice(0, max - 3) + "...";
+  return `${s.slice(0, max - 3)}...`;
 }
 
 // ─── Health Status Color ───────────────────────────────────────
@@ -86,7 +86,7 @@ export const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
 export function formatDuration(ms: number | string | null): string {
   if (ms == null) return "—";
   const n = typeof ms === "string" ? parseInt(ms, 10) : ms;
-  if (isNaN(n) || n <= 0) return "—";
+  if (Number.isNaN(n) || n <= 0) return "—";
   if (n < 1000) return `${n}ms`;
   if (n < 60_000) return `${(n / 1000).toFixed(1)}s`;
   if (n < 3600_000) return `${Math.floor(n / 60_000)}m ${Math.floor((n % 60_000) / 1000)}s`;
@@ -97,9 +97,5 @@ export function formatDuration(ms: number | string | null): string {
 
 export function escapeHtml(s: string | null | undefined): string {
   if (s == null) return "";
-  return String(s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

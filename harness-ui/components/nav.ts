@@ -13,8 +13,7 @@ const MAIN_NAV: NavItem[] = [
 
 export function renderNav(activePath: string = "/"): string {
   const links = MAIN_NAV.map((item) => {
-    const isActive = activePath === item.href ||
-      (item.href !== "/" && activePath.startsWith(item.href));
+    const isActive = activePath === item.href || (item.href !== "/" && activePath.startsWith(item.href));
     const cls = isActive ? "nav-link active" : "nav-link";
     return `<a href="${item.href}" class="${cls}">${item.label}</a>`;
   }).join("");

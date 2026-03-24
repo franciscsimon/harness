@@ -46,12 +46,14 @@ export function detectComments(filename: string, content: string): Violation[] {
 export function detectLargeFile(filename: string, content: string, maxLines = 300): Violation[] {
   const lines = content.split("\n").length;
   if (lines > maxLines) {
-    return [{
-      check: "file-size",
-      severity: "warn",
-      message: `File has ${lines} lines (max ${maxLines}). Split into smaller, focused modules.`,
-      file: filename,
-    }];
+    return [
+      {
+        check: "file-size",
+        severity: "warn",
+        message: `File has ${lines} lines (max ${maxLines}). Split into smaller, focused modules.`,
+        file: filename,
+      },
+    ];
   }
   return [];
 }
@@ -69,7 +71,9 @@ export function detectLargeFunctions(filename: string, content: string, maxLines
     const line = lines[i];
 
     // Detect function declarations
-    const funcMatch = line.match(/(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\(|(\w+)\s*\(.*\)\s*(?::\s*\w+)?\s*\{)/);
+    const funcMatch = line.match(
+      /(?:function\s+(\w+)|(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?\(|(\w+)\s*\(.*\)\s*(?::\s*\w+)?\s*\{)/,
+    );
     if (funcMatch && !inFunc) {
       funcName = funcMatch[1] ?? funcMatch[2] ?? funcMatch[3] ?? "anonymous";
       funcStart = i;
@@ -104,7 +108,10 @@ export function detectLargeFunctions(filename: string, content: string, maxLines
 
 // ── Duplication Detector ──────────────────────────────────────────
 export function detectDuplication(filename: string, content: string, minBlockSize = 4): Violation[] {
-  const lines = content.split("\n").map((l) => l.trim()).filter((l) => l.length > 5);
+  const lines = content
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 5);
   const seen = new Map<string, number>();
   const violations: Violation[] = [];
 
@@ -195,12 +202,18 @@ export function detectBadTestPatterns(filename: string, content: string): Violat
 
     // Raw SQL in test files — tests should go through the public API, not bypass it
     const prevLine = i > 0 ? lines[i - 1] : "";
-    if (/\bsql`\s*(INSERT|SELECT|UPDATE|DELETE)\b/i.test(line) && !/seed|setup|teardown|cleanup|before|after/i.test(line) && !/seed|setup|teardown|cleanup|before|after/i.test(prevLine)) {
+    if (
+      /\bsql`\s*(INSERT|SELECT|UPDATE|DELETE)\b/i.test(line) &&
+      !/seed|setup|teardown|cleanup|before|after/i.test(line) &&
+      !/seed|setup|teardown|cleanup|before|after/i.test(prevLine)
+    ) {
       violations.push({
         check: "test-raw-sql",
         severity: "warn",
-        message: "Test uses raw SQL instead of the public API. Test through the function that consumers actually call (e.g. tool execute, HTTP endpoint, exported query function).",
-        file: filename, line: ln,
+        message:
+          "Test uses raw SQL instead of the public API. Test through the function that consumers actually call (e.g. tool execute, HTTP endpoint, exported query function).",
+        file: filename,
+        line: ln,
       });
     }
 
@@ -209,8 +222,10 @@ export function detectBadTestPatterns(filename: string, content: string): Violat
       violations.push({
         check: "test-exact-score",
         severity: "warn",
-        message: "Test asserts an exact computed value. Assert relative behavior instead (e.g. 'healthy > unhealthy') so the test survives formula changes.",
-        file: filename, line: ln,
+        message:
+          "Test asserts an exact computed value. Assert relative behavior instead (e.g. 'healthy > unhealthy') so the test survives formula changes.",
+        file: filename,
+        line: ln,
       });
     }
 
@@ -219,8 +234,10 @@ export function detectBadTestPatterns(filename: string, content: string): Violat
       violations.push({
         check: "test-internal-schema",
         severity: "warn",
-        message: "Test asserts on internal schema property names (JSON-LD namespaces). Assert on the requirement (e.g. 'output contains the task value') not the encoding.",
-        file: filename, line: ln,
+        message:
+          "Test asserts on internal schema property names (JSON-LD namespaces). Assert on the requirement (e.g. 'output contains the task value') not the encoding.",
+        file: filename,
+        line: ln,
       });
     }
 
@@ -229,8 +246,10 @@ export function detectBadTestPatterns(filename: string, content: string): Violat
       violations.push({
         check: "test-internal-enum",
         severity: "warn",
-        message: "Test asserts on internal enum/type values. If these are renamed, the test breaks even though behavior is unchanged. Assert on the observable outcome instead.",
-        file: filename, line: ln,
+        message:
+          "Test asserts on internal enum/type values. If these are renamed, the test breaks even though behavior is unchanged. Assert on the observable outcome instead.",
+        file: filename,
+        line: ln,
       });
     }
   }

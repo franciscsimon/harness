@@ -1,8 +1,7 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join, basename } from "node:path";
 
 // ─── JIT Docs Extension ──────────────────────────────────────────
 // Load documentation on-demand based on current task context.
@@ -12,9 +11,11 @@ import { join, basename } from "node:path";
 const DOCS_DIR = join(process.env.HOME ?? "~", ".pi", "agent", "docs");
 
 export default function (pi: ExtensionAPI) {
-  let loadedDocs: Map<string, string> = new Map();
+  const loadedDocs: Map<string, string> = new Map();
 
-  pi.on("session_start", async () => { loadedDocs.clear(); });
+  pi.on("session_start", async () => {
+    loadedDocs.clear();
+  });
 
   // ── Inject loaded docs into context ──
   pi.on("context", async (event) => {
@@ -61,12 +62,15 @@ export default function (pi: ExtensionAPI) {
 
       if (cmd === "load") {
         const name = parts.slice(1).join(" ");
-        if (!name) { ctx.ui.notify("Usage: /docs load <filename>", "error"); return; }
+        if (!name) {
+          ctx.ui.notify("Usage: /docs load <filename>", "error");
+          return;
+        }
 
         // Try multiple paths
         const candidates = [
           join(DOCS_DIR, name),
-          join(DOCS_DIR, name + ".md"),
+          join(DOCS_DIR, `${name}.md`),
           name, // absolute path
         ];
 
@@ -94,7 +98,7 @@ export default function (pi: ExtensionAPI) {
 
       if (cmd === "unload") {
         const name = parts.slice(1).join(" ");
-        if (loadedDocs.delete(name) || loadedDocs.delete(name + ".md")) {
+        if (loadedDocs.delete(name) || loadedDocs.delete(`${name}.md`)) {
           ctx.ui.setStatus("jit-docs", loadedDocs.size > 0 ? `📚 ${loadedDocs.size} docs` : "");
           ctx.ui.notify(`Unloaded: ${name}`, "info");
         } else {
@@ -104,7 +108,10 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (cmd === "loaded") {
-        if (loadedDocs.size === 0) { ctx.ui.notify("No docs loaded. Use /docs load <file>.", "info"); return; }
+        if (loadedDocs.size === 0) {
+          ctx.ui.notify("No docs loaded. Use /docs load <file>.", "info");
+          return;
+        }
         const lines = [...loadedDocs.entries()].map(([k, v]) => `  📄 ${k} (${v.length} chars)`);
         ctx.ui.notify(`📚 Loaded docs:\n${lines.join("\n")}`, "info");
         return;
@@ -112,8 +119,14 @@ export default function (pi: ExtensionAPI) {
 
       if (cmd === "search") {
         const term = parts.slice(1).join(" ").toLowerCase();
-        if (!term) { ctx.ui.notify("Usage: /docs search <term>", "error"); return; }
-        if (!existsSync(DOCS_DIR)) { ctx.ui.notify(`No docs dir: ${DOCS_DIR}`, "error"); return; }
+        if (!term) {
+          ctx.ui.notify("Usage: /docs search <term>", "error");
+          return;
+        }
+        if (!existsSync(DOCS_DIR)) {
+          ctx.ui.notify(`No docs dir: ${DOCS_DIR}`, "error");
+          return;
+        }
 
         const files = readdirSync(DOCS_DIR).filter((f) => f.endsWith(".md"));
         const hits: string[] = [];
@@ -123,9 +136,10 @@ export default function (pi: ExtensionAPI) {
             hits.push(`  📄 ${f}`);
           }
         }
-        ctx.ui.notify(hits.length > 0
-          ? `🔍 Docs matching "${term}":\n${hits.join("\n")}`
-          : `No docs match "${term}".`, "info");
+        ctx.ui.notify(
+          hits.length > 0 ? `🔍 Docs matching "${term}":\n${hits.join("\n")}` : `No docs match "${term}".`,
+          "info",
+        );
         return;
       }
 
@@ -135,7 +149,10 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       const files = readdirSync(DOCS_DIR).filter((f) => f.endsWith(".md"));
-      if (files.length === 0) { ctx.ui.notify(`No .md files in ${DOCS_DIR}`, "info"); return; }
+      if (files.length === 0) {
+        ctx.ui.notify(`No .md files in ${DOCS_DIR}`, "info");
+        return;
+      }
       const lines = files.map((f) => `  ${loadedDocs.has(f) ? "✅" : "  "} ${f}`);
       ctx.ui.notify(`📚 Available docs (${DOCS_DIR}):\n${lines.join("\n")}\n\nUse /docs load <file>`, "info");
     },
@@ -151,7 +168,7 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({ keyword: Type.String({ description: "Search term to find in docs" }) }),
     async execute(_tid: any, params: any, _s: any, _u: any, _ctx: any) {
       const term = params.keyword.toLowerCase();
-      if (!existsSync(DOCS_DIR)) throw new Error("No docs directory: " + DOCS_DIR);
+      if (!existsSync(DOCS_DIR)) throw new Error(`No docs directory: ${DOCS_DIR}`);
       const files = readdirSync(DOCS_DIR).filter((f: string) => f.endsWith(".md"));
       const hits: string[] = [];
       for (const f of files) {
@@ -163,9 +180,11 @@ export default function (pi: ExtensionAPI) {
           }
         }
       }
-      if (hits.length === 0) return { content: [{ type: "text", text: "No docs match: " + term }], details: {} };
-      return { content: [{ type: "text", text: "📚 Found and loaded " + hits.length + " doc(s): " + hits.join(", ") }], details: { loaded: hits } };
+      if (hits.length === 0) return { content: [{ type: "text", text: `No docs match: ${term}` }], details: {} };
+      return {
+        content: [{ type: "text", text: `📚 Found and loaded ${hits.length} doc(s): ${hits.join(", ")}` }],
+        details: { loaded: hits },
+      };
     },
   });
-
 }

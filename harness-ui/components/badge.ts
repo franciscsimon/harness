@@ -1,6 +1,6 @@
 // ─── Badge Component ───────────────────────────────────────────
 
-import { STATUS_COLORS, escapeHtml } from "../lib/format.ts";
+import { escapeHtml, STATUS_COLORS } from "../lib/format.ts";
 
 /**
  * Render a colored status badge.

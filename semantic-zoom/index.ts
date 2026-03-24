@@ -1,6 +1,6 @@
+import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
 
 // ─── Semantic Zoom Extension ──────────────────────────────────────
 // Control the level of detail in AI responses — zoom in or out.
@@ -40,32 +40,39 @@ export default function (pi: ExtensionAPI) {
     const prompt = ZOOM_PROMPTS[level];
     if (!prompt) return;
     return {
-      systemPrompt: (event as any).systemPrompt + "\n\n" + prompt,
+      systemPrompt: `${(event as any).systemPrompt}\n\n${prompt}`,
     };
   });
 
   pi.registerCommand("zoom", {
     description: "Set semantic zoom level for AI responses",
-    getArgumentCompletions: (prefix: string) => [
-      { value: "in", label: "in — Zoom in (detailed, thorough)" },
-      { value: "out", label: "out — Zoom out (overview, concise)" },
-      { value: "normal", label: "normal — Default detail level" },
-      { value: "status", label: "status — Show current zoom level" },
-    ].filter((i) => i.value.startsWith(prefix)),
+    getArgumentCompletions: (prefix: string) =>
+      [
+        { value: "in", label: "in — Zoom in (detailed, thorough)" },
+        { value: "out", label: "out — Zoom out (overview, concise)" },
+        { value: "normal", label: "normal — Default detail level" },
+        { value: "status", label: "status — Show current zoom level" },
+      ].filter((i) => i.value.startsWith(prefix)),
     handler: async (args, ctx) => {
       const cmd = args?.trim() ?? "status";
 
-      if (cmd === "in") { level = "detailed"; }
-      else if (cmd === "out") { level = "overview"; }
-      else if (cmd === "normal") { level = "normal"; }
-      else {
+      if (cmd === "in") {
+        level = "detailed";
+      } else if (cmd === "out") {
+        level = "overview";
+      } else if (cmd === "normal") {
+        level = "normal";
+      } else {
         ctx.ui.notify(`🔎 Zoom level: ${level}`, "info");
         return;
       }
 
       pi.appendEntry("zoom-level", { level });
       ctx.ui.setStatus("zoom", level !== "normal" ? `🔎 ${level}` : "");
-      ctx.ui.notify(`🔎 Zoom: ${level}${level !== "normal" ? ` — ${ZOOM_PROMPTS[level].slice(0, 60)}...` : ""}`, "success");
+      ctx.ui.notify(
+        `🔎 Zoom: ${level}${level !== "normal" ? ` — ${ZOOM_PROMPTS[level].slice(0, 60)}...` : ""}`,
+        "success",
+      );
     },
   });
 
@@ -80,9 +87,8 @@ export default function (pi: ExtensionAPI) {
     async execute(_tid: any, params: any, _s: any, _u: any, ctx: any) {
       level = params.level;
       pi.appendEntry("zoom-level", { level });
-      ctx.ui.setStatus("zoom", level !== "normal" ? "🔎 " + level : "");
-      return { content: [{ type: "text", text: "🔎 Zoom set to: " + level }], details: {} };
+      ctx.ui.setStatus("zoom", level !== "normal" ? `🔎 ${level}` : "");
+      return { content: [{ type: "text", text: `🔎 Zoom set to: ${level}` }], details: {} };
     },
   });
-
 }

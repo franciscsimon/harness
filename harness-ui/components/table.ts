@@ -9,7 +9,11 @@ export interface TableColumn {
   render?: (value: any, row: any) => string;
 }
 
-export function renderTable(columns: TableColumn[], rows: any[], opts?: { emptyMessage?: string; className?: string }): string {
+export function renderTable(
+  columns: TableColumn[],
+  rows: any[],
+  opts?: { emptyMessage?: string; className?: string },
+): string {
   const className = opts?.className ?? "data-table";
   const emptyMsg = opts?.emptyMessage ?? "No data available";
 
@@ -17,18 +21,14 @@ export function renderTable(columns: TableColumn[], rows: any[], opts?: { emptyM
     return `<div class="empty-state">${escapeHtml(emptyMsg)}</div>`;
   }
 
-  const headerCells = columns
-    .map((col) => `<th>${escapeHtml(col.label)}</th>`)
-    .join("");
+  const headerCells = columns.map((col) => `<th>${escapeHtml(col.label)}</th>`).join("");
 
   const bodyRows = rows
     .map((row) => {
       const cells = columns
         .map((col) => {
           const val = row[col.key];
-          const rendered = col.render
-            ? col.render(val, row)
-            : escapeHtml(val != null ? String(val) : "—");
+          const rendered = col.render ? col.render(val, row) : escapeHtml(val != null ? String(val) : "—");
           return `<td>${rendered}</td>`;
         })
         .join("");

@@ -4,7 +4,7 @@
 
 import { layout } from "../components/layout.ts";
 import { fetchSessionList } from "../lib/api.ts";
-import { CATEGORY_COLORS, relativeTime, escapeHtml } from "../lib/format.ts";
+import { CATEGORY_COLORS, escapeHtml, relativeTime } from "../lib/format.ts";
 import { computeHealthScore, healthColor, healthLabel } from "../lib/health.ts";
 
 const CATEGORIES = ["session", "compaction", "agent", "message", "tool", "input", "model", "resource"];
@@ -12,28 +12,29 @@ const CATEGORIES = ["session", "compaction", "agent", "message", "tool", "input"
 export async function renderSessions(projectId?: string): Promise<string> {
   const sessions = (await fetchSessionList(projectId)) ?? [];
 
-  const cards = sessions.map((s: any) => {
-    const name = s.sessionId.split("/").pop() ?? s.sessionId;
-    const duration = fmtDuration(s.lastTs - s.firstTs);
-    const catBadges = CATEGORIES
-      .filter((c) => s.byCategory?.[c])
-      .map((c) => {
-        const color = CATEGORY_COLORS[c] ?? "#999";
-        return `<span class="ses-cat-badge" style="--cat-color:${color}">
+  const cards = sessions
+    .map((s: any) => {
+      const name = s.sessionId.split("/").pop() ?? s.sessionId;
+      const duration = fmtDuration(s.lastTs - s.firstTs);
+      const catBadges = CATEGORIES.filter((c) => s.byCategory?.[c])
+        .map((c) => {
+          const color = CATEGORY_COLORS[c] ?? "#999";
+          return `<span class="ses-cat-badge" style="--cat-color:${color}">
           <span class="cat-dot" style="background:${color}"></span>${c}: ${s.byCategory[c]}
         </span>`;
-      }).join("");
+        })
+        .join("");
 
-    const score = computeHealthScore({
-      errorRate: s.errorRate ?? 0,
-      turnCount: s.turnCount ?? 0,
-      maxPayloadBytes: s.maxPayloadBytes ?? 0,
-      durationMs: s.durationMs ?? 0,
-    });
-    const hColor = healthColor(score);
-    const hLabel = healthLabel(score);
+      const score = computeHealthScore({
+        errorRate: s.errorRate ?? 0,
+        turnCount: s.turnCount ?? 0,
+        maxPayloadBytes: s.maxPayloadBytes ?? 0,
+        durationMs: s.durationMs ?? 0,
+      });
+      const hColor = healthColor(score);
+      const hLabel = healthLabel(score);
 
-    return `<a class="ses-card" href="${projectId ? `/projects/${projectId}/sessions/${encodeURIComponent(s.sessionId)}` : `/sessions/${encodeURIComponent(s.sessionId)}`}">
+      return `<a class="ses-card" href="${projectId ? `/projects/${projectId}/sessions/${encodeURIComponent(s.sessionId)}` : `/sessions/${encodeURIComponent(s.sessionId)}`}">
       <div class="ses-card-top">
         <span class="ses-card-name">${escapeHtml(name)}</span>
         <span class="health-badge health-badge-${hColor}">${score} ${hLabel}</span>
@@ -49,7 +50,8 @@ export async function renderSessions(projectId?: string): Promise<string> {
         <span class="ses-card-ago">${relativeTime(String(s.lastTs))}</span>
       </div>
     </a>`;
-  }).join("\n");
+    })
+    .join("\n");
 
   const content = `
     <div class="page-header">
@@ -61,7 +63,12 @@ export async function renderSessions(projectId?: string): Promise<string> {
     </main>
   `;
 
-  return layout(content, { title: "Sessions", activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions", projectId, activeSection: "sessions" });
+  return layout(content, {
+    title: "Sessions",
+    activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions",
+    projectId,
+    activeSection: "sessions",
+  });
 }
 
 // ─── Helpers ───────────────────────────────────────────────────

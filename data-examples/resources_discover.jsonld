@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:5286d770-5c4e-4dce-9aad-24cd2e56bdbd",
-      "@type": [
-        "ev:ResourcesDiscover"
-      ],
+      "@type": ["ev:ResourcesDiscover"],
       "ev:eventName": [
         {
           "@value": "resources_discover"
@@ -63,9 +61,7 @@
     },
     {
       "@id": "_:env_5286d770-5c4e-4dce-9aad-24cd2e56bdbd",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

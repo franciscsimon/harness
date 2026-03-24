@@ -14,9 +14,7 @@ export interface LayoutOptions {
 export function layout(content: string, opts: LayoutOptions): string {
   const { title, activePath = "/", extraHead = "", projectId, activeSection } = opts;
 
-  const projectNav = projectId
-    ? renderProjectSubNav(projectId, activeSection ?? "overview")
-    : "";
+  const projectNav = projectId ? renderProjectSubNav(projectId, activeSection ?? "overview") : "";
 
   return `<!DOCTYPE html>
 <html lang="en">

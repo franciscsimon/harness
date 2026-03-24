@@ -2,7 +2,7 @@
 // Shows Docker container lifecycle events from XTDB.
 
 import { layout } from "../components/layout.ts";
-import { escapeHtml, relativeTime, formatDuration } from "../lib/format.ts";
+import { escapeHtml, relativeTime } from "../lib/format.ts";
 
 const EVENT_API = process.env.EVENT_API_URL ?? "http://localhost:3333";
 const COLLECTOR_URL = process.env.COLLECTOR_URL ?? "http://docker-event-collector:3338";
@@ -55,7 +55,9 @@ export async function renderDockerEvents(projectId?: string): Promise<string> {
     if (evRes.ok) events = await evRes.json();
     if (sumRes.ok) summary = await sumRes.json();
     if (healthRes?.ok) collectorHealth = await healthRes.json();
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 
   // Summary cards
   const summaryCards = `
@@ -92,13 +94,14 @@ export async function renderDockerEvents(projectId?: string): Promise<string> {
   `;
 
   // Event table — exclude exec noise for the default view
-  const displayEvents = events.filter(e => !e.action.startsWith("exec_"));
-  const rows = displayEvents.map(e => {
-    const color = SEVERITY_COLORS[e.severity] ?? "#8b949e";
-    const emoji = SEVERITY_EMOJI[e.severity] ?? "⚪";
-    const time = e.ts ? relativeTime(Number(e.ts)) : "—";
-    const exitStr = e.exit_code != null && e.exit_code !== 0 ? ` (exit ${e.exit_code})` : "";
-    return `<tr>
+  const displayEvents = events.filter((e) => !e.action.startsWith("exec_"));
+  const rows = displayEvents
+    .map((e) => {
+      const color = SEVERITY_COLORS[e.severity] ?? "#8b949e";
+      const emoji = SEVERITY_EMOJI[e.severity] ?? "⚪";
+      const time = e.ts ? relativeTime(Number(e.ts)) : "—";
+      const exitStr = e.exit_code != null && e.exit_code !== 0 ? ` (exit ${e.exit_code})` : "";
+      return `<tr>
       <td>${time}</td>
       <td style="color:${color};font-weight:600">${emoji} ${e.severity}</td>
       <td><code>${escapeHtml(e.action)}${exitStr}</code></td>
@@ -106,12 +109,13 @@ export async function renderDockerEvents(projectId?: string): Promise<string> {
       <td>${escapeHtml(e.service_name || "—")}</td>
       <td>${escapeHtml(e.compose_project || "—")}</td>
     </tr>`;
-  }).join("\n");
+    })
+    .join("\n");
 
   // Top services
-  const svcList = summary.topServices.map(s =>
-    `<span class="badge">${escapeHtml(s.name)}: ${s.count}</span>`
-  ).join(" ");
+  const svcList = summary.topServices
+    .map((s) => `<span class="badge">${escapeHtml(s.name)}: ${s.count}</span>`)
+    .join(" ");
 
   const content = `
     <main>
@@ -127,21 +131,32 @@ export async function renderDockerEvents(projectId?: string): Promise<string> {
 
       ${summary.topServices.length > 0 ? `<div style="margin-bottom:1rem"><strong>Top services:</strong> ${svcList}</div>` : ""}
 
-      ${summary.recentCritical.length > 0 ? `
+      ${
+        summary.recentCritical.length > 0
+          ? `
         <div class="card" style="border-color:#da3633;margin-bottom:1rem">
           <h3 style="color:#da3633;margin-top:0">⚠️ Recent Critical/Error Events</h3>
-          ${summary.recentCritical.map(e => `
+          ${summary.recentCritical
+            .map(
+              (e) => `
             <div style="padding:0.25rem 0;border-bottom:1px solid #21262d">
               ${SEVERITY_EMOJI[e.severity] ?? "⚪"} <code>${escapeHtml(e.action)}</code>
               — <strong>${escapeHtml(e.container_name)}</strong>
               ${e.exit_code ? ` (exit ${e.exit_code})` : ""}
               <span style="color:#8b949e;margin-left:0.5rem">${relativeTime(Number(e.ts))}</span>
             </div>
-          `).join("")}
+          `,
+            )
+            .join("")}
         </div>
-      ` : ""}
+      `
+          : ""
+      }
 
-      ${displayEvents.length === 0 ? '<p class="empty-msg">No Docker events yet (excluding exec events). The collector may still be starting.</p>' : `
+      ${
+        displayEvents.length === 0
+          ? '<p class="empty-msg">No Docker events yet (excluding exec events). The collector may still be starting.</p>'
+          : `
       <div class="card" style="overflow-x:auto">
         <table class="data-table">
           <thead>
@@ -150,7 +165,8 @@ export async function renderDockerEvents(projectId?: string): Promise<string> {
           <tbody>${rows}</tbody>
         </table>
       </div>
-      `}
+      `
+      }
 
       <details style="margin-top:1rem">
         <summary style="cursor:pointer;color:#8b949e">Show all events (including exec health checks)</summary>
@@ -160,13 +176,18 @@ export async function renderDockerEvents(projectId?: string): Promise<string> {
               <tr><th>Time</th><th>Severity</th><th>Action</th><th>Container</th><th>Service</th></tr>
             </thead>
             <tbody>
-              ${events.slice(0, 50).map(e => `<tr>
+              ${events
+                .slice(0, 50)
+                .map(
+                  (e) => `<tr>
                 <td>${e.ts ? relativeTime(Number(e.ts)) : "—"}</td>
                 <td style="color:${SEVERITY_COLORS[e.severity] ?? "#8b949e"}">${e.severity}</td>
                 <td><code>${escapeHtml(e.action.slice(0, 60))}</code></td>
                 <td>${escapeHtml(e.container_name || "—")}</td>
                 <td>${escapeHtml(e.service_name || "—")}</td>
-              </tr>`).join("\n")}
+              </tr>`,
+                )
+                .join("\n")}
             </tbody>
           </table>
         </div>

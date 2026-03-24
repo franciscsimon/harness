@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:bba331ec-90f4-417c-b859-1b807f69a301",
-      "@type": [
-        "ev:SessionBeforeCompact"
-      ],
+      "@type": ["ev:SessionBeforeCompact"],
       "ev:eventName": [
         {
           "@value": "session_before_compact"
@@ -74,9 +72,7 @@
     },
     {
       "@id": "_:env_bba331ec-90f4-417c-b859-1b807f69a301",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

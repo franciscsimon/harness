@@ -1,21 +1,19 @@
+import { stat } from "node:fs/promises";
+import { Readable } from "node:stream";
+import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
-import { serve } from "@hono/node-server";
-import { stat } from "node:fs/promises";
-import { Readable } from "node:stream";
-
-import { checkAll, checkPrimary, checkReplica, checkRedpanda } from "./lib/health.ts";
-import { stopReplica, startReplica, replicaStatus } from "./lib/replica.ts";
-import { listTopics, describeTopic } from "./lib/redpanda.ts";
-import { listBackups, getBackupPath, deleteBackup, createDownloadStream } from "./lib/files.ts";
-import { getJob, startSnapshotBackup, startCsvBackup, restoreFromArchive, startSnapshotRestore } from "./lib/backup.ts";
-import { exec } from "./lib/exec.ts";
-import { processCIEvent, verifySignature, type CIEvent } from "./lib/ci-webhook.ts";
-import { startScheduler, stopScheduler, schedulerStatus } from "./lib/scheduler.ts";
 import { authMiddleware } from "./lib/auth.ts";
+import { getJob, restoreFromArchive, startCsvBackup, startSnapshotBackup, startSnapshotRestore } from "./lib/backup.ts";
+import { type CIEvent, processCIEvent, verifySignature } from "./lib/ci-webhook.ts";
+import { createDownloadStream, deleteBackup, getBackupPath, listBackups } from "./lib/files.ts";
+import { checkAll, checkPrimary, checkRedpanda, checkReplica } from "./lib/health.ts";
+import { createIncident, getIncident, listIncidents, updateIncident } from "./lib/incidents.ts";
+import { describeTopic, listTopics } from "./lib/redpanda.ts";
+import { replicaStatus, startReplica, stopReplica } from "./lib/replica.ts";
+import { schedulerStatus, startScheduler, stopScheduler } from "./lib/scheduler.ts";
 import { verifyBackup } from "./lib/verify-backup.ts";
-import { createIncident, listIncidents, getIncident, updateIncident } from "./lib/incidents.ts";
 
 const OPS_PORT = Number(process.env.OPS_PORT ?? "3335");
 const app = new Hono();
@@ -62,8 +60,24 @@ app.get("/api/health/redpanda", async (c) => {
 app.get("/api/replication", async (c) => {
   try {
     const { default: postgres } = await import("postgres");
-    const primaryDb = postgres({ host: process.env.XTDB_EVENT_HOST ?? "localhost", port: Number(process.env.XTDB_EVENT_PORT ?? "5433"), database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 5 });
-    const replicaDb = postgres({ host: process.env.XTDB_REPLICA_HOST ?? (process.env.XTDB_EVENT_HOST ?? "localhost"), port: Number(process.env.XTDB_REPLICA_PORT ?? "5434"), database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 5 });
+    const primaryDb = postgres({
+      host: process.env.XTDB_EVENT_HOST ?? "localhost",
+      port: Number(process.env.XTDB_EVENT_PORT ?? "5433"),
+      database: "xtdb",
+      user: "xtdb",
+      password: "xtdb",
+      max: 1,
+      idle_timeout: 5,
+    });
+    const replicaDb = postgres({
+      host: process.env.XTDB_REPLICA_HOST ?? process.env.XTDB_EVENT_HOST ?? "localhost",
+      port: Number(process.env.XTDB_REPLICA_PORT ?? "5434"),
+      database: "xtdb",
+      user: "xtdb",
+      password: "xtdb",
+      max: 1,
+      idle_timeout: 5,
+    });
     const [primaryRows, replicaRows] = await Promise.all([
       primaryDb`SELECT COUNT(*) AS cnt FROM events`,
       replicaDb`SELECT COUNT(*) AS cnt FROM events`,
@@ -252,16 +266,27 @@ app.get("/api/scheduler/status", (c) => c.json(schedulerStatus()));
 app.get("/api/lifecycle/stream", async (c) => {
   return streamSSE(c, async (stream) => {
     const { default: postgres } = await import("postgres");
-    const db = postgres({ host: process.env.XTDB_EVENT_HOST ?? "localhost", port: Number(process.env.XTDB_EVENT_PORT ?? "5433"), database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30 });
+    const db = postgres({
+      host: process.env.XTDB_EVENT_HOST ?? "localhost",
+      port: Number(process.env.XTDB_EVENT_PORT ?? "5433"),
+      database: "xtdb",
+      user: "xtdb",
+      password: "xtdb",
+      max: 1,
+      idle_timeout: 30,
+    });
     let lastTs = Date.now();
     while (true) {
       try {
-        const rows = await db`SELECT * FROM lifecycle_events WHERE ts > ${db.typed(lastTs as any, 20)} ORDER BY ts ASC LIMIT 20`;
+        const rows =
+          await db`SELECT * FROM lifecycle_events WHERE ts > ${db.typed(lastTs as any, 20)} ORDER BY ts ASC LIMIT 20`;
         for (const row of rows) {
           await stream.writeSSE({ event: "lifecycle", data: JSON.stringify(row) });
           lastTs = Math.max(lastTs, Number(row.ts));
         }
-      } catch { /* parse fallback — use default */ }
+      } catch {
+        /* parse fallback — use default */
+      }
       await stream.sleep(2000);
     }
   });
@@ -278,7 +303,7 @@ app.post("/api/ci/events", async (c) => {
     }
 
     const event: CIEvent = JSON.parse(rawBody);
-    if (!event.type || !event.project || !event.subject?.status) {
+    if (!(event.type && event.project && event.subject?.status)) {
       return c.json({ error: "Missing required fields: type, project, subject.status" }, 400);
     }
 
@@ -296,13 +321,17 @@ app.get("/api/lifecycle/events", async (c) => {
     const db = postgres({
       host: process.env.XTDB_EVENT_HOST ?? "localhost",
       port: Number(process.env.XTDB_EVENT_PORT ?? "5433"),
-      database: "xtdb", user: "xtdb", password: "xtdb",
-      max: 1, idle_timeout: 10, connect_timeout: 5,
+      database: "xtdb",
+      user: "xtdb",
+      password: "xtdb",
+      max: 1,
+      idle_timeout: 10,
+      connect_timeout: 5,
     });
     const rows = await db`SELECT * FROM lifecycle_events ORDER BY ts DESC LIMIT ${limit}`;
     await db.end();
     return c.json(rows);
-  } catch (err: unknown) {
+  } catch (_err: unknown) {
     return c.json([], 200);
   }
 });
@@ -329,7 +358,7 @@ app.post("/api/backup/verify", async (c) => {
 app.post("/api/incidents", async (c) => {
   try {
     const body = await c.req.json();
-    if (!body.severity || !body.title) {
+    if (!(body.severity && body.title)) {
       return c.json({ error: "Missing required fields: severity, title" }, 400);
     }
     const incident = await createIncident(body);
@@ -374,4 +403,3 @@ app.patch("/api/incidents/:id", async (c) => {
 // ── Start ─────────────────────────────────────────────────────────
 
 serve({ fetch: app.fetch, port: OPS_PORT });
-console.log(`XTDB Ops API running at http://localhost:${OPS_PORT}`);

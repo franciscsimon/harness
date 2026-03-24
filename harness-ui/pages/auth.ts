@@ -10,7 +10,7 @@ export async function renderAuth(): Promise<string> {
     const authPath = join(CHAT_AUTH_DIR, "auth.json");
     if (existsSync(authPath)) {
       const data = JSON.parse(readFileSync(authPath, "utf-8"));
-      const providers = Object.keys(data).filter(k => data[k]?.type);
+      const providers = Object.keys(data).filter((k) => data[k]?.type);
       status = { configured: true, providers };
     }
   } catch (e) {
@@ -32,7 +32,7 @@ export async function renderAuth(): Promise<string> {
     <div class="card" style="margin-bottom:1.5rem;padding:1rem">
       <h3>Status</h3>
       <p style="font-size:1.1rem">${statusIcon} ${statusText}</p>
-      ${status.providers?.length ? `<p style="color:#8b949e">Providers: ${status.providers.map(p => `<code>${p}</code>`).join(", ")}</p>` : ""}
+      ${status.providers?.length ? `<p style="color:#8b949e">Providers: ${status.providers.map((p) => `<code>${p}</code>`).join(", ")}</p>` : ""}
     </div>
 
     <div class="card" style="margin-bottom:1.5rem;padding:1rem">

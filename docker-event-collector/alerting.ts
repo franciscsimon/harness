@@ -85,14 +85,14 @@ function trackDie(container: string, ts: number) {
   times.push(ts);
   // Prune old entries
   const cutoff = ts - RESTART_WINDOW_MS;
-  const recent = times.filter(t => t > cutoff);
+  const recent = times.filter((t) => t > cutoff);
   recentDies.set(container, recent);
 }
 
 function countRecentDies(container: string, ts: number): number {
   const times = recentDies.get(container) ?? [];
   const cutoff = ts - RESTART_WINDOW_MS;
-  return times.filter(t => t > cutoff).length;
+  return times.filter((t) => t > cutoff).length;
 }
 
 interface Alert {
@@ -106,7 +106,6 @@ interface Alert {
 }
 
 async function sendAlert(alert: Alert): Promise<void> {
-  console.log(`[alert] ${alert.severity.toUpperCase()}: ${alert.title}`);
   try {
     const res = await fetch(`${HARNESS_UI_URL}/api/ci/notify`, {
       method: "POST",
@@ -122,11 +121,9 @@ async function sendAlert(alert: Alert): Promise<void> {
       alertsSent++;
     } else {
       alertsFailed++;
-      console.error(`[alert] Notify failed: ${res.status}`);
     }
   } catch (e: unknown) {
     alertsFailed++;
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[alert] Notify error: ${msg}`);
+    const _msg = e instanceof Error ? e.message : String(e);
   }
 }

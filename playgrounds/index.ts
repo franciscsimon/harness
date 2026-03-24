@@ -1,6 +1,6 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { mkdirSync, existsSync, rmSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // ─── Playgrounds Extension ────────────────────────────────────────
 // Isolated sandbox for experimentation without affecting production.
@@ -20,12 +20,13 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand("playground", {
     description: "Create isolated sandbox for experimentation",
-    getArgumentCompletions: (prefix: string) => [
-      { value: "new", label: "new [name] — Create a new playground" },
-      { value: "list", label: "list — Show existing playgrounds" },
-      { value: "clean", label: "clean — Delete all playgrounds" },
-      { value: "use", label: "use <name> — Tell agent to work in a playground" },
-    ].filter((i) => i.value.startsWith(prefix)),
+    getArgumentCompletions: (prefix: string) =>
+      [
+        { value: "new", label: "new [name] — Create a new playground" },
+        { value: "list", label: "list — Show existing playgrounds" },
+        { value: "clean", label: "clean — Delete all playgrounds" },
+        { value: "use", label: "use <name> — Tell agent to work in a playground" },
+      ].filter((i) => i.value.startsWith(prefix)),
     handler: async (args, ctx) => {
       const parts = args?.trim().split(/\s+/) ?? ["new"];
       const cmd = parts[0] ?? "new";
@@ -57,23 +58,34 @@ export default function (pi: ExtensionAPI) {
 
       if (cmd === "use") {
         const name = parts[1];
-        if (!name) { ctx.ui.notify("Usage: /playground use <name>", "error"); return; }
+        if (!name) {
+          ctx.ui.notify("Usage: /playground use <name>", "error");
+          return;
+        }
         const dir = join(playgroundDir, name);
-        if (!existsSync(dir)) { ctx.ui.notify(`Playground "${name}" doesn't exist. Use /playground new.`, "error"); return; }
+        if (!existsSync(dir)) {
+          ctx.ui.notify(`Playground "${name}" doesn't exist. Use /playground new.`, "error");
+          return;
+        }
         ctx.ui.setStatus("playground", `🏖️ ${name}`);
-        pi.sendUserMessage(
-          `Switch to playground: ${dir}\nExperiment here. Don't modify the main codebase.`,
-          { deliverAs: "followUp" },
-        );
+        pi.sendUserMessage(`Switch to playground: ${dir}\nExperiment here. Don't modify the main codebase.`, {
+          deliverAs: "followUp",
+        });
         return;
       }
 
       if (cmd === "list") {
-        if (!existsSync(playgroundDir)) { ctx.ui.notify("No playgrounds. Use /playground new.", "info"); return; }
+        if (!existsSync(playgroundDir)) {
+          ctx.ui.notify("No playgrounds. Use /playground new.", "info");
+          return;
+        }
         const dirs = readdirSync(playgroundDir, { withFileTypes: true })
           .filter((d) => d.isDirectory())
           .map((d) => `  🏖️ ${d.name}`);
-        if (dirs.length === 0) { ctx.ui.notify("No playgrounds.", "info"); return; }
+        if (dirs.length === 0) {
+          ctx.ui.notify("No playgrounds.", "info");
+          return;
+        }
         ctx.ui.notify(`🏖️ Playgrounds:\n${dirs.join("\n")}\n\nDir: ${playgroundDir}`, "info");
         return;
       }

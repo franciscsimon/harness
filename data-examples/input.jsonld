@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:a015fb65-44e3-4dd5-a57b-1407c6ec5d6c",
-      "@type": [
-        "ev:Input"
-      ],
+      "@type": ["ev:Input"],
       "ev:eventName": [
         {
           "@value": "input"
@@ -84,9 +82,7 @@
     },
     {
       "@id": "_:env_a015fb65-44e3-4dd5-a57b-1407c6ec5d6c",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

@@ -23,10 +23,7 @@ export default function (pi: ExtensionAPI) {
 
     for (const re of PROTECTED) {
       if (re.test(path)) {
-        const ok = await ctx.ui.confirm(
-          "🛡️ Protected path",
-          `Writing to "${path}" is restricted. Allow?`,
-        );
+        const ok = await ctx.ui.confirm("🛡️ Protected path", `Writing to "${path}" is restricted. Allow?`);
         if (!ok) return { block: true, reason: `Blocked: ${path} is protected` };
         break;
       }

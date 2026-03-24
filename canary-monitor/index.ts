@@ -1,12 +1,12 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { loadCanaryConfig } from "./config.ts";
 import {
-  computeToolFailureRate,
-  computeTurnInflation,
   computeContextBloat,
-  detectRetryStorm,
   computeDuration,
   computeToolDensity,
+  computeToolFailureRate,
+  computeTurnInflation,
+  detectRetryStorm,
 } from "./metrics.ts";
 
 // ─── Canary Monitor Extension ─────────────────────────────────────
@@ -23,7 +23,7 @@ export default function (pi: ExtensionAPI) {
   let toolsInCurrentTurn = 0;
   let agentStartTs = 0;
   let lastPayloadBytes = 0;
-  let notifiedThisTurn = new Set<string>();
+  const notifiedThisTurn = new Set<string>();
 
   function reset() {
     toolEndEvents = [];

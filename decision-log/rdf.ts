@@ -1,5 +1,5 @@
-import type { DecisionRecord } from "./types.ts";
 import { JSONLD_CONTEXT, piId, piRef, xsdLong } from "../lib/jsonld/context.ts";
+import type { DecisionRecord } from "./types.ts";
 
 /**
  * Build JSON-LD for a decision record.

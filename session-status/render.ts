@@ -2,16 +2,20 @@
 // Formats a StatusReport into themed lines for ctx.ui.setWidget().
 
 import type { Theme } from "@mariozechner/pi-coding-agent";
-import type { StatusReport, CheckResult, Status } from "./checks.ts";
+import type { CheckResult, Status, StatusReport } from "./checks.ts";
 
 // ── Icon mapping ──────────────────────────────────────────────
 
 function icon(status: Status, theme: Theme): string {
   switch (status) {
-    case "ok": return theme.fg("success", "✓");
-    case "warn": return theme.fg("warning", "~");
-    case "fail": return theme.fg("error", "✗");
-    case "skip": return theme.fg("dim", "·");
+    case "ok":
+      return theme.fg("success", "✓");
+    case "warn":
+      return theme.fg("warning", "~");
+    case "fail":
+      return theme.fg("error", "✗");
+    case "skip":
+      return theme.fg("dim", "·");
   }
 }
 
@@ -69,7 +73,9 @@ export function renderWidget(report: StatusReport, theme: Theme): string[] {
 
   // Docker status
   if (report.docker.status !== "ok") {
-    lines.push(`  ${icon(report.docker.status, theme)} ${theme.fg("error", "Docker not running")} ${theme.fg("dim", "— infra checks skipped")}`);
+    lines.push(
+      `  ${icon(report.docker.status, theme)} ${theme.fg("error", "Docker not running")} ${theme.fg("dim", "— infra checks skipped")}`,
+    );
   } else {
     lines.push(compactGroup("Infra", report.infrastructure, theme));
     lines.push(compactGroup("Apps", report.appServices, theme));

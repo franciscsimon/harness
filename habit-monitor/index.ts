@@ -1,12 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { loadHabitConfig } from "./config.ts";
-import {
-  checkCommitHabit,
-  checkTestHabit,
-  checkErrorStreak,
-  checkScopeCreep,
-  checkFreshStart,
-} from "./habits.ts";
+import { checkCommitHabit, checkErrorStreak, checkFreshStart, checkScopeCreep, checkTestHabit } from "./habits.ts";
 
 // ─── Habit Monitor Extension ──────────────────────────────────────
 // Detects behavioral patterns and surfaces corrective prompts.
@@ -15,13 +9,13 @@ export default function (pi: ExtensionAPI) {
   const config = loadHabitConfig();
 
   // ── In-memory state for current session ──
-  let toolNames: string[] = [];           // All tool names in execution order
-  let bashCommands: string[] = [];        // All bash commands
-  let recentErrors: boolean[] = [];       // is_error sequence
-  let touchedFiles: string[] = [];        // File paths from Write/Edit tools
+  let toolNames: string[] = []; // All tool names in execution order
+  let bashCommands: string[] = []; // All bash commands
+  let recentErrors: boolean[] = []; // is_error sequence
+  let touchedFiles: string[] = []; // File paths from Write/Edit tools
   let lastPayloadBytes = 0;
   let snoozedUntil: Record<string, number> = {};
-  let notifiedThisRun = new Set<string>();
+  const notifiedThisRun = new Set<string>();
   let errorStreakActive = false;
   let freshStartActive = false;
 
@@ -63,8 +57,8 @@ export default function (pi: ExtensionAPI) {
     if (errorStreakActive && config.enabled["error-streak"] && !isSnoozed("error-streak")) {
       injections.push(
         "IMPORTANT: Multiple consecutive tool errors were detected. " +
-        "Before proceeding, stop and re-read the error messages carefully. " +
-        "What assumption is wrong? Consider a different approach."
+          "Before proceeding, stop and re-read the error messages carefully. " +
+          "What assumption is wrong? Consider a different approach.",
       );
       errorStreakActive = false; // Don't inject repeatedly
     }
@@ -73,15 +67,15 @@ export default function (pi: ExtensionAPI) {
       const kb = Math.round(lastPayloadBytes / 1024);
       injections.push(
         `IMPORTANT: Context is very large (${kb}KB). ` +
-        "Consider using /compact to reduce context or starting a fresh session. " +
-        "Large contexts reduce output quality and increase latency."
+          "Consider using /compact to reduce context or starting a fresh session. " +
+          "Large contexts reduce output quality and increase latency.",
       );
       freshStartActive = false;
     }
 
     if (injections.length > 0) {
       return {
-        systemPrompt: (event as any).systemPrompt + "\n\n---\n\n" + injections.join("\n\n"),
+        systemPrompt: `${(event as any).systemPrompt}\n\n---\n\n${injections.join("\n\n")}`,
       };
     }
   });

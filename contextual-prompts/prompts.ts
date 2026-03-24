@@ -4,7 +4,7 @@
 export interface ContextualPrompt {
   name: string;
   enabled: boolean;
-  cooldownTurns: number;     // Minimum turns between firings
+  cooldownTurns: number; // Minimum turns between firings
   text: string;
 }
 

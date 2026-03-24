@@ -17,11 +17,16 @@ const DETERMINISTIC_PATTERNS = [
 ];
 
 export default function (pi: ExtensionAPI) {
-  let repeatedCommands: Map<string, number> = new Map();
-  let notified = new Set<string>();
+  const repeatedCommands: Map<string, number> = new Map();
+  const notified = new Set<string>();
 
-  pi.on("session_start", async () => { repeatedCommands.clear(); notified.clear(); });
-  pi.on("agent_start", async () => { notified.clear(); });
+  pi.on("session_start", async () => {
+    repeatedCommands.clear();
+    notified.clear();
+  });
+  pi.on("agent_start", async () => {
+    notified.clear();
+  });
 
   pi.on("tool_call", async (event, ctx) => {
     const e = event as any;
@@ -29,7 +34,10 @@ export default function (pi: ExtensionAPI) {
     const cmd = String(e.input.command);
 
     // Track repeated commands (normalize by removing variable parts)
-    const normalized = cmd.replace(/[0-9a-f]{8,}/g, "ID").replace(/"[^"]*"/g, "STR").slice(0, 80);
+    const normalized = cmd
+      .replace(/[0-9a-f]{8,}/g, "ID")
+      .replace(/"[^"]*"/g, "STR")
+      .slice(0, 80);
     const count = (repeatedCommands.get(normalized) ?? 0) + 1;
     repeatedCommands.set(normalized, count);
 
@@ -60,9 +68,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("offload", {
     description: "Show repeated commands that should be scripts",
     handler: async (_args, ctx) => {
-      const repeated = [...repeatedCommands.entries()]
-        .filter(([_, c]) => c >= 2)
-        .sort((a, b) => b[1] - a[1]);
+      const repeated = [...repeatedCommands.entries()].filter(([_, c]) => c >= 2).sort((a, b) => b[1] - a[1]);
 
       if (repeated.length === 0) {
         ctx.ui.notify("⚙️ No repeated command patterns detected yet.", "info");

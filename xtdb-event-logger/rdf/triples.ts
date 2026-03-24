@@ -1,7 +1,7 @@
 import { DataFactory } from "n3";
-import type { NormalizedEvent } from "../types.ts";
 import { getEnvironmentMeta } from "../env.ts";
-import { EV, RDF, XSD, SCHEMA } from "./namespaces.ts";
+import type { NormalizedEvent } from "../types.ts";
+import { EV, RDF, SCHEMA, XSD } from "./namespaces.ts";
 
 const { namedNode, literal, blankNode, triple } = DataFactory;
 

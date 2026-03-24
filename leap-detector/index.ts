@@ -10,8 +10,8 @@ const MAX_FILES_WITHOUT_TEST = 3;
 
 export default function (pi: ExtensionAPI) {
   let editsSinceVerify = 0;
-  let filesSinceTest = new Set<string>();
-  let notified = new Set<string>();
+  const filesSinceTest = new Set<string>();
+  const notified = new Set<string>();
 
   function reset() {
     editsSinceVerify = 0;
@@ -19,8 +19,12 @@ export default function (pi: ExtensionAPI) {
     notified.clear();
   }
 
-  pi.on("session_start", async () => { reset(); });
-  pi.on("agent_start", async () => { notified.clear(); });
+  pi.on("session_start", async () => {
+    reset();
+  });
+  pi.on("agent_start", async () => {
+    notified.clear();
+  });
 
   pi.on("tool_call", async (event, ctx) => {
     const e = event as any;
@@ -50,9 +54,16 @@ export default function (pi: ExtensionAPI) {
     // Reset counter on verification commands
     if (e.toolName === "bash" && e.input?.command) {
       const cmd = e.input.command.toLowerCase();
-      if (cmd.includes("test") || cmd.includes("lint") || cmd.includes("build") ||
-          cmd.includes("tsc") || cmd.includes("check") || cmd.includes("vitest") ||
-          cmd.includes("jest") || cmd.includes("npm run")) {
+      if (
+        cmd.includes("test") ||
+        cmd.includes("lint") ||
+        cmd.includes("build") ||
+        cmd.includes("tsc") ||
+        cmd.includes("check") ||
+        cmd.includes("vitest") ||
+        cmd.includes("jest") ||
+        cmd.includes("npm run")
+      ) {
         editsSinceVerify = 0;
         filesSinceTest.clear();
         notified.clear();
@@ -64,7 +75,8 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event) => {
     if (editsSinceVerify >= MAX_EDITS_WITHOUT_VERIFY) {
       return {
-        systemPrompt: (event as any).systemPrompt +
+        systemPrompt:
+          (event as any).systemPrompt +
           "\n\nIMPORTANT: You have made multiple file changes without verification. " +
           "Run tests, linting, or build before making more changes.",
       };

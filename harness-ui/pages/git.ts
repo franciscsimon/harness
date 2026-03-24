@@ -1,8 +1,8 @@
-import { layout } from "../components/layout.ts";
 import { execSync } from "node:child_process";
+import { layout } from "../components/layout.ts";
 
 export async function renderGitRepos(projectId?: string): Promise<string> {
-  let repos: { name: string; description: string; isPrivate: boolean; defaultBranch: string }[] = [];
+  const repos: { name: string; description: string; isPrivate: boolean; defaultBranch: string }[] = [];
 
   try {
     const sshHost = process.env.SOFT_SERVE_HOST ?? "localhost";
@@ -26,11 +26,13 @@ export async function renderGitRepos(projectId?: string): Promise<string> {
         repos.push({ name, description: "", isPrivate: false, defaultBranch: "main" });
       }
     }
-  } catch (e) {
+  } catch (_e) {
     // Soft Serve unreachable
   }
 
-  const rows = repos.map(r => `
+  const rows = repos
+    .map(
+      (r) => `
     <tr>
       <td><a href="${projectId ? `/projects/${projectId}/git/${r.name}` : `/git/${r.name}`}" style="font-weight:600;color:#58a6ff;text-decoration:none">${r.name}</a></td>
       <td>${r.description || "<span style='color:#484f58'>—</span>"}</td>
@@ -40,15 +42,18 @@ export async function renderGitRepos(projectId?: string): Promise<string> {
         <code style="font-size:0.8rem">ssh://soft-serve:23231/${r.name}</code> <span style="font-size:0.7rem;color:#8b949e">(Docker internal)</span>
       </td>
     </tr>
-  `).join("");
+  `,
+    )
+    .join("");
 
   const content = `
     <main class="container">
       <h1>🐙 Git Repositories</h1>
       <p style="color:#8b949e">Hosted on Soft Serve (SSH :23231, HTTP :23232)</p>
-      ${repos.length === 0
-        ? `<p class="empty-msg">No repositories found. Is Soft Serve running?</p>`
-        : `<table class="data-table">
+      ${
+        repos.length === 0
+          ? `<p class="empty-msg">No repositories found. Is Soft Serve running?</p>`
+          : `<table class="data-table">
             <thead><tr>
               <th>Repository</th><th>Description</th><th>Branch</th><th>Visibility</th><th>Clone URL</th>
             </tr></thead>
@@ -57,5 +62,10 @@ export async function renderGitRepos(projectId?: string): Promise<string> {
       }
     </main>`;
 
-  return layout(content, { title: "Git Repos", activePath: projectId ? `/projects/${projectId}/git` : "/git", projectId, activeSection: "git" });
+  return layout(content, {
+    title: "Git Repos",
+    activePath: projectId ? `/projects/${projectId}/git` : "/git",
+    projectId,
+    activeSection: "git",
+  });
 }

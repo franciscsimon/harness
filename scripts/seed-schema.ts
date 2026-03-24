@@ -573,11 +573,11 @@ async function seed() {
     port: XTDB_PORT,
     user: "xtdb",
     database: "xtdb",
-    onnotice: () => {},       // suppress XTDB warnings during seeding
+    onnotice: () => {}, // suppress XTDB warnings during seeding
   });
 
   const SEED_ID = "__schema_seed__";
-  let created = 0;
+  let _created = 0;
   let failed = 0;
 
   for (const def of schema) {
@@ -591,24 +591,27 @@ async function seed() {
     });
 
     // Quote reserved words (e.g. "position")
-    const RESERVED = new Set(["position", "type", "name", "status", "version", "source", "path", "url", "description", "tag"]);
-    const colList = cols.map(c => RESERVED.has(c) ? `"${c}"` : c).join(", ");
+    const RESERVED = new Set([
+      "position",
+      "type",
+      "name",
+      "status",
+      "version",
+      "source",
+      "path",
+      "url",
+      "description",
+      "tag",
+    ]);
+    const colList = cols.map((c) => (RESERVED.has(c) ? `"${c}"` : c)).join(", ");
     const placeholders = cols.map((_, i) => `$${i + 1}`).join(", ");
 
     try {
-      await sql.unsafe(
-        `INSERT INTO ${def.table} (${colList}) VALUES (${placeholders})`,
-        values
-      );
-      await sql.unsafe(
-        `DELETE FROM ${def.table} WHERE _id = $1`,
-        [sql.typed(SEED_ID as any, 25)]
-      );
-      created++;
-      console.log(`  ✓ ${def.table} (${cols.length} columns)`);
-    } catch (err: any) {
+      await sql.unsafe(`INSERT INTO ${def.table} (${colList}) VALUES (${placeholders})`, values);
+      await sql.unsafe(`DELETE FROM ${def.table} WHERE _id = $1`, [sql.typed(SEED_ID as any, 25)]);
+      _created++;
+    } catch (_err: any) {
       failed++;
-      console.error(`  ✗ ${def.table}: ${err.message?.split("\n")[0]}`);
     }
   }
 
@@ -632,19 +635,14 @@ async function seed() {
         sql.typed(BigInt(Date.now()) as any, 20),
         sql.typed(BigInt(0) as any, 20),
         sql.typed("active" as any, 25),
-      ]
+      ],
     );
-    console.log(`  ✓ Default project 'harness' seeded`);
-  } catch (err: any) {
-    console.error(`  ✗ Default project: ${err.message?.split("\n")[0]}`);
-  }
+  } catch (_err: any) {}
 
   await sql.end();
-  console.log(`\nDone: ${created} seeded, ${failed} failed, ${schema.length} total tables`);
   process.exit(failed > 0 ? 1 : 0);
 }
 
-seed().catch((err) => {
-  console.error("Fatal:", err);
+seed().catch((_err) => {
   process.exit(1);
 });

@@ -23,9 +23,22 @@ export async function checkPrimary(): Promise<ComponentHealth> {
   const pgwire = await exec(
     "docker",
     [
-      "run", "--rm", "--network", DOCKER_NETWORK, "postgres:16-alpine",
-      "psql", "-h", XTDB_PRIMARY_HOST, "-p", XTDB_PRIMARY_PORT, "-U", "xtdb", "-d", "xtdb",
-      "-Atqc", "SELECT 1",
+      "run",
+      "--rm",
+      "--network",
+      DOCKER_NETWORK,
+      "postgres:16-alpine",
+      "psql",
+      "-h",
+      XTDB_PRIMARY_HOST,
+      "-p",
+      XTDB_PRIMARY_PORT,
+      "-U",
+      "xtdb",
+      "-d",
+      "xtdb",
+      "-Atqc",
+      "SELECT 1",
     ],
     { timeout: 10_000 },
   );
@@ -43,11 +56,9 @@ export async function checkPrimary(): Promise<ComponentHealth> {
 }
 
 export async function checkReplica(): Promise<ComponentHealth> {
-  const container = await exec(
-    "docker",
-    ["inspect", "--format", "{{.State.Running}}", "xtdb-replica"],
-    { timeout: 5_000 },
-  );
+  const container = await exec("docker", ["inspect", "--format", "{{.State.Running}}", "xtdb-replica"], {
+    timeout: 5_000,
+  });
   const running = container.stdout.trim() === "true";
 
   if (!running) {
@@ -66,9 +77,22 @@ export async function checkReplica(): Promise<ComponentHealth> {
   const pgwire = await exec(
     "docker",
     [
-      "run", "--rm", "--network", DOCKER_NETWORK, "postgres:16-alpine",
-      "psql", "-h", XTDB_REPLICA_HOST, "-p", XTDB_REPLICA_PORT, "-U", "xtdb", "-d", "xtdb",
-      "-Atqc", "SELECT 1",
+      "run",
+      "--rm",
+      "--network",
+      DOCKER_NETWORK,
+      "postgres:16-alpine",
+      "psql",
+      "-h",
+      XTDB_REPLICA_HOST,
+      "-p",
+      XTDB_REPLICA_PORT,
+      "-U",
+      "xtdb",
+      "-d",
+      "xtdb",
+      "-Atqc",
+      "SELECT 1",
     ],
     { timeout: 10_000 },
   );
@@ -87,13 +111,8 @@ export async function checkReplica(): Promise<ComponentHealth> {
 }
 
 export async function checkRedpanda(): Promise<ComponentHealth> {
-  const result = await exec(
-    "docker",
-    ["exec", "redpanda", "rpk", "cluster", "health"],
-    { timeout: 10_000 },
-  );
-  const healthy =
-    result.stdout.includes("Healthy:") && result.stdout.includes("true");
+  const result = await exec("docker", ["exec", "redpanda", "rpk", "cluster", "health"], { timeout: 10_000 });
+  const healthy = result.stdout.includes("Healthy:") && result.stdout.includes("true");
 
   return {
     name: "redpanda",
@@ -107,20 +126,9 @@ export async function checkAll(): Promise<{
   overall: "healthy" | "degraded" | "unhealthy";
   components: ComponentHealth[];
 }> {
-  const [primary, replica, redpanda] = await Promise.all([
-    checkPrimary(),
-    checkReplica(),
-    checkRedpanda(),
-  ]);
+  const [primary, replica, redpanda] = await Promise.all([checkPrimary(), checkReplica(), checkRedpanda()]);
   const components = [redpanda, primary, replica];
-  const unhealthyCount = components.filter(
-    (c) => c.status !== "healthy",
-  ).length;
-  const overall =
-    unhealthyCount === 0
-      ? "healthy"
-      : unhealthyCount < 3
-        ? "degraded"
-        : "unhealthy";
+  const unhealthyCount = components.filter((c) => c.status !== "healthy").length;
+  const overall = unhealthyCount === 0 ? "healthy" : unhealthyCount < 3 ? "degraded" : "unhealthy";
   return { overall, components };
 }

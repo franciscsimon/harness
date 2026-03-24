@@ -10,11 +10,11 @@
 //
 // Triggered by: CI runner on test pass, manual API call from UI
 
-import { Hono } from "hono";
 import { serve } from "@hono/node-server";
+import { Hono } from "hono";
 import postgres from "postgres";
-import { runBuild, getCurrentBuild, type BuildRequest } from "./builder.ts";
-import { recordBuild, closeRecorder } from "./recorder.ts";
+import { type BuildRequest, getCurrentBuild, runBuild } from "./builder.ts";
+import { closeRecorder, recordBuild } from "./recorder.ts";
 
 const PORT = Number(process.env.PORT ?? "3339");
 const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
@@ -28,9 +28,14 @@ let lastBuildId: string | null = null;
 
 // Read-only connection for queries
 const sql = postgres({
-  host: XTDB_HOST, port: XTDB_PORT,
-  database: "xtdb", user: "xtdb", password: "xtdb",
-  max: 2, idle_timeout: 30, connect_timeout: 5,
+  host: XTDB_HOST,
+  port: XTDB_PORT,
+  database: "xtdb",
+  user: "xtdb",
+  password: "xtdb",
+  max: 2,
+  idle_timeout: 30,
+  connect_timeout: 5,
 });
 
 // ─── Health ──────────────────────────────────────────────────────
@@ -91,12 +96,10 @@ app.post("/api/build", async (c) => {
           }),
           signal: AbortSignal.timeout(5000),
         });
-      } catch { /* intentionally silent — notification is best-effort */ }
-
-      console.log(`[server] Build complete: ${result.id} (${result.status})`);
-    } catch (err: any) {
-      console.error(`[server] Build failed:`, err.message);
-    }
+      } catch {
+        /* intentionally silent — notification is best-effort */
+      }
+    } catch (_err: any) {}
   })();
 
   // Don't await — return immediately
@@ -115,8 +118,7 @@ app.get("/api/builds", async (c) => {
       FROM builds ORDER BY ts DESC LIMIT 100
     `;
     return c.json(rows);
-  } catch (err: any) {
-    console.error("[server] Failed to fetch builds:", err.message);
+  } catch (_err: any) {
     return c.json([]);
   }
 });
@@ -135,21 +137,15 @@ app.get("/api/builds/:id", async (c) => {
     if (rows.length === 0) return c.json({ error: "Build not found" }, 404);
     return c.json(rows[0]);
   } catch (err: any) {
-    console.error("[server] Failed to fetch build:", err.message);
     return c.json({ error: err.message }, 500);
   }
 });
 
 // ─── Start ───────────────────────────────────────────────────────
 
-serve({ fetch: app.fetch, port: PORT }, () => {
-  console.log(`✅ Build service listening on :${PORT}`);
-  console.log(`   XTDB:     ${XTDB_HOST}:${XTDB_PORT}`);
-  console.log(`   Registry: ${process.env.REGISTRY ?? "localhost:5050"}`);
-});
+serve({ fetch: app.fetch, port: PORT }, () => {});
 
 process.on("SIGTERM", async () => {
-  console.log("[server] Shutting down...");
   await closeRecorder();
   await sql.end();
   process.exit(0);

@@ -1,8 +1,7 @@
+import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
-import { JSONLD_CONTEXT, piId } from "../lib/jsonld/context.ts";
-import { randomUUID } from "node:crypto";
 
 const VALID_PHASES = ["planning", "active", "maintenance", "deprecated", "decommissioned"] as const;
 type Phase = (typeof VALID_PHASES)[number];
@@ -19,9 +18,8 @@ async function db(): Promise<Sql | null> {
       sql = connectXtdb();
       const ok = await ensureConnected(sql);
       if (!ok) throw new Error("connection check failed");
-    } catch (err) {
+    } catch (_err) {
       sql = null;
-      console.error(`[project-lifecycle] XTDB connection failed: ${err}`);
       return null;
     }
   }
@@ -39,10 +37,16 @@ export default function (pi: ExtensionAPI) {
     description: "Show current project lifecycle status",
     handler: async (_args, ctx) => {
       const conn = await db();
-      if (!conn) { ctx.ui.notify("XTDB not available", "error"); return; }
+      if (!conn) {
+        ctx.ui.notify("XTDB not available", "error");
+        return;
+      }
 
       const projectId = getCurrentProjectId();
-      if (!projectId) { ctx.ui.notify("No current project detected.", "error"); return; }
+      if (!projectId) {
+        ctx.ui.notify("No current project detected.", "error");
+        return;
+      }
 
       let rows: any[];
       try {
@@ -71,7 +75,8 @@ export default function (pi: ExtensionAPI) {
 
       // Last 5 lifecycle events
       try {
-        const events = await conn`SELECT * FROM lifecycle_events WHERE project_id = ${t(conn, projectId)} ORDER BY ts DESC LIMIT 5`;
+        const events =
+          await conn`SELECT * FROM lifecycle_events WHERE project_id = ${t(conn, projectId)} ORDER BY ts DESC LIMIT 5`;
         if (events.length > 0) {
           output += `\n### Recent Lifecycle Events\n\n`;
           output += `| Event | Summary | Time |\n|---|---|---|\n`;
@@ -93,10 +98,16 @@ export default function (pi: ExtensionAPI) {
     description: "Change project lifecycle phase (planning | active | maintenance | deprecated | decommissioned)",
     handler: async (args, ctx) => {
       const conn = await db();
-      if (!conn) { ctx.ui.notify("XTDB not available", "error"); return; }
+      if (!conn) {
+        ctx.ui.notify("XTDB not available", "error");
+        return;
+      }
 
       const projectId = getCurrentProjectId();
-      if (!projectId) { ctx.ui.notify("No current project detected.", "error"); return; }
+      if (!projectId) {
+        ctx.ui.notify("No current project detected.", "error");
+        return;
+      }
 
       const newPhase = (args ?? "").trim().toLowerCase();
       if (!VALID_PHASES.includes(newPhase as Phase)) {
@@ -149,9 +160,7 @@ export default function (pi: ExtensionAPI) {
         const levId = `lev:${randomUUID()}`;
         await conn`INSERT INTO lifecycle_events (_id, event_type, entity_id, entity_type, project_id, summary, ts)
           VALUES (${t(conn, levId)}, ${t(conn, "phase_changed")}, ${t(conn, projectId)}, ${t(conn, "projects")}, ${t(conn, projectId)}, ${t(conn, `Phase changed from ${oldPhase} to ${newPhase}`)}, ${n(conn, Date.now())})`;
-      } catch (err) {
-        console.error(`[project-lifecycle] Failed to emit lifecycle event: ${err}`);
-      }
+      } catch (_err) {}
 
       ctx.ui.notify(`✅ Phase changed: ${oldPhase} → ${newPhase}`, "info");
     },
@@ -162,10 +171,16 @@ export default function (pi: ExtensionAPI) {
     description: "Show or set project config (usage: /project config [key] [value])",
     handler: async (args, ctx) => {
       const conn = await db();
-      if (!conn) { ctx.ui.notify("XTDB not available", "error"); return; }
+      if (!conn) {
+        ctx.ui.notify("XTDB not available", "error");
+        return;
+      }
 
       const projectId = getCurrentProjectId();
-      if (!projectId) { ctx.ui.notify("No current project detected.", "error"); return; }
+      if (!projectId) {
+        ctx.ui.notify("No current project detected.", "error");
+        return;
+      }
 
       // Read existing project record
       let rows: any[];
@@ -213,7 +228,11 @@ export default function (pi: ExtensionAPI) {
 
       // Key + value: set it
       let parsed: any = value;
-      try { parsed = JSON.parse(value); } catch { /* keep as string */ }
+      try {
+        parsed = JSON.parse(value);
+      } catch {
+        /* keep as string */
+      }
       config[key] = parsed;
 
       const updatedJson = JSON.stringify(config);
@@ -241,8 +260,12 @@ export default function (pi: ExtensionAPI) {
   // ── /project deps ──
   pi.registerCommand("project deps", {
     description: "Manage project dependencies (usage: /project deps [add|remove|list] [name] [version])",
-    schema: Type.Object({ action: Type.Optional(Type.String()), name: Type.Optional(Type.String()), version: Type.Optional(Type.String()) }),
-    handler: async (args, ctx) => {
+    schema: Type.Object({
+      action: Type.Optional(Type.String()),
+      name: Type.Optional(Type.String()),
+      version: Type.Optional(Type.String()),
+    }),
+    handler: async (args, _ctx) => {
       const conn = await db();
       if (!conn) return { content: [{ type: "text" as const, text: "XTDB not available" }] };
 
@@ -301,7 +324,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("project tag", {
     description: "Manage project tags (usage: /project tag [add|remove|list] [tag])",
     schema: Type.Object({ action: Type.Optional(Type.String()), tag: Type.Optional(Type.String()) }),
-    handler: async (args, ctx) => {
+    handler: async (args, _ctx) => {
       const conn = await db();
       if (!conn) return { content: [{ type: "text" as const, text: "XTDB not available" }] };
 
@@ -353,8 +376,11 @@ export default function (pi: ExtensionAPI) {
   // ── /project decommission ──
   pi.registerCommand("project decommission", {
     description: "Decommission a project (archive data, set phase, record decommission)",
-    schema: Type.Object({ confirm: Type.Optional(Type.Boolean({ default: false })), reason: Type.Optional(Type.String()) }),
-    handler: async (args, ctx) => {
+    schema: Type.Object({
+      confirm: Type.Optional(Type.Boolean({ default: false })),
+      reason: Type.Optional(Type.String()),
+    }),
+    handler: async (args, _ctx) => {
       const conn = await db();
       if (!conn) return { content: [{ type: "text" as const, text: "XTDB not available" }] };
 
@@ -411,7 +437,9 @@ export default function (pi: ExtensionAPI) {
         await conn`INSERT INTO decommission_records (_id, project_id, reason, decommissioned_by, checklist_json, ts, jsonld)
           VALUES (${t(conn, decomId)}, ${t(conn, projectId)}, ${t(conn, reason)}, ${t(conn, "pi-agent")}, ${t(conn, "{}")}, ${n(conn, Date.now())}, ${t(conn, "{}")})`;
       } catch (err) {
-        return { content: [{ type: "text" as const, text: `Phase updated but failed to record decommission: ${err}` }] };
+        return {
+          content: [{ type: "text" as const, text: `Phase updated but failed to record decommission: ${err}` }],
+        };
       }
 
       // Emit lifecycle event
@@ -419,18 +447,27 @@ export default function (pi: ExtensionAPI) {
         const levId = `lev:${randomUUID()}`;
         await conn`INSERT INTO lifecycle_events (_id, event_type, entity_id, entity_type, project_id, summary, ts)
           VALUES (${t(conn, levId)}, ${t(conn, "project_decommissioned")}, ${t(conn, projectId)}, ${t(conn, "projects")}, ${t(conn, projectId)}, ${t(conn, `Project decommissioned. Reason: ${reason}`)}, ${n(conn, Date.now())})`;
-      } catch (err) {
-        console.error(`[project-lifecycle] Failed to emit lifecycle event: ${err}`);
-      }
+      } catch (_err) {}
 
-      return { content: [{ type: "text" as const, text: `✅ Project **${projectId}** has been decommissioned.\n\n**Reason:** ${reason}\n**Record:** ${decomId}` }] };
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `✅ Project **${projectId}** has been decommissioned.\n\n**Reason:** ${reason}\n**Record:** ${decomId}`,
+          },
+        ],
+      };
     },
   });
 
   // Cleanup on shutdown
   pi.on("session_shutdown", async () => {
     if (sql) {
-      try { await sql.end(); } catch { /* cleanup — safe to ignore */ }
+      try {
+        await sql.end();
+      } catch {
+        /* cleanup — safe to ignore */
+      }
       sql = null;
     }
   });

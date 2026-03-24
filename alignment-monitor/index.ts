@@ -1,6 +1,6 @@
+import { dirname } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { dirname } from "node:path";
 
 // ─── Alignment Monitor Extension ──────────────────────────────────
 // Detects when the agent drifts from the user's original intent.
@@ -9,9 +9,9 @@ import { dirname } from "node:path";
 
 export default function (pi: ExtensionAPI) {
   let originalPrompt = "";
-  let mentionedPaths: Set<string> = new Set();
-  let touchedPaths: Set<string> = new Set();
-  let touchedDirs: Set<string> = new Set();
+  const mentionedPaths: Set<string> = new Set();
+  const touchedPaths: Set<string> = new Set();
+  const touchedDirs: Set<string> = new Set();
   let notifiedDrift = false;
   let turnIndex = 0;
 
@@ -28,7 +28,7 @@ export default function (pi: ExtensionAPI) {
   function extractPaths(text: string): string[] {
     const paths: string[] = [];
     // Match common file path patterns
-    const matches = text.match(/[\.\/~][a-zA-Z0-9_\-\.\/]+\.[a-zA-Z]{1,10}/g) ?? [];
+    const matches = text.match(/[./~][a-zA-Z0-9_\-./]+\.[a-zA-Z]{1,10}/g) ?? [];
     for (const m of matches) {
       paths.push(m);
       paths.push(dirname(m));
@@ -43,7 +43,9 @@ export default function (pi: ExtensionAPI) {
     return paths;
   }
 
-  pi.on("session_start", async () => { reset(); });
+  pi.on("session_start", async () => {
+    reset();
+  });
 
   // ── Capture the original prompt ──
   pi.on("before_agent_start", async (event) => {
@@ -55,7 +57,9 @@ export default function (pi: ExtensionAPI) {
     }
   });
 
-  pi.on("turn_start", async () => { turnIndex++; });
+  pi.on("turn_start", async () => {
+    turnIndex++;
+  });
 
   // ── Track what the agent touches ──
   pi.on("tool_call", async (event, ctx) => {
@@ -69,16 +73,14 @@ export default function (pi: ExtensionAPI) {
       // Check for drift: touching files in directories not mentioned in the original prompt
       if (turnIndex > 2 && mentionedPaths.size > 0 && !notifiedDrift) {
         const dir = dirname(path);
-        const relatedToOriginal = [...mentionedPaths].some((mp) =>
-          path.includes(mp) || mp.includes(dir) || dir.includes(dirname(mp))
+        const relatedToOriginal = [...mentionedPaths].some(
+          (mp) => path.includes(mp) || mp.includes(dir) || dir.includes(dirname(mp)),
         );
 
         if (!relatedToOriginal) {
           // Count how many unrelated paths we've touched
-          const unrelated = [...touchedPaths].filter((tp) =>
-            ![...mentionedPaths].some((mp) =>
-              tp.includes(mp) || mp.includes(dirname(tp))
-            )
+          const unrelated = [...touchedPaths].filter(
+            (tp) => ![...mentionedPaths].some((mp) => tp.includes(mp) || mp.includes(dirname(tp))),
           );
 
           if (unrelated.length >= 3) {
@@ -122,10 +124,8 @@ export default function (pi: ExtensionAPI) {
 
       const mentioned = [...mentionedPaths].filter((p) => !p.includes(".")).slice(0, 10);
       const touched = [...touchedPaths].slice(0, 15);
-      const unrelated = touched.filter((tp) =>
-        ![...mentionedPaths].some((mp) =>
-          tp.includes(mp) || mp.includes(dirname(tp))
-        )
+      const unrelated = touched.filter(
+        (tp) => ![...mentionedPaths].some((mp) => tp.includes(mp) || mp.includes(dirname(tp))),
       );
 
       const report = [
@@ -154,18 +154,22 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "check_alignment",
     label: "Check Alignment",
-    description: "Compare what the agent has done vs the original user request. Reports files touched, drift from scope.",
+    description:
+      "Compare what the agent has done vs the original user request. Reports files touched, drift from scope.",
     promptSnippet: "Check if current work aligns with the user's original request",
-    promptGuidelines: ["Use check_alignment periodically during complex tasks to verify you haven't drifted from the goal."],
+    promptGuidelines: [
+      "Use check_alignment periodically during complex tasks to verify you haven't drifted from the goal.",
+    ],
     parameters: Type.Object({}),
-    async execute(_tid: any, _p: any, _s: any, _u: any, ctx: any) {
-      const mentioned = [...mentionedPaths].filter((p: string) => !p.includes(".")).slice(0, 10);
+    async execute(_tid: any, _p: any, _s: any, _u: any, _ctx: any) {
+      const _mentioned = [...mentionedPaths].filter((p: string) => !p.includes(".")).slice(0, 10);
       const touched = [...touchedPaths].slice(0, 15);
-      const unrelated = touched.filter((tp: string) => ![...mentionedPaths].some((mp: string) => tp.includes(mp) || mp.includes(dirname(tp))));
+      const unrelated = touched.filter(
+        (tp: string) => ![...mentionedPaths].some((mp: string) => tp.includes(mp) || mp.includes(dirname(tp))),
+      );
       const status = unrelated.length > 0 ? "⚠️ Possible drift" : "✅ On track";
-      const report = `${status}\nOriginal: "${originalPrompt.slice(0, 150)}"\nFiles touched: ${touched.length}\nUnrelated: ${unrelated.length}${unrelated.length > 0 ? "\n  " + unrelated.slice(0, 5).join("\n  ") : ""}`;
+      const report = `${status}\nOriginal: "${originalPrompt.slice(0, 150)}"\nFiles touched: ${touched.length}\nUnrelated: ${unrelated.length}${unrelated.length > 0 ? `\n  ${unrelated.slice(0, 5).join("\n  ")}` : ""}`;
       return { content: [{ type: "text", text: report }], details: { unrelated: unrelated.length } };
     },
   });
-
 }

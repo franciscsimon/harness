@@ -2,7 +2,7 @@
 // All internal links should use these to respect project scoping.
 
 export function projectUrl(projectId: string | undefined, section: string, ...rest: string[]): string {
-  const suffix = rest.length ? "/" + rest.join("/") : "";
+  const suffix = rest.length ? `/${rest.join("/")}` : "";
   if (projectId) {
     return `/projects/${encodeURIComponent(projectId)}/${section}${suffix}`;
   }

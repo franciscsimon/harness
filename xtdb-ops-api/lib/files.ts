@@ -1,10 +1,8 @@
-import { readdir, stat, unlink } from "node:fs/promises";
 import { createReadStream, type ReadStream } from "node:fs";
+import { readdir, stat, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
-const BACKUP_DIR =
-  process.env.BACKUP_DIR ??
-  join(process.env.HOME ?? "/Users/opunix", "backups", "xtdb");
+const BACKUP_DIR = process.env.BACKUP_DIR ?? join(process.env.HOME ?? "/Users/opunix", "backups", "xtdb");
 
 export interface BackupFile {
   filename: string;
@@ -42,9 +40,7 @@ export async function listBackups(): Promise<BackupFile[]> {
         modifiedAt: info.mtime.toISOString(),
         type: name.startsWith("csv-") ? "csv" : name.startsWith("snapshot-") ? "snapshot" : "unknown",
       });
-    } catch {
-      continue;
-    }
+    } catch {}
   }
   return files.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
 }
@@ -66,9 +62,7 @@ export async function deleteBackup(filename: string): Promise<boolean> {
   }
 }
 
-export function createDownloadStream(
-  filename: string,
-): { stream: ReadStream; path: string } | null {
+export function createDownloadStream(filename: string): { stream: ReadStream; path: string } | null {
   const path = getBackupPath(filename);
   if (!path) return null;
   return { stream: createReadStream(path), path };

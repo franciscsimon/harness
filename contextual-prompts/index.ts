@@ -1,7 +1,7 @@
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { DEFAULT_PROMPTS, type ContextualPrompt } from "./prompts.ts";
+import { type ContextualPrompt, DEFAULT_PROMPTS } from "./prompts.ts";
 
 // ─── Contextual Prompts Extension ─────────────────────────────────
 // Inject context-aware prompts based on what the agent is doing.
@@ -15,7 +15,7 @@ export default function (pi: ExtensionAPI) {
   let lastFiredTurn: Record<string, number> = {};
   let turnIndex = 0;
   let consecutiveEdits = 0;
-  let lastPayloadBytes = 0;
+  let _lastPayloadBytes = 0;
   let pendingInjections: string[] = [];
 
   // ── Load config ──
@@ -58,7 +58,7 @@ export default function (pi: ExtensionAPI) {
     loadConfig();
     turnIndex = 0;
     consecutiveEdits = 0;
-    lastPayloadBytes = 0;
+    _lastPayloadBytes = 0;
     lastFiredTurn = {};
     pendingInjections = [];
     const enabled = prompts.filter((p) => p.enabled).length;
@@ -128,7 +128,7 @@ export default function (pi: ExtensionAPI) {
     const e = event as any;
     if (e.payload) {
       const bytes = typeof e.payload === "string" ? e.payload.length : JSON.stringify(e.payload).length;
-      lastPayloadBytes = bytes;
+      _lastPayloadBytes = bytes;
 
       // P: concise-in-large-context — payload > 800KB (~20% of 1M token context window)
       if (bytes > 800_000) {
@@ -142,8 +142,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("context", async (event) => {
     if (pendingInjections.length === 0) return;
 
-    const injectionText = "💡 CONTEXTUAL GUIDANCE:\n" +
-      pendingInjections.map((t) => `• ${t}`).join("\n");
+    const injectionText = "💡 CONTEXTUAL GUIDANCE:\n" + pendingInjections.map((t) => `• ${t}`).join("\n");
 
     const messages = [...event.messages];
     messages.push({
@@ -203,7 +202,7 @@ export default function (pi: ExtensionAPI) {
         const name = parts[1];
         const cooldown = Number(parts[2]) || 3;
         const text = parts.slice(3).join(" ");
-        if (!name || !text) {
+        if (!(name && text)) {
           ctx.ui.notify("Usage: /prompts add <name> <cooldown> <text>", "error");
           return;
         }

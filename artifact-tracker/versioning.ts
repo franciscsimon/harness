@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { readFile, unlink, access } from "node:fs/promises";
+import { access, readFile, unlink } from "node:fs/promises";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
 import type { Sql } from "./db.js";
 import { typed, typedNum } from "./db.js";
-import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
 
 const versionCounters = new Map<string, number>();
 
@@ -15,10 +15,18 @@ function nextVersion(sessionId: string, path: string): number {
 }
 
 function buildVersionJsonLd(
-  verId: string, sessionId: string, absPath: string, relPath: string,
-  version: number, contentHash: string, sizeBytes: number,
-  operation: string, callId: string, now: number,
-  parentArtifactId: string, derivedFromId: string | null
+  verId: string,
+  sessionId: string,
+  absPath: string,
+  relPath: string,
+  version: number,
+  contentHash: string,
+  sizeBytes: number,
+  operation: string,
+  callId: string,
+  now: number,
+  parentArtifactId: string,
+  derivedFromId: string | null,
 ): string {
   const doc: Record<string, unknown> = {
     "@context": JSONLD_CONTEXT,
@@ -55,10 +63,15 @@ async function findPriorVersionId(db: Sql, absPath: string, sessionId: string): 
 }
 
 export async function captureVersion(
-  pi: ExtensionAPI, db: Sql, sessionId: string,
-  absPath: string, relPath: string,
-  operation: string, callId: string, now: number,
-  parentArtifactId: string
+  pi: ExtensionAPI,
+  db: Sql,
+  sessionId: string,
+  absPath: string,
+  relPath: string,
+  operation: string,
+  callId: string,
+  now: number,
+  parentArtifactId: string,
 ) {
   const t = (v: string | null) => typed(db, v);
   const n = (v: number | null) => typedNum(db, v);
@@ -77,8 +90,18 @@ export async function captureVersion(
     }
 
     const jsonld = buildVersionJsonLd(
-      verId, sessionId, absPath, relPath, version, contentHash,
-      content.length, operation, callId, now, parentArtifactId, derivedFromId
+      verId,
+      sessionId,
+      absPath,
+      relPath,
+      version,
+      contentHash,
+      content.length,
+      operation,
+      callId,
+      now,
+      parentArtifactId,
+      derivedFromId,
     );
 
     await db`INSERT INTO artifact_versions (
@@ -94,19 +117,25 @@ export async function captureVersion(
       await db`INSERT INTO artifact_cleanup (
         _id, session_id, path, relative_path, created_at
       ) VALUES (${t(cleanId)}, ${t(sessionId)}, ${t(absPath)}, ${t(relPath)}, ${n(now)})`;
-    } catch { /* already tracked */ }
-  } catch (err) {
-    console.error(`[artifact-tracker] version capture failed for ${relPath}: ${err}`);
+    } catch {
+      /* already tracked */
+    }
+  } catch (_err) {
     try {
       const content = await readFile(absPath, "utf-8").catch(() => null);
       if (content) {
         pi.appendEntry("session-artifact", {
-          path: absPath, relativePath: relPath, content,
+          path: absPath,
+          relativePath: relPath,
+          content,
           contentHash: createHash("sha256").update(content).digest("hex").slice(0, 16),
-          operation, ts: now,
+          operation,
+          ts: now,
         });
       }
-    } catch { /* last resort failed */ }
+    } catch {
+      /* last resort failed */
+    }
   }
 }
 
@@ -114,14 +143,16 @@ export async function cleanupArtifacts(db: Sql, sessionId: string) {
   try {
     const rows = await db`SELECT path, relative_path FROM artifact_cleanup WHERE session_id = ${sessionId}`;
     for (const row of rows) {
-      try { await access(row.path); await unlink(row.path); } catch { /* gone already */ }
+      try {
+        await access(row.path);
+        await unlink(row.path);
+      } catch {
+        /* gone already */
+      }
     }
     if (rows.length > 0) {
-      console.error(`[artifact-tracker] archived ${rows.length} artifact(s) — cleaned from disk`);
     }
-  } catch (err) {
-    console.error(`[artifact-tracker] cleanup query failed: ${err}`);
-  }
+  } catch (_err) {}
 }
 
 export function clearVersionState() {

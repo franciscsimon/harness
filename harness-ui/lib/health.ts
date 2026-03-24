@@ -2,10 +2,10 @@
 // Pure functions — no DB dependencies. Easy to test.
 
 export interface HealthInput {
-  errorRate: number;       // 0–1
-  turnCount: number;       // turns in session
+  errorRate: number; // 0–1
+  turnCount: number; // turns in session
   maxPayloadBytes: number; // peak provider_payload_bytes
-  durationMs: number;      // session duration
+  durationMs: number; // session duration
 }
 
 /**
@@ -17,7 +17,7 @@ export interface HealthInput {
  *   duration:   15%  (< 2min = 15 pts, 15min+ = 0 pts)
  */
 export function computeHealthScore(input: HealthInput): number {
-  const errorPts = Math.max(0, 40 - (input.errorRate * 80));
+  const errorPts = Math.max(0, 40 - input.errorRate * 80);
   const turnPts = Math.max(0, 25 - Math.max(0, input.turnCount - 3) * (25 / 7));
   const ctxPts = Math.max(0, 20 - (input.maxPayloadBytes / 400_000) * 20);
   const durPts = Math.max(0, 15 - (input.durationMs / 900_000) * 15);

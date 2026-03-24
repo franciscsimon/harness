@@ -42,17 +42,13 @@ export async function recordBuild(result: BuildResult): Promise<string> {
     "code:repo": result.repo,
     "code:commitHash": result.commit,
     "code:trigger": result.trigger,
-    "schema:actionStatus": result.status === "success"
-      ? "schema:CompletedActionStatus"
-      : "schema:FailedActionStatus",
-    "code:services": result.services.map(s => ({
+    "schema:actionStatus": result.status === "success" ? "schema:CompletedActionStatus" : "schema:FailedActionStatus",
+    "code:services": result.services.map((s) => ({
       "@type": "code:ServiceBuild",
       "schema:name": s.name,
       "oci:image": s.image,
       "oci:tags": s.tags,
-      "schema:actionStatus": s.status === "success"
-        ? "schema:CompletedActionStatus"
-        : "schema:FailedActionStatus",
+      "schema:actionStatus": s.status === "success" ? "schema:CompletedActionStatus" : "schema:FailedActionStatus",
       "code:durationMs": s.durationMs,
     })),
     "code:durationMs": result.durationMs,
@@ -68,12 +64,10 @@ export async function recordBuild(result: BuildResult): Promise<string> {
     ${t(result.id)}, ${t(result.repo)}, ${t(result.commit)},
     ${t(result.status)}, ${t(result.trigger)},
     ${n(result.services.length)},
-    ${n(result.services.filter(s => s.status === "success").length)},
-    ${n(result.services.filter(s => s.status === "failed").length)},
+    ${n(result.services.filter((s) => s.status === "success").length)},
+    ${n(result.services.filter((s) => s.status === "failed").length)},
     ${n(result.durationMs)}, ${n(now)}, ${t(jsonld)}, ${t(serviceResults)}
   )`;
-
-  console.log(`[recorder] Build ${result.id} recorded to XTDB`);
   return result.id;
 }
 

@@ -40,7 +40,7 @@ export default function (pi: ExtensionAPI) {
   // ── Trim tool results ──
   pi.on("tool_result", async (event) => {
     const limits = LIMITS[level];
-    if (!event.content || !Array.isArray(event.content)) return;
+    if (!(event.content && Array.isArray(event.content))) return;
 
     let modified = false;
     const newContent = event.content.map((item: any) => {
@@ -52,7 +52,8 @@ export default function (pi: ExtensionAPI) {
       // Apply character limit
       if (text.length > limits.maxToolResultChars) {
         const half = Math.floor(limits.maxToolResultChars / 2);
-        text = text.slice(0, half) +
+        text =
+          text.slice(0, half) +
           `\n\n... [${text.length - limits.maxToolResultChars} chars trimmed by noise-cancellation] ...\n\n` +
           text.slice(-half);
         modified = true;
@@ -63,7 +64,8 @@ export default function (pi: ExtensionAPI) {
         const lines = text.split("\n");
         if (lines.length > limits.maxBashLines) {
           const keep = Math.floor(limits.maxBashLines / 2);
-          text = lines.slice(0, keep).join("\n") +
+          text =
+            lines.slice(0, keep).join("\n") +
             `\n... [${lines.length - limits.maxBashLines} lines trimmed] ...\n` +
             lines.slice(-keep).join("\n");
           modified = true;
@@ -74,7 +76,8 @@ export default function (pi: ExtensionAPI) {
       if (event.toolName === "read") {
         const lines = text.split("\n");
         if (lines.length > limits.maxReadLines) {
-          text = lines.slice(0, limits.maxReadLines).join("\n") +
+          text =
+            lines.slice(0, limits.maxReadLines).join("\n") +
             `\n... [${lines.length - limits.maxReadLines} more lines trimmed] ...`;
           modified = true;
         }

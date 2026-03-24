@@ -13,11 +13,11 @@
 //   bun run ci-runner/runner.ts                  # run the queue watcher
 //   bun run ci-runner/runner.ts --once <jobfile> # run a single job
 
-import { watch, readdirSync, readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
 import { execSync, spawn } from "node:child_process";
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, watch, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { resolvePipelineJsonLd, resolveSteps } from "./pipeline.ts";
 import { type CIRunInput, recordCIRun } from "./recorder.ts";
-import { resolveSteps, resolvePipelineJsonLd } from "./pipeline.ts";
 
 // ─── Configuration ───────────────────────────────────────────────
 
@@ -25,7 +25,7 @@ const QUEUE_DIR = process.env.CI_QUEUE_DIR ?? join(process.env.HOME ?? "/tmp", "
 const WORK_DIR = process.env.CI_WORK_DIR ?? join(process.env.HOME ?? "/tmp", ".ci-runner", "work");
 const REPOS_DIR = process.env.SOFT_SERVE_DATA_PATH
   ? join(process.env.SOFT_SERVE_DATA_PATH, "repos")
-  : process.env.CI_REPOS_DIR ?? "";
+  : (process.env.CI_REPOS_DIR ?? "");
 const SOFT_SERVE_SSH = process.env.SOFT_SERVE_SSH ?? "ssh://localhost:23231";
 const POLL_INTERVAL_MS = Number(process.env.CI_POLL_MS ?? "2000");
 const DOCKER_TIMEOUT = Number(process.env.CI_DOCKER_TIMEOUT ?? "300"); // 5 min default
@@ -34,9 +34,9 @@ const DOCKER_TIMEOUT = Number(process.env.CI_DOCKER_TIMEOUT ?? "300"); // 5 min 
 
 export interface CIJob {
   id: string;
-  repo: string;        // repo name/path in Soft Serve
-  ref: string;         // refs/heads/main
-  commitHash: string;  // full SHA
+  repo: string; // repo name/path in Soft Serve
+  ref: string; // refs/heads/main
+  commitHash: string; // full SHA
   commitMessage?: string;
   pusher?: string;
   timestamp: number;
@@ -69,7 +69,9 @@ async function main() {
   // Single job mode
   if (process.argv.includes("--once")) {
     const jobFile = process.argv[process.argv.indexOf("--once") + 1];
-    if (!jobFile) { console.error("Usage: --once <jobfile>"); process.exit(1); }
+    if (!jobFile) {
+      process.exit(1);
+    }
     const job = JSON.parse(readFileSync(jobFile, "utf-8")) as CIJob;
     await runJob(job);
     return;
@@ -78,11 +80,6 @@ async function main() {
   // Queue watcher mode
   mkdirSync(QUEUE_DIR, { recursive: true });
   mkdirSync(WORK_DIR, { recursive: true });
-  console.log(`🏗️  CI Runner started`);
-  console.log(`   Queue: ${QUEUE_DIR}`);
-  console.log(`   Work:  ${WORK_DIR}`);
-  console.log(`   Repos: ${REPOS_DIR || "(will use git clone)"}`);
-  console.log(`   Polling every ${POLL_INTERVAL_MS}ms`);
 
   // Process any existing jobs
   await drainQueue();
@@ -92,7 +89,7 @@ async function main() {
 
   // Also use fs.watch for faster response
   try {
-    watch(QUEUE_DIR, async (eventType, filename) => {
+    watch(QUEUE_DIR, async (_eventType, filename) => {
       if (filename?.endsWith(".json")) {
         // Small delay to ensure file is fully written
         setTimeout(drainQueue, 100);
@@ -103,14 +100,22 @@ async function main() {
   }
 
   // Graceful shutdown
-  process.on("SIGTERM", () => { clearInterval(interval); process.exit(0); });
-  process.on("SIGINT", () => { clearInterval(interval); process.exit(0); });
+  process.on("SIGTERM", () => {
+    clearInterval(interval);
+    process.exit(0);
+  });
+  process.on("SIGINT", () => {
+    clearInterval(interval);
+    process.exit(0);
+  });
 }
 
 async function drainQueue() {
   let files: string[];
   try {
-    files = readdirSync(QUEUE_DIR).filter((f) => f.endsWith(".json")).sort();
+    files = readdirSync(QUEUE_DIR)
+      .filter((f) => f.endsWith(".json"))
+      .sort();
   } catch {
     return;
   }
@@ -133,7 +138,6 @@ async function drainQueue() {
     } catch (err) {
       runnerState.jobsFailed++;
       runnerState.currentJob = null;
-      console.error(`❌ Failed to process ${file}:`, err);
 
       // Record the failure to XTDB so it shows in the CI Runs page
       try {
@@ -146,19 +150,18 @@ async function drainQueue() {
           commitMessage: job.commitMessage,
           pusher: job.pusher,
           status: "error",
-          steps: [{
-            name: "runner-error",
-            status: "failed",
-            durationMs: 0,
-            exitCode: 1,
-            output: String(err),
-          }],
+          steps: [
+            {
+              name: "runner-error",
+              status: "failed",
+              durationMs: 0,
+              exitCode: 1,
+              output: String(err),
+            },
+          ],
           durationMs: 0,
         });
-        console.log(`   📝 Recorded error for ${job.repo}@${job.commitHash.slice(0, 8)}`);
-      } catch (recErr) {
-        console.error(`   ⚠️  Failed to record error:`, recErr);
-      }
+      } catch (_recErr) {}
 
       // Clean up .running file
       try {
@@ -172,7 +175,6 @@ async function drainQueue() {
 
 async function runJob(job: CIJob): Promise<void> {
   const startTime = Date.now();
-  console.log(`\n🔨 Job ${job.id}: ${job.repo}@${job.commitHash.slice(0, 8)}`);
 
   // 1. Prepare working directory
   const workDir = join(WORK_DIR, job.id);
@@ -185,23 +187,19 @@ async function runJob(job: CIJob): Promise<void> {
     // 3. Resolve pipeline steps (from .ci.jsonld or auto-detect)
     const steps = await resolveSteps(workDir);
     const pipelineJsonLd = resolvePipelineJsonLd(workDir, job.repo);
-    console.log(`   ${steps.length} step(s) to run`);
 
     // 4. Execute each step
     const results: StepResult[] = [];
     let failed = false;
 
     for (const step of steps) {
-      console.log(`   ▶ ${step.name} (${step.image})`);
       const result = await executeStep(step, workDir, job);
       results.push(result);
 
       if (result.exitCode !== 0) {
-        console.log(`   ✗ ${step.name} failed (exit ${result.exitCode})`);
         failed = true;
         break; // Stop on first failure
       } else {
-        console.log(`   ✓ ${step.name} (${result.durationMs}ms)`);
       }
     }
 
@@ -219,7 +217,7 @@ async function runJob(job: CIJob): Promise<void> {
         status: r.exitCode === 0 ? "passed" : "failed",
         durationMs: r.durationMs,
         exitCode: r.exitCode,
-        output: (r.stdout + "\n" + r.stderr).trim().slice(-10000),
+        output: `${r.stdout}\n${r.stderr}`.trim().slice(-10000),
       })),
       durationMs: totalDuration,
       pipelineJsonLd,
@@ -227,7 +225,6 @@ async function runJob(job: CIJob): Promise<void> {
 
     try {
       const runId = await recordCIRun(runInput);
-      console.log(`   📝 Recorded: ${runId} (${failed ? "FAILED" : "PASSED"}, ${totalDuration}ms)`);
 
       // Notify harness-ui via SSE-compatible event (shows in /stream)
       // Notify harness-ui
@@ -241,17 +238,18 @@ async function runJob(job: CIJob): Promise<void> {
             commitHash: job.commitHash,
             status: failed ? "failed" : "passed",
             stepsTotal: stepResults.length,
-            stepsFailed: stepResults.filter(s => s.exitCode !== 0).length,
+            stepsFailed: stepResults.filter((s) => s.exitCode !== 0).length,
             durationMs: totalDuration,
             runId,
           }),
         });
-      } catch { /* notification is best-effort */ }
+      } catch {
+        /* notification is best-effort */
+      }
 
       // Auto-build on success — build service handles image creation + registry push
       if (!failed) {
         const buildUrl = process.env.BUILD_SERVICE_URL ?? "http://build-service:3339";
-        console.log(`\n🔨 CI passed — triggering build for ${job.commitHash.slice(0, 8)}`);
         try {
           await fetch(`${buildUrl}/api/build`, {
             method: "POST",
@@ -259,15 +257,9 @@ async function runJob(job: CIJob): Promise<void> {
             body: JSON.stringify({ repo: job.repo, commit: job.commitHash, trigger: "ci-success" }),
             signal: AbortSignal.timeout(5000),
           });
-          console.log(`   ✅ Build triggered`);
-        } catch (buildErr) {
-          console.error(`   ⚠️  Build trigger failed:`, (buildErr as Error).message?.slice(0, 200));
-        }
+        } catch (_buildErr) {}
       }
-    } catch (err) {
-      console.error(`   ⚠️  XTDB write failed (results lost):`, err);
-    }
-
+    } catch (_err) {}
   } finally {
     // 6. Cleanup working directory
     try {
@@ -279,7 +271,7 @@ async function runJob(job: CIJob): Promise<void> {
 function checkout(job: CIJob, workDir: string): void {
   if (REPOS_DIR) {
     // Soft Serve bare repo — use git --work-tree to checkout
-    const bareRepo = join(REPOS_DIR, job.repo + ".git");
+    const bareRepo = join(REPOS_DIR, `${job.repo}.git`);
     if (!existsSync(bareRepo)) {
       // Try without .git suffix
       const altPath = join(REPOS_DIR, job.repo);
@@ -297,7 +289,9 @@ function checkout(job: CIJob, workDir: string): void {
   } else {
     // Clone from Soft Serve via SSH
     const cloneUrl = job.repo.includes("://") ? job.repo : `${SOFT_SERVE_SSH}/${job.repo}`;
-    execSync(`GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --depth=50 "${cloneUrl}" "${workDir}"`, { stdio: "pipe" });
+    execSync(`GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --depth=50 "${cloneUrl}" "${workDir}"`, {
+      stdio: "pipe",
+    });
     execSync(`git -C "${workDir}" checkout ${job.commitHash}`, { stdio: "pipe" });
   }
 }
@@ -310,25 +304,36 @@ interface PipelineStep {
   commands: string[];
 }
 
-function executeStep(step: PipelineStep, workDir: string, job: CIJob): Promise<StepResult> {
+function executeStep(step: PipelineStep, _workDir: string, job: CIJob): Promise<StepResult> {
   return new Promise((resolve) => {
     const startTime = Date.now();
     const script = step.commands.join(" && ");
 
     // Build docker run command
     const args = [
-      "run", "--rm",
+      "run",
+      "--rm",
       `--network=${process.env.DOCKER_NETWORK ?? "harness_default"}`,
-      "-v", `${process.env.CI_WORK_VOLUME ?? "harness_ci-work"}:/ci-work`,
-      "-w", `/ci-work/${job.id}`,
-      "-e", `CI=true`,
-      "-e", `CI_REPO=${job.repo}`,
-      "-e", `CI_COMMIT=${job.commitHash}`,
-      "-e", `CI_REF=${job.ref}`,
-      "-e", `CI_BRANCH=${job.ref.replace("refs/heads/", "")}`,
-      "--stop-timeout", String(DOCKER_TIMEOUT),
+      "-v",
+      `${process.env.CI_WORK_VOLUME ?? "harness_ci-work"}:/ci-work`,
+      "-w",
+      `/ci-work/${job.id}`,
+      "-e",
+      `CI=true`,
+      "-e",
+      `CI_REPO=${job.repo}`,
+      "-e",
+      `CI_COMMIT=${job.commitHash}`,
+      "-e",
+      `CI_REF=${job.ref}`,
+      "-e",
+      `CI_BRANCH=${job.ref.replace("refs/heads/", "")}`,
+      "--stop-timeout",
+      String(DOCKER_TIMEOUT),
       step.image,
-      "sh", "-c", script,
+      "sh",
+      "-c",
+      script,
     ];
 
     let stdout = "";
@@ -336,8 +341,12 @@ function executeStep(step: PipelineStep, workDir: string, job: CIJob): Promise<S
 
     const proc = spawn("docker", args, { stdio: "pipe" });
 
-    proc.stdout.on("data", (data) => { stdout += data.toString(); });
-    proc.stderr.on("data", (data) => { stderr += data.toString(); });
+    proc.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+    proc.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
 
     // Timeout
     const timeout = setTimeout(() => {
@@ -375,7 +384,6 @@ function executeStep(step: PipelineStep, workDir: string, job: CIJob): Promise<S
 
 // ─── Entry point ─────────────────────────────────────────────────
 
-main().catch((err) => {
-  console.error("CI Runner fatal error:", err);
+main().catch((_err) => {
   process.exit(1);
 });

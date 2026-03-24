@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "description": "Auto-generate session summary documents from event data",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   }
 }

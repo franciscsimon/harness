@@ -65,11 +65,9 @@ export function shouldCapture(
  *
  * @param key  Same key used in shouldCapture()
  */
-export function flushSampler(
-  key: string,
-): { capture: boolean; accumulatedLen: number; lastEvent: unknown } {
+export function flushSampler(key: string): { capture: boolean; accumulatedLen: number; lastEvent: unknown } {
   const s = samplers.get(key);
-  if (s && s.pending && s.accumulated > 0) {
+  if (s?.pending && s.accumulated > 0) {
     const total = s.accumulated;
     const event = s.lastEvent;
     s.accumulated = 0;

@@ -7,12 +7,12 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
   let flipActive = false;
-  let lastOutput = "";
+  let _lastOutput = "";
   let flipCount = 0;
 
   pi.on("session_start", async () => {
     flipActive = false;
-    lastOutput = "";
+    _lastOutput = "";
     flipCount = 0;
   });
 
@@ -20,7 +20,8 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event) => {
     if (!flipActive) return;
     return {
-      systemPrompt: (event as any).systemPrompt +
+      systemPrompt:
+        (event as any).systemPrompt +
         "\n\n---\n\n" +
         "🔄 FEEDBACK FLIP MODE: You are now in CRITIQUE mode.\n" +
         "Your task is to EVALUATE, not implement. Find problems and suggest improvements.\n" +

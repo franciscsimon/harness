@@ -12,10 +12,10 @@
 //   console.log(report.missing);         // [{ tool: "biome", ... }]
 //   console.log(report.installed);       // [{ tool: "tsc", ... }]
 
-import { readdirSync, statSync, existsSync, readFileSync } from "node:fs";
-import { join, extname, basename } from "node:path";
 import { execSync } from "node:child_process";
-import { REGISTRY, type LanguageToolchain, type QualityTool } from "./registry.ts";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { extname, join } from "node:path";
+import { type LanguageToolchain, type QualityTool, REGISTRY } from "./registry.ts";
 
 export interface StackReport {
   projectRoot: string;
@@ -49,16 +49,40 @@ export interface MissingTool {
 
 // Files/dirs to skip during scanning
 const SKIP_DIRS = new Set([
-  "node_modules", ".git", "dist", "build", "target", ".next",
-  "__pycache__", ".venv", "venv", ".tox", "vendor", ".gradle",
-  "bin", "obj", ".terraform", ".zig-cache", "_build", "deps",
-  "coverage", ".nyc_output", ".cache",
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "target",
+  ".next",
+  "__pycache__",
+  ".venv",
+  "venv",
+  ".tox",
+  "vendor",
+  ".gradle",
+  "bin",
+  "obj",
+  ".terraform",
+  ".zig-cache",
+  "_build",
+  "deps",
+  "coverage",
+  ".nyc_output",
+  ".cache",
 ]);
 
 const SKIP_FILES = new Set([
-  "package-lock.json", "yarn.lock", "bun.lockb", "Cargo.lock",
-  "go.sum", "mix.lock", "Gemfile.lock", "composer.lock",
-  "poetry.lock", "uv.lock",
+  "package-lock.json",
+  "yarn.lock",
+  "bun.lockb",
+  "Cargo.lock",
+  "go.sum",
+  "mix.lock",
+  "Gemfile.lock",
+  "composer.lock",
+  "poetry.lock",
+  "uv.lock",
 ]);
 
 export async function detectStack(projectRoot: string): Promise<StackReport> {
@@ -67,7 +91,7 @@ export async function detectStack(projectRoot: string): Promise<StackReport> {
   let totalFiles = 0;
 
   // ── 1. Walk the tree, count file extensions and find manifests ──
-  walkDir(projectRoot, (filePath, fileName) => {
+  walkDir(projectRoot, (_filePath, fileName) => {
     // Check for manifest files
     for (const tc of REGISTRY) {
       for (const manifest of tc.manifestFiles) {
@@ -110,10 +134,12 @@ export async function detectStack(projectRoot: string): Promise<StackReport> {
   // Also detect from manifests (even if no source files yet)
   for (const manifest of foundManifests) {
     for (const tc of REGISTRY) {
-      if (tc.manifestFiles.some((m) => {
-        if (m.startsWith("*")) return manifest.endsWith(m.slice(1));
-        return manifest === m;
-      })) {
+      if (
+        tc.manifestFiles.some((m) => {
+          if (m.startsWith("*")) return manifest.endsWith(m.slice(1));
+          return manifest === m;
+        })
+      ) {
         if (!languageScores.has(tc.language)) {
           languageScores.set(tc.language, { count: 0, tc });
         }
@@ -159,25 +185,17 @@ export async function detectStack(projectRoot: string): Promise<StackReport> {
 
   // No quality tools at all?
   if (installed.length === 0 && languages.length > 0) {
-    recommendations.push(
-      "No code quality tools detected. This codebase has zero automated quality enforcement.",
-    );
+    recommendations.push("No code quality tools detected. This codebase has zero automated quality enforcement.");
   }
 
   // Has source but no formatter?
   for (const lang of languages) {
     if (lang.fileCount === 0) continue;
-    const hasFmt = installed.some(
-      (t) => t.language === lang.language && (t.role === "fmt" || t.role === "all-in-one"),
-    );
+    const hasFmt = installed.some((t) => t.language === lang.language && (t.role === "fmt" || t.role === "all-in-one"));
     if (!hasFmt) {
-      const fmtTool = lang.toolchain.tools.find(
-        (t) => t.role === "fmt" || t.role === "all-in-one",
-      );
+      const fmtTool = lang.toolchain.tools.find((t) => t.role === "fmt" || t.role === "all-in-one");
       if (fmtTool) {
-        recommendations.push(
-          `${lang.language}: No formatter. Install ${fmtTool.name}: ${fmtTool.install}`,
-        );
+        recommendations.push(`${lang.language}: No formatter. Install ${fmtTool.name}: ${fmtTool.install}`);
       }
     }
 
@@ -186,22 +204,16 @@ export async function detectStack(projectRoot: string): Promise<StackReport> {
       (t) => t.language === lang.language && ["lint", "vet", "all-in-one"].includes(t.role),
     );
     if (!hasLint) {
-      const lintTool = lang.toolchain.tools.find(
-        (t) => t.role === "lint" || t.role === "all-in-one",
-      );
+      const lintTool = lang.toolchain.tools.find((t) => t.role === "lint" || t.role === "all-in-one");
       if (lintTool) {
-        recommendations.push(
-          `${lang.language}: No linter. Install ${lintTool.name}: ${lintTool.install}`,
-        );
+        recommendations.push(`${lang.language}: No linter. Install ${lintTool.name}: ${lintTool.install}`);
       }
     }
   }
 
   // Missing required tools
   for (const m of missing.filter((m) => m.priority === "required")) {
-    recommendations.push(
-      `${m.language}: Missing ${m.tool.role} tool '${m.tool.name}'. ${m.tool.description}`,
-    );
+    recommendations.push(`${m.language}: Missing ${m.tool.role} tool '${m.tool.name}'. ${m.tool.description}`);
   }
 
   return { projectRoot, languages, manifests: foundManifests, installed, missing, recommendations };
@@ -265,10 +277,7 @@ function checkToolInstalled(tool: QualityTool, projectRoot: string): boolean {
   return false;
 }
 
-function getPriority(
-  tool: QualityTool,
-  lang: DetectedLanguage,
-): "required" | "recommended" | "optional" {
+function getPriority(tool: QualityTool, lang: DetectedLanguage): "required" | "recommended" | "optional" {
   // Formatter is always required — non-negotiable
   if (tool.role === "fmt" || tool.role === "all-in-one") return "required";
   // Linter is required for any language with >5 source files
@@ -286,41 +295,27 @@ function getPriority(
 if (import.meta.main || process.argv[1]?.endsWith("detect.ts")) {
   const target = process.argv[2] || process.cwd();
   detectStack(target).then((report) => {
-    console.log(`\n📊 Stack Report: ${report.projectRoot}\n`);
-
     if (report.languages.length === 0) {
-      console.log("  No recognized source files found.\n");
       return;
     }
-
-    console.log("Languages:");
-    for (const lang of report.languages) {
-      console.log(`  ${lang.language}: ${lang.fileCount} files (${lang.percentage}%)`);
+    for (const _lang of report.languages) {
     }
 
     if (report.installed.length > 0) {
-      console.log("\n✅ Installed tools:");
       for (const t of report.installed) {
-        const cfg = t.configFound ? ` (config: ${t.configPath})` : "";
-        console.log(`  ${t.language}/${t.tool} [${t.role}]${cfg}`);
+        const _cfg = t.configFound ? ` (config: ${t.configPath})` : "";
       }
     }
 
     if (report.missing.length > 0) {
-      console.log("\n❌ Missing tools:");
       for (const m of report.missing) {
-        const icon = m.priority === "required" ? "🔴" : m.priority === "recommended" ? "🟡" : "⚪";
-        console.log(`  ${icon} ${m.language}/${m.tool.name} [${m.tool.role}] — ${m.priority}`);
-        console.log(`     Install: ${m.tool.install}`);
+        const _icon = m.priority === "required" ? "🔴" : m.priority === "recommended" ? "🟡" : "⚪";
       }
     }
 
     if (report.recommendations.length > 0) {
-      console.log("\n💡 Recommendations:");
-      for (const r of report.recommendations) {
-        console.log(`  • ${r}`);
+      for (const _r of report.recommendations) {
       }
     }
-    console.log();
   });
 }

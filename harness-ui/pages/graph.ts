@@ -164,7 +164,7 @@ ORDER BY ?file ?name`,
 
 export async function renderGraph(queryKey?: string, customQuery?: string, projectId?: string): Promise<string> {
   const activeQuery = customQuery || (queryKey && CANNED_QUERIES[queryKey]?.query) || CANNED_QUERIES.modules.query;
-  const activeKey = customQuery ? "" : (queryKey || "modules");
+  const activeKey = customQuery ? "" : queryKey || "modules";
 
   // Execute the SPARQL query server-side
   let result: any = null;
@@ -183,23 +183,27 @@ export async function renderGraph(queryKey?: string, customQuery?: string, proje
     const vars = result.head.vars as string[];
     const rows = result.results.bindings as any[];
     const headerCells = vars.map((v: string) => `<th>${escapeHtml(v)}</th>`).join("");
-    const bodyRows = rows.map((row: any) => {
-      const cells = vars.map((v: string) => {
-        const cell = row[v];
-        if (!cell) return "<td>—</td>";
-        let val = cell.value;
-        // Shorten URIs for readability
-        val = val.replace("https://pi.dev/code/", "code:");
-        val = val.replace("https://pi.dev/events/", "ev:");
-        val = val.replace("https://schema.org/", "schema:");
-        val = val.replace("http://www.w3.org/ns/prov#", "prov:");
-        val = val.replace("http://usefulinc.com/ns/doap#", "doap:");
-        val = val.replace("urn:pi:mod:", "");
-        val = val.replace("urn:pi:fn:", "");
-        return `<td>${escapeHtml(val)}</td>`;
-      }).join("");
-      return `<tr>${cells}</tr>`;
-    }).join("\n");
+    const bodyRows = rows
+      .map((row: any) => {
+        const cells = vars
+          .map((v: string) => {
+            const cell = row[v];
+            if (!cell) return "<td>—</td>";
+            let val = cell.value;
+            // Shorten URIs for readability
+            val = val.replace("https://pi.dev/code/", "code:");
+            val = val.replace("https://pi.dev/events/", "ev:");
+            val = val.replace("https://schema.org/", "schema:");
+            val = val.replace("http://www.w3.org/ns/prov#", "prov:");
+            val = val.replace("http://usefulinc.com/ns/doap#", "doap:");
+            val = val.replace("urn:pi:mod:", "");
+            val = val.replace("urn:pi:fn:", "");
+            return `<td>${escapeHtml(val)}</td>`;
+          })
+          .join("");
+        return `<tr>${cells}</tr>`;
+      })
+      .join("\n");
     resultsHtml = `
       <div class="card" style="overflow-x:auto">
         <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:0.5rem">${rows.length} results (${result.meta?.["query-time-ms"] ?? "?"}ms)</p>
@@ -215,7 +219,7 @@ export async function renderGraph(queryKey?: string, customQuery?: string, proje
   // Build graph data for D3 (only for module/call queries)
   const GRAPH_QUERIES = new Set(["modules", "calls", "coverage"]);
   let graphJson = "null";
-  let graphMode = activeKey;
+  const graphMode = activeKey;
   if (result?.results?.bindings?.length > 0 && GRAPH_QUERIES.has(activeKey)) {
     const nodes = new Map<string, { id: string; label: string; group: string; tested?: boolean }>();
     const links: { source: string; target: string }[] = [];
@@ -238,8 +242,10 @@ export async function renderGraph(queryKey?: string, customQuery?: string, proje
         const calleeName = row.calleeName?.value ?? "";
         const callerId = `${callerFile}#${callerName}`;
         const calleeId = `${calleeFile}#${calleeName}`;
-        if (!nodes.has(callerId)) nodes.set(callerId, { id: callerId, label: callerName, group: callerFile.split("/")[0] ?? "" });
-        if (!nodes.has(calleeId)) nodes.set(calleeId, { id: calleeId, label: calleeName, group: calleeFile.split("/")[0] ?? "" });
+        if (!nodes.has(callerId))
+          nodes.set(callerId, { id: callerId, label: callerName, group: callerFile.split("/")[0] ?? "" });
+        if (!nodes.has(calleeId))
+          nodes.set(calleeId, { id: calleeId, label: calleeName, group: calleeFile.split("/")[0] ?? "" });
         links.push({ source: callerId, target: calleeId });
       }
     } else if (activeKey === "coverage") {
@@ -292,23 +298,33 @@ export async function renderGraph(queryKey?: string, customQuery?: string, proje
       </form>
     </div>
 
-    ${GRAPH_QUERIES.has(activeKey) && graphJson !== "null" ? `
+    ${
+      GRAPH_QUERIES.has(activeKey) && graphJson !== "null"
+        ? `
     <div class="section">
       <h2>Graph Visualization</h2>
-      ${activeKey === "coverage" ? (() => {
-        const nodes = JSON.parse(graphJson).nodes;
-        const testedCount = nodes.filter((n: any) => n.tested).length;
-        const untestedCount = nodes.length - testedCount;
-        const pct = Math.round(100 * testedCount / nodes.length);
-        return `<div style="margin-bottom:0.5rem;font-size:0.85rem;color:var(--text-dim)">
+      ${
+        activeKey === "coverage"
+          ? (
+              () => {
+                const nodes = JSON.parse(graphJson).nodes;
+                const testedCount = nodes.filter((n: any) => n.tested).length;
+                const untestedCount = nodes.length - testedCount;
+                const pct = Math.round((100 * testedCount) / nodes.length);
+                return `<div style="margin-bottom:0.5rem;font-size:0.85rem;color:var(--text-dim)">
           <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#238636;margin-right:4px"></span>Tested (${testedCount}) ← left cluster
           <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#da3633;margin:0 4px 0 16px"></span>Untested (${untestedCount}) → right cluster
           <span style="margin-left:16px;font-weight:600;color:var(--text)">${pct}% coverage</span>
         </div>`;
-      })() : ""}
+              }
+            )()
+          : ""
+      }
       <div class="card" id="graph-container" style="height:500px;position:relative;overflow:hidden"></div>
     </div>
-    ` : ""}
+    `
+        : ""
+    }
 
     <div class="section">
       <h2>Results</h2>
@@ -453,5 +469,10 @@ export async function renderGraph(queryKey?: string, customQuery?: string, proje
     </script>
   `;
 
-  return layout(content, { title: "Graph", activePath: projectId ? `/projects/${projectId}/graph` : "/graph", projectId, activeSection: "graph" });
+  return layout(content, {
+    title: "Graph",
+    activePath: projectId ? `/projects/${projectId}/graph` : "/graph",
+    projectId,
+    activeSection: "graph",
+  });
 }

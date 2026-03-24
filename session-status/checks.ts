@@ -2,11 +2,11 @@
 // Pure check functions — no pi dependencies, easily testable.
 
 import { execSync } from "node:child_process";
-import { createConnection } from "node:net";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { get } from "node:http";
-import { readdirSync, existsSync, readFileSync } from "node:fs";
-import { join, basename } from "node:path";
+import { createConnection } from "node:net";
 import { homedir } from "node:os";
+import { join } from "node:path";
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -42,9 +42,18 @@ function exec(cmd: string): string | null {
 function checkTcp(host: string, port: number, timeoutMs = 2000): Promise<boolean> {
   return new Promise((resolve) => {
     const sock = createConnection({ host, port, timeout: timeoutMs });
-    sock.on("connect", () => { sock.destroy(); resolve(true); });
-    sock.on("timeout", () => { sock.destroy(); resolve(false); });
-    sock.on("error", () => { sock.destroy(); resolve(false); });
+    sock.on("connect", () => {
+      sock.destroy();
+      resolve(true);
+    });
+    sock.on("timeout", () => {
+      sock.destroy();
+      resolve(false);
+    });
+    sock.on("error", () => {
+      sock.destroy();
+      resolve(false);
+    });
   });
 }
 
@@ -54,7 +63,10 @@ function checkHttp(url: string, timeoutMs = 2000): Promise<boolean> {
       res.resume();
       resolve(res.statusCode !== undefined && res.statusCode < 500);
     });
-    req.on("timeout", () => { req.destroy(); resolve(false); });
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
     req.on("error", () => resolve(false));
   });
 }
@@ -160,7 +172,11 @@ async function checkLocalEndpoints(): Promise<CheckResult[]> {
   return Promise.all(
     LOCAL_ENDPOINTS.map(async ([url, label]) => {
       const ok = await checkHttp(url);
-      return { name: label, status: ok ? "ok" as Status : "fail" as Status, detail: ok ? "reachable" : "unreachable" };
+      return {
+        name: label,
+        status: ok ? ("ok" as Status) : ("fail" as Status),
+        detail: ok ? "reachable" : "unreachable",
+      };
     }),
   );
 }

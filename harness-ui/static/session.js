@@ -2,9 +2,7 @@
 /* Scans flat .tl-event nodes and wraps them in nested,
    collapsible groups: Agent Run → Turn → Tool Execution.       */
 
-(function () {
-  "use strict";
-
+(() => {
   var timeline = document.getElementById("timeline");
   if (!timeline) return;
 
@@ -15,10 +13,10 @@
   // ── Build a virtual tree, then re-render into DOM ──
   // Each node is either a raw event or a group { type, label, children[] }
 
-  var ROOT = [];        // top-level items
-  var agentRun = null;  // current open AgentRun group
-  var turn = null;      // current open Turn group
-  var toolExec = null;  // current open ToolExec group
+  var ROOT = []; // top-level items
+  var agentRun = null; // current open AgentRun group
+  var turn = null; // current open Turn group
+  var toolExec = null; // current open ToolExec group
   var agentRunIdx = 0;
 
   for (var i = 0; i < allEvents.length; i++) {
@@ -34,7 +32,7 @@
         closeTurn();
         closeAgentRun();
         agentRunIdx++;
-        agentRun = { type: "agent", label: "Agent Run #" + agentRunIdx, children: [], color: "#22c55e" };
+        agentRun = { type: "agent", label: `Agent Run #${agentRunIdx}`, children: [], color: "#22c55e" };
       }
       agentRun.children.push(el);
       continue;
@@ -56,7 +54,7 @@
       closeToolExec();
       closeTurn();
       var tIdx = el.dataset.turnIndex;
-      turn = { type: "turn", label: "Turn " + (tIdx !== "" ? tIdx : "?"), children: [], color: "#3b82f6" };
+      turn = { type: "turn", label: `Turn ${tIdx !== "" ? tIdx : "?"}`, children: [], color: "#3b82f6" };
       turn.children.push(el);
       continue;
     }
@@ -78,8 +76,8 @@
       closeToolExec();
       var tName = el.dataset.toolName || "tool";
       var tCallId = el.dataset.toolCallId;
-      var lbl = "Tool: " + tName;
-      if (tCallId) lbl += " (" + tCallId + ")";
+      var lbl = `Tool: ${tName}`;
+      if (tCallId) lbl += ` (${tCallId})`;
       toolExec = { type: "tool", label: lbl, children: [], color: "#f97316" };
       toolExec.children.push(el);
       continue;
@@ -154,31 +152,38 @@
       var item = items[j];
       if (item instanceof HTMLElement) {
         // Raw event node — set indent
-        item.style.paddingLeft = (16 + depth * 24) + "px";
+        item.style.paddingLeft = `${16 + depth * 24}px`;
         parent.appendChild(item);
       } else {
         // Group node — create collapsible wrapper
         var group = document.createElement("div");
-        group.className = "tl-group tl-group-" + item.type;
-        group.style.marginLeft = (depth * 24) + "px";
+        group.className = `tl-group tl-group-${item.type}`;
+        group.style.marginLeft = `${depth * 24}px`;
 
         var header = document.createElement("div");
         header.className = "tl-group-header";
         header.style.borderLeftColor = item.color;
         header.innerHTML =
           '<span class="tl-group-toggle">▼</span>' +
-          '<span class="tl-group-label" style="color:' + item.color + '">' + esc(item.label) + '</span>' +
-          '<span class="tl-group-count">' + countEvents(item) + ' events</span>';
+          '<span class="tl-group-label" style="color:' +
+          item.color +
+          '">' +
+          esc(item.label) +
+          "</span>" +
+          '<span class="tl-group-count">' +
+          countEvents(item) +
+          " events</span>";
 
         var body = document.createElement("div");
         body.className = "tl-group-body";
 
-        header.addEventListener("click", (function (b, h) {
-          return function () {
+        header.addEventListener(
+          "click",
+          ((b, h) => () => {
             var collapsed = b.classList.toggle("collapsed");
             h.querySelector(".tl-group-toggle").textContent = collapsed ? "▶" : "▼";
-          };
-        })(body, header));
+          })(body, header),
+        );
 
         group.appendChild(header);
         group.appendChild(body);
@@ -205,8 +210,8 @@
   var btnCollapse = document.getElementById("btn-collapse-all");
 
   if (btnExpand) {
-    btnExpand.addEventListener("click", function () {
-      timeline.querySelectorAll(".tl-group-body.collapsed").forEach(function (b) {
+    btnExpand.addEventListener("click", () => {
+      timeline.querySelectorAll(".tl-group-body.collapsed").forEach((b) => {
         b.classList.remove("collapsed");
         b.previousElementSibling.querySelector(".tl-group-toggle").textContent = "▼";
       });
@@ -214,8 +219,8 @@
   }
 
   if (btnCollapse) {
-    btnCollapse.addEventListener("click", function () {
-      timeline.querySelectorAll(".tl-group-body:not(.collapsed)").forEach(function (b) {
+    btnCollapse.addEventListener("click", () => {
+      timeline.querySelectorAll(".tl-group-body:not(.collapsed)").forEach((b) => {
         b.classList.add("collapsed");
         b.previousElementSibling.querySelector(".tl-group-toggle").textContent = "▶";
       });

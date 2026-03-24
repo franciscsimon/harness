@@ -11,9 +11,9 @@
  * Run: NODE_PATH=xtdb-projector/node_modules npx jiti scripts/parse-call-graph.ts
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import * as ts from "typescript";
-import * as fs from "fs";
-import * as path from "path";
 
 const ROOT = path.resolve(__dirname, "..");
 const OUT = path.join(ROOT, "data", "call-graph.jsonld");
@@ -131,7 +131,7 @@ function extractFromFile(filePath: string, source: ts.SourceFile) {
             for (const spec of node.importClause.namedBindings.elements) {
               const localName = spec.name.text;
               const origName = spec.propertyName?.text ?? localName;
-              importMap.set(localName, resolved + "#" + origName);
+              importMap.set(localName, `${resolved}#${origName}`);
             }
           }
           if (node.importClause.namedBindings && ts.isNamespaceImport(node.importClause.namedBindings)) {
@@ -221,14 +221,14 @@ function extractFromFile(filePath: string, source: ts.SourceFile) {
     for (const call of moduleLevelCalls) {
       // Only keep calls that resolve to imported source functions (not local helpers)
       const id = call["@id"];
-      if (id.includes("#") && !id.includes(filePath + "#")) {
+      if (id.includes("#") && !id.includes(`${filePath}#`)) {
         testEdges.push(call);
       }
     }
 
     // Also: any named import from a source file is a test edge
     // (the test file imports it to test it)
-    for (const [localName, mapped] of importMap.entries()) {
+    for (const [_localName, mapped] of importMap.entries()) {
       if (mapped.includes("#")) {
         const fnId = `urn:pi:fn:${mapped}`;
         if (!testEdges.find((e) => e["@id"] === fnId)) {
@@ -298,11 +298,7 @@ function unwrapArrow(node: ts.Expression): ts.Expression {
   return node;
 }
 
-function collectCalls(
-  node: ts.Node,
-  filePath: string,
-  importMap: Map<string, string>
-): { "@id": string }[] {
+function collectCalls(node: ts.Node, filePath: string, importMap: Map<string, string>): { "@id": string }[] {
   const calls: { "@id": string }[] = [];
   const seen = new Set<string>();
 
@@ -321,11 +317,7 @@ function collectCalls(
   return calls;
 }
 
-function resolveCallTarget(
-  expr: ts.Expression,
-  filePath: string,
-  importMap: Map<string, string>
-): string | null {
+function resolveCallTarget(expr: ts.Expression, filePath: string, importMap: Map<string, string>): string | null {
   // Direct call: foo()
   if (ts.isIdentifier(expr)) {
     const name = expr.text;
@@ -364,12 +356,10 @@ function resolveCallTarget(
 const files = collectTsFiles(ROOT);
 const allFiles = new Set(files);
 
-console.log(`Parsing ${files.length} TypeScript files...`);
-
 const graph: (ModuleNode | FunctionNode)[] = [];
-let fnCount = 0;
-let callEdgeCount = 0;
-let importEdgeCount = 0;
+let _fnCount = 0;
+let _callEdgeCount = 0;
+let _importEdgeCount = 0;
 
 for (const file of files) {
   const fullPath = path.join(ROOT, file);
@@ -378,12 +368,12 @@ for (const file of files) {
 
   const { moduleNode, functions } = extractFromFile(file, source);
   graph.push(moduleNode);
-  importEdgeCount += moduleNode["schema:requires"]?.length ?? 0;
+  _importEdgeCount += moduleNode["schema:requires"]?.length ?? 0;
 
   for (const fn of functions) {
     graph.push(fn);
-    fnCount++;
-    callEdgeCount += fn["code:calls"]?.length ?? 0;
+    _fnCount++;
+    _callEdgeCount += fn["code:calls"]?.length ?? 0;
   }
 }
 
@@ -410,10 +400,3 @@ const jsonld = {
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, JSON.stringify(jsonld, null, 2), "utf-8");
-
-console.log(`✅ Written to ${OUT}`);
-console.log(`   Modules: ${files.length}`);
-console.log(`   Functions: ${fnCount}`);
-console.log(`   Call edges: ${callEdgeCount}`);
-console.log(`   Import edges: ${importEdgeCount}`);
-console.log(`   Graph nodes: ${graph.length}`);

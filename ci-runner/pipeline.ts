@@ -38,7 +38,7 @@
 //     ]
 //   }
 
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface PipelineStep {
@@ -153,7 +153,9 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
           commands: [installCmd, hasBunLock ? "bun test" : "npm test"],
         });
       }
-    } catch { /* no package.json or parse error */ }
+    } catch {
+      /* no package.json or parse error */
+    }
 
     if (files.includes("tsconfig.json")) {
       steps.push({
@@ -169,10 +171,7 @@ function autoDetectSteps(workDir: string): PipelineStep[] {
     steps.push({
       name: "check",
       image: "golang:1.23",
-      commands: [
-        'test -z "$(gofmt -l . | tee /dev/stderr)"',
-        "go vet ./...",
-      ],
+      commands: ['test -z "$(gofmt -l . | tee /dev/stderr)"', "go vet ./..."],
     });
     steps.push({
       name: "test",

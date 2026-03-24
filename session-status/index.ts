@@ -56,7 +56,10 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("status-clear", {
     description: "Hide the status widget",
     handler: async (_args, ctx) => {
-      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
       ctx.ui.setWidget(WIDGET_ID, undefined);
     },
   });

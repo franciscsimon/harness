@@ -20,7 +20,7 @@ export default function (pi: ExtensionAPI) {
   let nextId = 1;
   let orchestrating = false;
 
-  pi.on("session_start", async (_event, ctx) => {
+  pi.on("session_start", async (_event, _ctx) => {
     tasks = [];
     nextId = 1;
     orchestrating = false;
@@ -35,7 +35,8 @@ export default function (pi: ExtensionAPI) {
     const done = tasks.filter((t) => t.status === "done");
 
     return {
-      systemPrompt: (event as any).systemPrompt +
+      systemPrompt:
+        (event as any).systemPrompt +
         "\n\n---\n\n" +
         "🎭 ORCHESTRATOR MODE\n" +
         "You are coordinating multiple tasks. Your job:\n" +
@@ -52,27 +53,40 @@ export default function (pi: ExtensionAPI) {
   // ── /orchestrate command ──
   pi.registerCommand("orchestrate", {
     description: "Manage orchestrated tasks",
-    getArgumentCompletions: (prefix: string) => [
-      { value: "plan", label: "plan <task1> | <task2> | ... — Plan tasks from pipe-separated list" },
-      { value: "add", label: "add <description> — Add a task" },
-      { value: "status", label: "status — Show all tasks" },
-      { value: "start", label: "start — Begin orchestration mode" },
-      { value: "done", label: "done <id> — Mark task complete" },
-      { value: "fail", label: "fail <id> — Mark task failed" },
-      { value: "stop", label: "stop — End orchestration mode" },
-    ].filter((i) => i.value.startsWith(prefix)),
+    getArgumentCompletions: (prefix: string) =>
+      [
+        { value: "plan", label: "plan <task1> | <task2> | ... — Plan tasks from pipe-separated list" },
+        { value: "add", label: "add <description> — Add a task" },
+        { value: "status", label: "status — Show all tasks" },
+        { value: "start", label: "start — Begin orchestration mode" },
+        { value: "done", label: "done <id> — Mark task complete" },
+        { value: "fail", label: "fail <id> — Mark task failed" },
+        { value: "stop", label: "stop — End orchestration mode" },
+      ].filter((i) => i.value.startsWith(prefix)),
     handler: async (args, ctx) => {
       const parts = args?.trim().split(/\s+/) ?? ["status"];
       const cmd = parts[0] ?? "status";
 
       if (cmd === "plan") {
-        const descriptions = parts.slice(1).join(" ").split("|").map((s) => s.trim()).filter(Boolean);
+        const descriptions = parts
+          .slice(1)
+          .join(" ")
+          .split("|")
+          .map((s) => s.trim())
+          .filter(Boolean);
         if (descriptions.length === 0) {
           ctx.ui.notify("Usage: /orchestrate plan task1 | task2 | task3", "error");
           return;
         }
         for (const desc of descriptions) {
-          tasks.push({ id: nextId++, description: desc, status: "pending", assignedAgent: null, result: null, createdAt: Date.now() });
+          tasks.push({
+            id: nextId++,
+            description: desc,
+            status: "pending",
+            assignedAgent: null,
+            result: null,
+            createdAt: Date.now(),
+          });
         }
         orchestrating = true;
         ctx.ui.setStatus("orchestrator", `🎭 ${tasks.length} tasks`);
@@ -82,8 +96,18 @@ export default function (pi: ExtensionAPI) {
 
       if (cmd === "add") {
         const desc = parts.slice(1).join(" ");
-        if (!desc) { ctx.ui.notify("Usage: /orchestrate add <description>", "error"); return; }
-        tasks.push({ id: nextId++, description: desc, status: "pending", assignedAgent: null, result: null, createdAt: Date.now() });
+        if (!desc) {
+          ctx.ui.notify("Usage: /orchestrate add <description>", "error");
+          return;
+        }
+        tasks.push({
+          id: nextId++,
+          description: desc,
+          status: "pending",
+          assignedAgent: null,
+          result: null,
+          createdAt: Date.now(),
+        });
         ctx.ui.setStatus("orchestrator", `🎭 ${tasks.length} tasks`);
         ctx.ui.notify(`🎭 Added task #${nextId - 1}: ${desc}`, "success");
         return;
@@ -92,11 +116,17 @@ export default function (pi: ExtensionAPI) {
       if (cmd === "done" || cmd === "fail") {
         const id = Number(parts[1]);
         const task = tasks.find((t) => t.id === id);
-        if (!task) { ctx.ui.notify(`Task #${id} not found.`, "error"); return; }
+        if (!task) {
+          ctx.ui.notify(`Task #${id} not found.`, "error");
+          return;
+        }
         task.status = cmd === "done" ? "done" : "failed";
         const remaining = tasks.filter((t) => t.status === "pending" || t.status === "active").length;
         ctx.ui.setStatus("orchestrator", remaining > 0 ? `🎭 ${remaining} remaining` : "🎭 All done!");
-        ctx.ui.notify(`${cmd === "done" ? "✅" : "❌"} Task #${id}: ${task.description}`, cmd === "done" ? "success" : "warn");
+        ctx.ui.notify(
+          `${cmd === "done" ? "✅" : "❌"} Task #${id}: ${task.description}`,
+          cmd === "done" ? "success" : "warn",
+        );
         return;
       }
 
@@ -108,7 +138,10 @@ export default function (pi: ExtensionAPI) {
         if (tasks.filter((t) => t.status === "pending").length > 0) {
           pi.sendUserMessage(
             "Orchestration mode active. Here are the pending tasks:\n" +
-              tasks.filter((t) => t.status === "pending").map((t) => `- #${t.id}: ${t.description}`).join("\n") +
+              tasks
+                .filter((t) => t.status === "pending")
+                .map((t) => `- #${t.id}: ${t.description}`)
+                .join("\n") +
               "\n\nWork through them in order. After each, verify integration.",
             { deliverAs: "followUp" },
           );
@@ -125,7 +158,10 @@ export default function (pi: ExtensionAPI) {
       }
 
       // Default: status
-      if (tasks.length === 0) { ctx.ui.notify("No tasks. Use /orchestrate plan or /orchestrate add.", "info"); return; }
+      if (tasks.length === 0) {
+        ctx.ui.notify("No tasks. Use /orchestrate plan or /orchestrate add.", "info");
+        return;
+      }
       const lines = tasks.map((t) => {
         const icon = { pending: "⬜", active: "🔄", done: "✅", failed: "❌" }[t.status];
         return `  ${icon} #${t.id} [${t.status}] ${t.description}`;

@@ -1,5 +1,5 @@
-import postgres from "postgres";
 import { randomUUID } from "node:crypto";
+import postgres from "postgres";
 
 const sql = postgres({ host: "localhost", port: 5433, database: "xtdb", user: "xtdb", password: "xtdb", max: 2 });
 const t = (v: string | null) => sql.typed(v as any, 25);
@@ -22,7 +22,7 @@ export async function createIncident(data: IncidentInput) {
   const id = `inc:${randomUUID()}`;
   const now = Date.now();
 
-  const rows = await sql`
+  const _rows = await sql`
     INSERT INTO incidents (_id, project_id, severity, title, description, status, started_ts, ts, jsonld)
     VALUES (
       ${t(id)},

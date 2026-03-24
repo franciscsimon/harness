@@ -11,7 +11,7 @@
 //   npx jiti scripts/deploy.ts --rollback        # rollback to previous tag
 
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dirname ?? __dirname, "..");
@@ -54,8 +54,10 @@ async function healthCheck(name: string, port: number, path: string, timeoutMs =
       // Use Docker service name — deploy runs inside Docker network
       const r = await fetch(`http://${name}:${port}${path}`, { signal: AbortSignal.timeout(3000) });
       if (r.ok) return true;
-    } catch { /* retry */ }
-    await new Promise(r => setTimeout(r, 2000));
+    } catch {
+      /* retry */
+    }
+    await new Promise((r) => setTimeout(r, 2000));
   }
   return false;
 }
@@ -63,7 +65,9 @@ async function healthCheck(name: string, port: number, path: string, timeoutMs =
 function loadHistory(): { deploys: any[] } {
   try {
     if (existsSync(DEPLOY_HISTORY)) return JSON.parse(readFileSync(DEPLOY_HISTORY, "utf-8"));
-  } catch { /* fresh start */ }
+  } catch {
+    /* fresh start */
+  }
   return { deploys: [] };
 }
 
@@ -71,7 +75,11 @@ function saveHistory(entry: any) {
   const h = loadHistory();
   h.deploys.unshift(entry);
   if (h.deploys.length > 50) h.deploys = h.deploys.slice(0, 50);
-  try { execSync(`mkdir -p ${join(ROOT, "data")}`, { stdio: "pipe" }); } catch { /* exists */ }
+  try {
+    execSync(`mkdir -p ${join(ROOT, "data")}`, { stdio: "pipe" });
+  } catch {
+    /* exists */
+  }
   writeFileSync(DEPLOY_HISTORY, JSON.stringify(h, null, 2));
 }
 
@@ -83,55 +91,41 @@ async function main() {
   const singleService = args.includes("--service") ? args[args.indexOf("--service") + 1] : null;
   const startTime = Date.now();
 
-  console.log("🚀 Deploy started (pull from registry → recreate → health check)");
-
   const commitHash = run("git rev-parse --short HEAD");
   const commitMsg = run("git log -1 --pretty=%s");
-  console.log(`   Current commit: ${commitHash} — ${commitMsg}`);
 
   // Load config
   const config = JSON.parse(readFileSync(join(ROOT, ".cd.jsonld"), "utf-8"));
   let services: ServiceDef[] = config["code:services"];
 
   if (singleService) {
-    services = services.filter(s => s["schema:name"] === singleService);
+    services = services.filter((s) => s["schema:name"] === singleService);
     if (services.length === 0) {
-      console.error(`❌ Service "${singleService}" not found in .cd.jsonld`);
       process.exit(1);
     }
   }
 
   // For rollback, find previous successful deploy tag
-  let imageTag = "latest";
+  let _imageTag = "latest";
   if (isRollback) {
     const history = loadHistory();
     const prev = history.deploys.find((d: any) => d.status === "success" && d.commitHash !== commitHash);
     if (!prev) {
-      console.error("❌ No previous successful deploy to rollback to");
       process.exit(1);
     }
-    imageTag = prev.commitHash;
-    console.log(`\n⏪ Rolling back to ${imageTag}`);
+    _imageTag = prev.commitHash;
   }
 
   const results: DeployResult[] = [];
-
-  // Rolling deploy: pull + recreate + health check
-  console.log(`\n🔄 Deploying ${services.length} services`);
   for (const svc of services) {
     const name = svc["schema:name"];
     const port = svc["code:port"];
     const healthPath = svc["code:healthPath"];
     const t = Date.now();
 
-    console.log(`   ${name}: pulling & recreating...`);
-
     // Pull latest from registry and recreate
-    const deploy = runSafe(
-      `docker compose -p harness up -d --no-deps --pull always ${name}`
-    );
+    const deploy = runSafe(`docker compose -p harness up -d --no-deps --pull always ${name}`);
     if (!deploy.ok) {
-      console.log(`   ❌ ${name}: deploy failed — ${deploy.out.slice(0, 80)}`);
       results.push({ name, success: false, phase: "deploy", durationMs: Date.now() - t, error: deploy.out });
       continue;
     }
@@ -140,17 +134,14 @@ async function main() {
     const healthy = await healthCheck(name, port, healthPath);
     const dur = Date.now() - t;
     if (healthy) {
-      console.log(`   ✅ ${name}: healthy (${(dur / 1000).toFixed(1)}s)`);
       results.push({ name, success: true, phase: "health", durationMs: dur });
     } else {
-      console.log(`   ❌ ${name}: unhealthy after 30s`);
       results.push({ name, success: false, phase: "health", durationMs: dur });
 
       // Attempt rollback of this service
       const history = loadHistory();
       const prev = history.deploys.find((d: any) => d.status === "success");
       if (prev) {
-        console.log(`   ⏪ Rolling back ${name}...`);
         runSafe(`docker compose -p harness up -d --no-deps ${name}`);
       }
     }
@@ -158,14 +149,9 @@ async function main() {
 
   // Summary
   const totalDuration = Date.now() - startTime;
-  const allGood = results.length > 0 && results.every(r => r.success);
+  const allGood = results.length > 0 && results.every((r) => r.success);
   const status = isRollback ? "rollback" : allGood ? "success" : "partial";
-
-  console.log(`\n${allGood ? "✅" : "⚠️"} Deploy ${status}`);
-  console.log(`   Duration: ${(totalDuration / 1000).toFixed(1)}s`);
-  results.forEach(r => {
-    console.log(`   ${r.success ? "✅" : "❌"} ${r.name} (${(r.durationMs / 1000).toFixed(1)}s)`);
-  });
+  results.forEach((_r) => {});
 
   // Save history
   saveHistory({
@@ -191,10 +177,11 @@ async function main() {
       }),
       signal: AbortSignal.timeout(5000),
     });
-  } catch { /* intentionally silent — notification is best-effort */ }
+  } catch {
+    /* intentionally silent — notification is best-effort */
+  }
 }
 
-main().catch(err => {
-  console.error("❌ Deploy failed:", err);
+main().catch((_err) => {
   process.exit(1);
 });

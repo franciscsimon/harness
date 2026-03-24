@@ -1,6 +1,6 @@
 import postgres from "postgres";
-import type { Endpoint, NormalizedEvent, ResolvedConfig } from "../types.ts";
 import { startErrorCollector, stopErrorCollector } from "../../lib/errors.ts";
+import type { Endpoint, NormalizedEvent, ResolvedConfig } from "../types.ts";
 
 /**
  * XtdbEndpoint — persists events into XTDB v2 via Postgres wire protocol.
@@ -92,12 +92,7 @@ export class XtdbEndpoint implements Endpoint {
     for (const { event, jsonld } of batch) {
       try {
         await this.insertRow(event, jsonld);
-      } catch (err) {
-        // Drop + log — never crash the extension
-        console.error(
-          `[xtdb-logger][xtdb] INSERT failed for ${event.eventName}#${event.seq}: ${err}`,
-        );
-      }
+      } catch (_err) {}
     }
 
     // If more items queued during flush, schedule another
@@ -112,7 +107,7 @@ export class XtdbEndpoint implements Endpoint {
   /** Truncate a string to maxBytes */
   private static truncate(v: string, max: number): string {
     if (v.length <= max) return v;
-    return v.slice(0, max) + `…[truncated ${v.length}→${max}]`;
+    return `${v.slice(0, max)}…[truncated ${v.length}→${max}]`;
   }
 
   /**
@@ -121,7 +116,7 @@ export class XtdbEndpoint implements Endpoint {
    */
   private enforceRowBudget(f: Record<string, any>, jsonld: { value: string }): void {
     // All string field keys that could be large
-    const keys = Object.keys(f).filter(k => typeof f[k] === "string");
+    const keys = Object.keys(f).filter((k) => typeof f[k] === "string");
     keys.push("__jsonld__"); // track jsonld alongside
 
     const getSize = () => {

@@ -24,7 +24,7 @@ export class JsonlEndpoint implements Endpoint {
       ts: Date.now(),
       endpoint: "jsonl",
     });
-    appendFileSync(this.path, marker + "\n", "utf-8");
+    appendFileSync(this.path, `${marker}\n`, "utf-8");
   }
 
   emit(event: NormalizedEvent, jsonld: string): void {
@@ -42,7 +42,7 @@ export class JsonlEndpoint implements Endpoint {
         fields: event.fields,
         jsonld,
       });
-      appendFileSync(this.path, line + "\n", "utf-8");
+      appendFileSync(this.path, `${line}\n`, "utf-8");
     } catch {
       // Never crash — silently drop on write failure
     }
@@ -60,7 +60,7 @@ export class JsonlEndpoint implements Endpoint {
         ts: Date.now(),
         endpoint: "jsonl",
       });
-      appendFileSync(this.path, marker + "\n", "utf-8");
+      appendFileSync(this.path, `${marker}\n`, "utf-8");
     } catch {
       // ignore
     }

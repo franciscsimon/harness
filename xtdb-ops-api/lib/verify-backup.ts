@@ -1,7 +1,7 @@
-import { exec } from "./exec.ts";
-import { mkdtemp, readdir, stat, rm } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { exec } from "./exec.ts";
 
 export interface VerifyResult {
   valid: boolean;
@@ -39,10 +39,7 @@ export async function verifyBackup(archivePath: string): Promise<VerifyResult> {
   }
 }
 
-async function verifyCsvBackup(
-  dir: string,
-  details: string[],
-): Promise<VerifyResult> {
+async function verifyCsvBackup(dir: string, details: string[]): Promise<VerifyResult> {
   const files = await collectFiles(dir);
   const csvFiles = files.filter((f) => f.endsWith(".csv"));
 
@@ -73,10 +70,7 @@ async function verifyCsvBackup(
   return { valid, tables: csvFiles.length, details };
 }
 
-async function verifySnapshotBackup(
-  dir: string,
-  details: string[],
-): Promise<VerifyResult> {
+async function verifySnapshotBackup(dir: string, details: string[]): Promise<VerifyResult> {
   const entries = await readdir(dir, { withFileTypes: true });
   const dirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
   const files = entries.filter((e) => e.isFile()).map((e) => e.name);

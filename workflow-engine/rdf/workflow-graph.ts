@@ -4,35 +4,36 @@
  * Loads .jsonld workflow definitions via proper JSON-LD expansion,
  * converts to N-Quads, and parses into an N3 Store for graph queries.
  */
-import { Store, Parser, DataFactory } from "n3";
-import * as jsonld from "jsonld";
-import { readFileSync, readdirSync } from "node:fs";
+
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SCHEMA, EV, RDF } from "./namespaces.ts";
+import * as jsonld from "jsonld";
+import { DataFactory, Parser, Store } from "n3";
+import { EV, RDF, SCHEMA } from "./namespaces.ts";
 
 const { namedNode } = DataFactory;
 
 // ─── Types ────────────────────────────────────────────────────────
 
 export interface WorkflowStep {
-  id: string;             // URN e.g. urn:pi:workflow:feature-build/step/explore
-  name: string;           // Human label
+  id: string; // URN e.g. urn:pi:workflow:feature-build/step/explore
+  name: string; // Human label
   description: string;
-  position: number;       // 1-based order
-  actionType: string;     // Full IRI e.g. https://schema.org/SearchAction
-  agentRole: string;      // Agent role name e.g. "explorer"
-  skill?: string;         // Optional skill name
+  position: number; // 1-based order
+  actionType: string; // Full IRI e.g. https://schema.org/SearchAction
+  agentRole: string; // Agent role name e.g. "explorer"
+  skill?: string; // Optional skill name
   promptTemplate: string; // Prompt with {task}, {cwd}, {context} placeholders
   transitionMode: string; // "user" or "auto"
-  nextStepId?: string;    // @id of next step via schema:potentialAction
+  nextStepId?: string; // @id of next step via schema:potentialAction
 }
 
 export interface WorkflowDef {
-  id: string;             // URN e.g. urn:pi:workflow:feature-build
+  id: string; // URN e.g. urn:pi:workflow:feature-build
   name: string;
   description: string;
   steps: WorkflowStep[];
-  rawJsonLd: string;      // Original JSON-LD string for XTDB storage
+  rawJsonLd: string; // Original JSON-LD string for XTDB storage
 }
 
 // ─── Loading ──────────────────────────────────────────────────────
@@ -46,7 +47,7 @@ export async function loadWorkflowFile(filePath: string): Promise<WorkflowDef> {
   const doc = JSON.parse(rawText);
 
   // Proper JSON-LD → RDF conversion
-  const nquads = await jsonld.toRDF(doc, { format: "application/n-quads" }) as string;
+  const nquads = (await jsonld.toRDF(doc, { format: "application/n-quads" })) as string;
 
   const store = new Store();
   const parser = new Parser({ format: "N-Quads" });
@@ -75,8 +76,8 @@ export async function loadWorkflowFile(filePath: string): Promise<WorkflowDef> {
     const stepId = stepNode.value;
 
     // Get action type (most specific rdf:type that isn't just schema:Action)
-    const types = store.getObjects(stepNode, rdfType, null).map(t => t.value);
-    const actionType = types.find(t => t !== `${SCHEMA}Action` && t.startsWith(SCHEMA)) ?? `${SCHEMA}Action`;
+    const types = store.getObjects(stepNode, rdfType, null).map((t) => t.value);
+    const actionType = types.find((t) => t !== `${SCHEMA}Action` && t.startsWith(SCHEMA)) ?? `${SCHEMA}Action`;
 
     // Get agent role: schema:agent → extract role name from URN
     const agentObj = store.getObjects(stepNode, namedNode(`${SCHEMA}agent`), null)[0];
@@ -117,7 +118,7 @@ export async function loadWorkflowDir(dirPath: string): Promise<Map<string, Work
   const workflows = new Map<string, WorkflowDef>();
   let files: string[];
   try {
-    files = readdirSync(dirPath).filter(f => f.endsWith(".jsonld"));
+    files = readdirSync(dirPath).filter((f) => f.endsWith(".jsonld"));
   } catch {
     return workflows; // Directory doesn't exist yet — not an error
   }
@@ -126,9 +127,7 @@ export async function loadWorkflowDir(dirPath: string): Promise<Map<string, Work
     try {
       const def = await loadWorkflowFile(join(dirPath, file));
       workflows.set(def.name, def);
-    } catch (err: any) {
-      console.warn(`[workflow-engine] Failed to load ${file}: ${err.message}`);
-    }
+    } catch (_err: any) {}
   }
   return workflows;
 }

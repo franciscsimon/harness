@@ -11,7 +11,10 @@ function mdToHtml(md: string): string {
     .replace(/^# (.+)$/gm, "<h1>$1</h1>")
     .replace(/^## (.+)$/gm, "<h2>$1</h2>")
     .replace(/^\| (.+) \|$/gm, (line) => {
-      const cells = line.split("|").filter(Boolean).map((c) => c.trim());
+      const cells = line
+        .split("|")
+        .filter(Boolean)
+        .map((c) => c.trim());
       if (cells.every((c) => /^-+$/.test(c))) return "";
       return `<tr>${cells.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`;
     })
@@ -32,7 +35,12 @@ export async function renderKnowledgePage(sessionId: string, projectId?: string)
       <div class="page-header"><h1>📝 Knowledge</h1></div>
       <p class="empty-msg">No knowledge data for this session.</p>
     `;
-    return layout(content, { title: "Knowledge", activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions", projectId, activeSection: "sessions" });
+    return layout(content, {
+      title: "Knowledge",
+      activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions",
+      projectId,
+      activeSection: "sessions",
+    });
   }
 
   const html = mdToHtml(md);
@@ -55,5 +63,10 @@ export async function renderKnowledgePage(sessionId: string, projectId?: string)
     </div>
   `;
 
-  return layout(content, { title: `Knowledge — ${name}`, activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions", projectId, activeSection: "sessions" });
+  return layout(content, {
+    title: `Knowledge — ${name}`,
+    activePath: projectId ? `/projects/${projectId}/sessions` : "/sessions",
+    projectId,
+    activeSection: "sessions",
+  });
 }

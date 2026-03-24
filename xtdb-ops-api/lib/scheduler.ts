@@ -2,7 +2,7 @@
  * Simple backup scheduler — runs periodic CSV backups based on interval config.
  * Controlled via API: POST /api/scheduler/start, POST /api/scheduler/stop, GET /api/scheduler/status
  */
-import { startCsvBackup, getJob } from "./backup.ts";
+import { getJob, startCsvBackup } from "./backup.ts";
 
 const DEFAULT_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_BACKUPS = Number(process.env.BACKUP_RETENTION_COUNT ?? "7");
@@ -20,12 +20,9 @@ export function startScheduler(intervalHours?: number): { started: boolean; inte
   }
 
   timer = setInterval(async () => {
-    console.log(`[scheduler] Starting scheduled CSV backup`);
     lastRunAt = new Date().toISOString();
     lastJobId = startCsvBackup();
   }, intervalMs);
-
-  console.log(`[scheduler] Backup scheduler started (every ${intervalMs / 3600000}h)`);
   return { started: true, intervalHours: intervalMs / 3600000 };
 }
 
@@ -33,7 +30,6 @@ export function stopScheduler(): { stopped: boolean } {
   if (!timer) return { stopped: false };
   clearInterval(timer);
   timer = null;
-  console.log(`[scheduler] Backup scheduler stopped`);
   return { stopped: true };
 }
 

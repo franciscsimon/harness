@@ -1,8 +1,8 @@
+import { existsSync } from "node:fs";
+import { extname, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { detectStack, type StackReport } from "./detect.ts";
 import { REGISTRY } from "./registry.ts";
-import { existsSync, readFileSync } from "node:fs";
-import { join, extname } from "node:path";
 
 // ─── Code Quality Extension ──────────────────────────────────────
 // Detects the project's language stack and enforces code quality
@@ -52,14 +52,14 @@ export default function (pi: ExtensionAPI) {
       } else {
         ctx.ui.setStatus("code-quality", `✅ ${langs}`);
       }
-    } catch (err) {
+    } catch (_err) {
       ctx.ui.setStatus("code-quality", "❌ detection failed");
     }
   });
 
   // ── After file write: remind about quality checks ──
-  pi.on("tool_execution_end", async (event, ctx) => {
-    if (!enabled || !cachedReport) return;
+  pi.on("tool_execution_end", async (event, _ctx) => {
+    if (!(enabled && cachedReport)) return;
     const e = event as any;
     if (e.toolName !== "write" && e.toolName !== "edit") return;
 
@@ -67,14 +67,10 @@ export default function (pi: ExtensionAPI) {
     if (!filePath) return;
 
     const ext = extname(filePath).toLowerCase();
-    const lang = cachedReport.languages.find((l) =>
-      l.toolchain.extensions.some((e) => e === ext),
-    );
+    const lang = cachedReport.languages.find((l) => l.toolchain.extensions.some((e) => e === ext));
     if (!lang) return;
 
-    const fmtTool = lang.toolchain.tools.find(
-      (t) => t.role === "fmt" || t.role === "all-in-one",
-    );
+    const fmtTool = lang.toolchain.tools.find((t) => t.role === "fmt" || t.role === "all-in-one");
     if (!fmtTool) return;
 
     // Check if the fmt/lint tool config exists (meaning it's set up)
@@ -100,7 +96,7 @@ export default function (pi: ExtensionAPI) {
       },
       required: ["action"],
     },
-    execute: async (args, ctx) => {
+    execute: async (args, _ctx) => {
       const action = (args as any).action;
 
       if (action === "scan" || action === "report") {

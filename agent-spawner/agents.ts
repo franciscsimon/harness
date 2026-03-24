@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 export interface AgentConfig {
@@ -37,12 +37,15 @@ export function discoverAgents(): AgentConfig[] {
       if (!statSync(filePath).isFile()) continue;
       const content = readFileSync(filePath, "utf-8");
       const { frontmatter, body } = parseFrontmatter(content);
-      if (!frontmatter.name || !frontmatter.description) continue;
+      if (!(frontmatter.name && frontmatter.description)) continue;
 
       agents.push({
         name: frontmatter.name,
         description: frontmatter.description,
-        tools: frontmatter.tools?.split(",").map((t) => t.trim()).filter(Boolean),
+        tools: frontmatter.tools
+          ?.split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
         model: frontmatter.model,
         systemPrompt: body,
       });

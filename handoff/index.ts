@@ -1,5 +1,5 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { complete, getModel } from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // ─── Handoff Extension ────────────────────────────────────────────
 // Transfer context to a new session with a generated prompt.
@@ -39,11 +39,13 @@ export default function (pi: ExtensionAPI) {
       try {
         const result = await complete({
           model,
-          messages: [{
-            role: "user",
-            content: [{
-              type: "text",
-              text: `Generate a handoff prompt for a new coding session. Extract from this conversation:
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `Generate a handoff prompt for a new coding session. Extract from this conversation:
 1. Project context (what codebase, what we're working on)
 2. What was accomplished (key changes, files modified)
 3. Current state (what works, what doesn't)
@@ -55,8 +57,10 @@ Be concise. The output should be a self-contained prompt that a fresh agent can 
 
 Conversation:
 ${context}`,
-            }],
-          }],
+                },
+              ],
+            },
+          ],
           maxTokens: 2000,
         });
 
@@ -69,7 +73,7 @@ ${context}`,
         ctx.ui.setEditorText(handoffText);
         ctx.ui.notify(
           "🤝 Handoff prompt generated and placed in editor.\n" +
-          "Review/edit it, then start a new session and paste it.",
+            "Review/edit it, then start a new session and paste it.",
           "success",
         );
       } catch (e) {

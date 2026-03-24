@@ -22,7 +22,16 @@ export default function (pi: ExtensionAPI) {
   async function ensureDb(): Promise<Sql | null> {
     if (sql) return sql;
     try {
-      sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30, connect_timeout: 10 });
+      sql = postgres({
+        host: XTDB_HOST,
+        port: XTDB_PORT,
+        database: "xtdb",
+        user: "xtdb",
+        password: "xtdb",
+        max: 1,
+        idle_timeout: 30,
+        connect_timeout: 10,
+      });
       await sql`SELECT 1 AS ok`;
       return sql;
     } catch {
@@ -75,11 +84,13 @@ export default function (pi: ExtensionAPI) {
         for (const fp of filePaths.slice(0, 5)) {
           const artifacts = await db`
             SELECT DISTINCT session_id, operation, ts FROM artifacts
-            WHERE project_id = ${t(projectId)} AND path LIKE ${"%" + fp}
+            WHERE project_id = ${t(projectId)} AND path LIKE ${`%${fp}`}
             ORDER BY ts DESC LIMIT 3
           `;
           if (artifacts.length > 0) {
-            priorWork.push(`- \`${fp}\`: modified in ${artifacts.length} prior session(s), last ${new Date(Number(artifacts[0].ts)).toISOString().slice(0, 10)}`);
+            priorWork.push(
+              `- \`${fp}\`: modified in ${artifacts.length} prior session(s), last ${new Date(Number(artifacts[0].ts)).toISOString().slice(0, 10)}`,
+            );
           }
         }
         if (priorWork.length > 0) {
@@ -91,13 +102,11 @@ export default function (pi: ExtensionAPI) {
           const fileFailures = await db`
             SELECT what, why, ts FROM decisions
             WHERE project_id = ${t(projectId)} AND outcome = 'failure'
-              AND files LIKE ${"%" + fp + "%"}
+              AND files LIKE ${`%${fp}%`}
             ORDER BY ts DESC LIMIT 3
           `;
           if (fileFailures.length > 0) {
-            const lines = fileFailures.map((f: any) =>
-              `- ⚠️ \`${fp}\`: previously failed: ${f.what} — ${f.why}`
-            );
+            const lines = fileFailures.map((f: any) => `- ⚠️ \`${fp}\`: previously failed: ${f.what} — ${f.why}`);
             sections.push(`### File-Specific Warnings\n${lines.join("\n")}`);
           }
         }
@@ -111,9 +120,7 @@ export default function (pi: ExtensionAPI) {
         WHERE project_id = ${t(projectId)} AND error_count > 0
         ORDER BY ts DESC LIMIT 5
       `;
-      const relevant = postmortems.filter((pm: any) =>
-        pm.what_failed && pm.what_failed !== "No tool failures"
-      );
+      const relevant = postmortems.filter((pm: any) => pm.what_failed && pm.what_failed !== "No tool failures");
       if (relevant.length > 0) {
         const lines = relevant.map((pm: any) => {
           const date = new Date(Number(pm.ts)).toISOString().slice(0, 10);
@@ -138,7 +145,14 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
-    if (sql) { try { await sql.end(); } catch { /* cleanup — safe to ignore */ } sql = null; }
+    if (sql) {
+      try {
+        await sql.end();
+      } catch {
+        /* cleanup — safe to ignore */
+      }
+      sql = null;
+    }
   });
 }
 
@@ -150,7 +164,9 @@ function extractPaths(text: string): string[] {
     paths.add(m[1]);
   }
   // Match quoted or bare paths with extensions
-  for (const m of text.matchAll(/(?:^|\s|`|")([\w./-]+\.(?:ts|js|tsx|jsx|py|rs|go|md|json|yaml|yml|css|html|sql))\b/g)) {
+  for (const m of text.matchAll(
+    /(?:^|\s|`|")([\w./-]+\.(?:ts|js|tsx|jsx|py|rs|go|md|json|yaml|yml|css|html|sql))\b/g,
+  )) {
     paths.add(m[1]);
   }
   return [...paths];
@@ -161,6 +177,8 @@ function truncFiles(filesJson: string): string {
   try {
     const arr = JSON.parse(filesJson);
     if (Array.isArray(arr)) return arr.map((f: string) => f.split("/").pop()).join(", ");
-  } catch { /* parse fallback — use default */ }
+  } catch {
+    /* parse fallback — use default */
+  }
   return filesJson.slice(0, 60);
 }

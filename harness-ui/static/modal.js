@@ -7,13 +7,10 @@
  *   modal.confirm("Are you sure?").then(function (ok) { if (ok) doThing(); });
  *   modal.confirm("Delete item", "This cannot be undone.", "danger").then(...)
  */
-window.modal = (function () {
-  "use strict";
-
-  function esc(s) {
+window.modal = (() => {
+  function _esc(s) {
     if (!s) return "";
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
 
   function create(title, body, buttons) {
@@ -40,11 +37,11 @@ window.modal = (function () {
     var actions = document.createElement("div");
     actions.className = "modal-actions";
 
-    buttons.forEach(function (b) {
+    buttons.forEach((b) => {
       var btn = document.createElement("button");
-      btn.className = "modal-btn " + (b.cls || "modal-btn-ok");
+      btn.className = `modal-btn ${b.cls || "modal-btn-ok"}`;
       btn.textContent = b.label;
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", () => {
         overlay.remove();
         if (b.cb) b.cb();
       });
@@ -56,12 +53,12 @@ window.modal = (function () {
     document.body.appendChild(overlay);
 
     // Close on overlay click (outside box)
-    overlay.addEventListener("click", function (e) {
+    overlay.addEventListener("click", (e) => {
       if (e.target === overlay) {
         overlay.remove();
         // Call the cancel callback if there's one
-        var cancelBtn = buttons.find(function (b) { return b.cls && b.cls.indexOf("cancel") !== -1; });
-        if (cancelBtn && cancelBtn.cb) cancelBtn.cb();
+        var cancelBtn = buttons.find((b) => b.cls && b.cls.indexOf("cancel") !== -1);
+        if (cancelBtn?.cb) cancelBtn.cb();
       }
     });
 
@@ -70,8 +67,8 @@ window.modal = (function () {
       if (e.key === "Escape") {
         overlay.remove();
         document.removeEventListener("keydown", onKey);
-        var cancelBtn = buttons.find(function (b) { return b.cls && b.cls.indexOf("cancel") !== -1; });
-        if (cancelBtn && cancelBtn.cb) cancelBtn.cb();
+        var cancelBtn = buttons.find((b) => b.cls && b.cls.indexOf("cancel") !== -1);
+        if (cancelBtn?.cb) cancelBtn.cb();
       }
     }
     document.addEventListener("keydown", onKey);
@@ -98,14 +95,10 @@ window.modal = (function () {
       title = titleOrMsg;
       body = msg;
     }
-    var btnCls = style === "danger" ? "modal-btn-danger"
-      : style === "success" ? "modal-btn-success"
-      : "modal-btn-ok";
+    var btnCls = style === "danger" ? "modal-btn-danger" : style === "success" ? "modal-btn-success" : "modal-btn-ok";
 
-    return new Promise(function (resolve) {
-      create(title, body, [
-        { label: "OK", cls: btnCls, cb: resolve },
-      ]);
+    return new Promise((resolve) => {
+      create(title, body, [{ label: "OK", cls: btnCls, cb: resolve }]);
     });
   }
 
@@ -126,10 +119,22 @@ window.modal = (function () {
     }
     var okCls = style === "danger" ? "modal-btn-danger" : "modal-btn-ok";
 
-    return new Promise(function (resolve) {
+    return new Promise((resolve) => {
       create(title, body, [
-        { label: "Cancel", cls: "modal-btn-cancel", cb: function () { resolve(false); } },
-        { label: style === "danger" ? "Confirm" : "OK", cls: okCls, cb: function () { resolve(true); } },
+        {
+          label: "Cancel",
+          cls: "modal-btn-cancel",
+          cb: () => {
+            resolve(false);
+          },
+        },
+        {
+          label: style === "danger" ? "Confirm" : "OK",
+          cls: okCls,
+          cb: () => {
+            resolve(true);
+          },
+        },
       ]);
     });
   }

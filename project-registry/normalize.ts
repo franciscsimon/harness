@@ -11,7 +11,7 @@
  *   7. Lowercase host only (path preserves case)
  */
 export function normalizeGitUrl(raw: string): string {
-  let url = raw.trim();
+  const url = raw.trim();
 
   // SSH shorthand: git@host:path (no protocol prefix)
   const sshShorthand = url.match(/^[\w.-]+@([\w.-]+):(.+)$/);

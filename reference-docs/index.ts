@@ -1,8 +1,7 @@
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, extname, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
-import { readFileSync, readdirSync, existsSync, statSync } from "node:fs";
-import { join, basename, extname } from "node:path";
 
 // ─── Reference Docs Extension ─────────────────────────────────────
 // On-demand knowledge documents loaded only when relevant.
@@ -11,7 +10,7 @@ import { join, basename, extname } from "node:path";
 // Unlike ground-rules (always loaded), references are pulled in explicitly.
 
 export default function (pi: ExtensionAPI) {
-  let loaded: Map<string, string> = new Map();
+  const loaded: Map<string, string> = new Map();
   let cwd = "";
 
   // Directories to scan for reference docs (in priority order)
@@ -54,13 +53,13 @@ export default function (pi: ExtensionAPI) {
 
     // Auto-suggest relevant docs based on commands being run
     const suggestions: Record<string, string[]> = {
-      "git": ["git-workflow.md", "git-standards.md"],
-      "docker": ["docker.md", "deployment.md"],
+      git: ["git-workflow.md", "git-standards.md"],
+      docker: ["docker.md", "deployment.md"],
       "npm test": ["testing.md", "tdd.md", "test-standards.md"],
-      "vitest": ["testing.md", "vitest.md"],
-      "curl": ["api-docs.md", "api.md"],
-      "psql": ["database.md", "db.md", "sql.md"],
-      "kubectl": ["kubernetes.md", "k8s.md", "deployment.md"],
+      vitest: ["testing.md", "vitest.md"],
+      curl: ["api-docs.md", "api.md"],
+      psql: ["database.md", "db.md", "sql.md"],
+      kubectl: ["kubernetes.md", "k8s.md", "deployment.md"],
     };
 
     const allDocs = findAllDocs();
@@ -70,8 +69,7 @@ export default function (pi: ExtensionAPI) {
           const doc = allDocs.find((d) => d.name === docName);
           if (doc && !loaded.has(doc.name)) {
             ctx.ui.notify(
-              `📄 Reference doc available: ${doc.name}\n` +
-                `  Use /ref load ${doc.name} to add it to context.`,
+              `📄 Reference doc available: ${doc.name}\n` + `  Use /ref load ${doc.name} to add it to context.`,
               "info",
             );
             break; // One suggestion per command
@@ -85,9 +83,7 @@ export default function (pi: ExtensionAPI) {
   // ── Inject loaded refs into context ──
   pi.on("context", async (event) => {
     if (loaded.size === 0) return;
-    const text = [...loaded.entries()]
-      .map(([name, content]) => `### 📄 ${name}\n\n${content}`)
-      .join("\n\n---\n\n");
+    const text = [...loaded.entries()].map(([name, content]) => `### 📄 ${name}\n\n${content}`).join("\n\n---\n\n");
 
     const messages = [...event.messages];
     messages.push({
@@ -116,10 +112,13 @@ export default function (pi: ExtensionAPI) {
 
       if (cmd === "load") {
         const name = parts.slice(1).join(" ");
-        if (!name) { ctx.ui.notify("Usage: /ref load <filename>", "error"); return; }
+        if (!name) {
+          ctx.ui.notify("Usage: /ref load <filename>", "error");
+          return;
+        }
 
         const allDocs = findAllDocs();
-        const doc = allDocs.find((d) => d.name === name || d.name === name + ".md");
+        const doc = allDocs.find((d) => d.name === name || d.name === `${name}.md`);
         if (!doc) {
           // Try as absolute path
           if (existsSync(name)) {
@@ -142,7 +141,7 @@ export default function (pi: ExtensionAPI) {
 
       if (cmd === "unload") {
         const name = parts[1];
-        if (loaded.delete(name ?? "") || loaded.delete((name ?? "") + ".md")) {
+        if (loaded.delete(name ?? "") || loaded.delete(`${name ?? ""}.md`)) {
           ctx.ui.setStatus("ref-docs", loaded.size > 0 ? `📄 ${loaded.size} refs` : "");
           ctx.ui.notify(`Unloaded: ${name}`, "info");
         } else {
@@ -152,7 +151,10 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (cmd === "loaded") {
-        if (loaded.size === 0) { ctx.ui.notify("No refs loaded. Use /ref load <file>.", "info"); return; }
+        if (loaded.size === 0) {
+          ctx.ui.notify("No refs loaded. Use /ref load <file>.", "info");
+          return;
+        }
         const lines = [...loaded.entries()].map(([k, v]) => `  📄 ${k} (${v.length} chars)`);
         ctx.ui.notify(`📄 Loaded refs:\n${lines.join("\n")}`, "info");
         return;
@@ -161,10 +163,17 @@ export default function (pi: ExtensionAPI) {
       // Default: list
       const allDocs = findAllDocs();
       if (allDocs.length === 0) {
-        ctx.ui.notify(`No .md files found in:\n${docPaths().map((d) => `  ${d}`).join("\n")}`, "info");
+        ctx.ui.notify(
+          `No .md files found in:\n${docPaths()
+            .map((d) => `  ${d}`)
+            .join("\n")}`,
+          "info",
+        );
         return;
       }
-      const lines = allDocs.map((d) => `  ${loaded.has(d.name) ? "✅" : "  "} ${d.name} (${Math.round(d.size / 1024)}KB)`);
+      const lines = allDocs.map(
+        (d) => `  ${loaded.has(d.name) ? "✅" : "  "} ${d.name} (${Math.round(d.size / 1024)}KB)`,
+      );
       ctx.ui.notify(`📄 Available reference docs:\n${lines.join("\n")}`, "info");
     },
   });
@@ -173,22 +182,25 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "load_reference",
     label: "Load Reference",
-    description: "Load a reference document into context by name. Search project docs/, .docs/, references/ directories.",
+    description:
+      "Load a reference document into context by name. Search project docs/, .docs/, references/ directories.",
     promptSnippet: "Load a reference doc into context by filename",
     promptGuidelines: ["Use load_reference when you need API docs, standards, or guidelines for the current task."],
     parameters: Type.Object({ name: Type.String({ description: "Doc filename (e.g. 'api.md')" }) }),
     async execute(_tid: any, params: any, _s: any, _u: any, ctx: any) {
       const allDocs = findAllDocs();
-      const doc = allDocs.find((d: any) => d.name === params.name || d.name === params.name + ".md");
+      const doc = allDocs.find((d: any) => d.name === params.name || d.name === `${params.name}.md`);
       if (!doc) {
         const available = allDocs.map((d: any) => d.name).join(", ");
-        throw new Error("Not found: " + params.name + ". Available: " + available);
+        throw new Error(`Not found: ${params.name}. Available: ${available}`);
       }
       const content = readFileSync(doc.path, "utf-8");
       loaded.set(doc.name, content);
-      ctx.ui.setStatus("ref-docs", "📄 " + loaded.size + " refs");
-      return { content: [{ type: "text", text: "📄 Loaded: " + doc.name + " (" + Math.round(doc.size / 1024) + "KB)" }], details: { name: doc.name } };
+      ctx.ui.setStatus("ref-docs", `📄 ${loaded.size} refs`);
+      return {
+        content: [{ type: "text", text: `📄 Loaded: ${doc.name} (${Math.round(doc.size / 1024)}KB)` }],
+        details: { name: doc.name },
+      };
     },
   });
-
 }

@@ -84,19 +84,19 @@ export interface AgentTaskRequestedRow extends ProjectionBase {
 export interface AgentReasoningTraceRow extends ProjectionBase {
   type: "AgentReasoningTrace";
   turn_index: number;
-  thinking_event_ids: string;   // JSON array
-  tool_call_event_ids: string;  // JSON array
+  thinking_event_ids: string; // JSON array
+  tool_call_event_ids: string; // JSON array
   tool_result_event_ids: string; // JSON array
   provider_payload_bytes: number | null;
   tool_count: number;
-  tools_summary: string;           // JSON array of ToolSummary
+  tools_summary: string; // JSON array of ToolSummary
   turn_start_event_id: string | null;
   turn_end_event_id: string | null;
 }
 
 export interface AgentResultProducedRow extends ProjectionBase {
   type: "AgentResultProduced";
-  reasoning_trace_ids: string;  // JSON array
+  reasoning_trace_ids: string; // JSON array
   total_turns: number;
   total_msg_count: number | null;
   agent_end_event_id: string | null;
@@ -106,7 +106,7 @@ export interface AgentResultProducedRow extends ProjectionBase {
 
 export interface ProjectStateChangedRow extends ProjectionBase {
   type: "ProjectStateChanged";
-  mutations: string;            // JSON array of MutationRecord
+  mutations: string; // JSON array of MutationRecord
   mutating_tool_count: number;
 }
 

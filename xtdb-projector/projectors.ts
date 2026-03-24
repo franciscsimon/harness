@@ -2,11 +2,11 @@
 // 4 pure functions: state → ProjectionRow | null. No I/O.
 
 import type {
-  RunState,
-  AgentTaskRequestedRow,
   AgentReasoningTraceRow,
   AgentResultProducedRow,
+  AgentTaskRequestedRow,
   ProjectStateChangedRow,
+  RunState,
 } from "./types.ts";
 
 /**
@@ -30,11 +30,7 @@ export function projectTask(id: string, state: RunState): AgentTaskRequestedRow 
 /**
  * Emitted at turn_end. One per turn — captures reasoning + tool use.
  */
-export function projectReasoning(
-  id: string,
-  state: RunState,
-  turnEndEventId: string,
-): AgentReasoningTraceRow {
+export function projectReasoning(id: string, state: RunState, turnEndEventId: string): AgentReasoningTraceRow {
   const turn = state.currentTurn;
   return {
     _id: id,

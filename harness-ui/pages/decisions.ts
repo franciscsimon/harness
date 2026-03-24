@@ -4,7 +4,7 @@
 
 import { layout } from "../components/layout.ts";
 import { fetchDecisions } from "../lib/api.ts";
-import { relativeTime, escapeHtml } from "../lib/format.ts";
+import { escapeHtml, relativeTime } from "../lib/format.ts";
 
 const OUTCOME_COLORS: Record<string, string> = {
   success: "#22c55e",
@@ -21,14 +21,15 @@ const OUTCOME_ICONS: Record<string, string> = {
 export async function renderDecisions(projectId?: string): Promise<string> {
   const decisions = (await fetchDecisions(200, projectId)) ?? [];
 
-  const rows = decisions.map((d: any) => {
-    const icon = OUTCOME_ICONS[d.outcome] ?? "•";
-    const color = OUTCOME_COLORS[d.outcome] ?? "#6b7280";
-    const date = d.ts ? new Date(Number(d.ts)).toISOString().slice(0, 10) : "—";
-    const projId = d.project_id ?? "";
-    const projName = projId.split("/").pop() ?? projId;
+  const rows = decisions
+    .map((d: any) => {
+      const icon = OUTCOME_ICONS[d.outcome] ?? "•";
+      const color = OUTCOME_COLORS[d.outcome] ?? "#6b7280";
+      const date = d.ts ? new Date(Number(d.ts)).toISOString().slice(0, 10) : "—";
+      const projId = d.project_id ?? "";
+      const projName = projId.split("/").pop() ?? projId;
 
-    return `<div class="dec-card">
+      return `<div class="dec-card">
       <div class="dec-card-top">
         <span class="dec-outcome-badge" style="--outcome-color:${color}">${icon} ${escapeHtml(d.outcome ?? "unknown")}</span>
         ${projId ? `<a class="dec-project-link" href="/projects/${encodeURIComponent(projId)}">${escapeHtml(projName)}</a>` : ""}
@@ -43,7 +44,8 @@ export async function renderDecisions(projectId?: string): Promise<string> {
         <span class="dec-label">Why:</span> ${escapeHtml(d.why ?? "—")}
       </div>
     </div>`;
-  }).join("\n");
+    })
+    .join("\n");
 
   const content = `
     <div class="page-header">
@@ -55,5 +57,10 @@ export async function renderDecisions(projectId?: string): Promise<string> {
     </main>
   `;
 
-  return layout(content, { title: "Decisions", activePath: projectId ? `/projects/${projectId}/decisions` : "/decisions", projectId, activeSection: "decisions" });
+  return layout(content, {
+    title: "Decisions",
+    activePath: projectId ? `/projects/${projectId}/decisions` : "/decisions",
+    projectId,
+    activeSection: "decisions",
+  });
 }

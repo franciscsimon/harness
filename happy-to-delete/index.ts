@@ -1,6 +1,6 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
 import { captureError } from "../lib/errors.ts";
 
 // ─── Happy to Delete Extension ────────────────────────────────────
@@ -10,8 +10,8 @@ import { captureError } from "../lib/errors.ts";
 // Ref: https://lexler.github.io/augmented-coding-patterns/patterns/happy-to-delete
 
 export default function (pi: ExtensionAPI) {
-  let createdFiles: Set<string> = new Set();
-  let modifiedFiles: Set<string> = new Set();
+  const createdFiles: Set<string> = new Set();
+  const modifiedFiles: Set<string> = new Set();
   let sessionCwd = "";
 
   function reset() {
@@ -47,10 +47,13 @@ export default function (pi: ExtensionAPI) {
         `Session: ${new Date().toISOString()}`,
         "",
         "## Created (safe to delete and regenerate)",
-        ...([...createdFiles].sort().map((f) => `- \`${f}\``)),
+        ...[...createdFiles].sort().map((f) => `- \`${f}\``),
         "",
         "## Modified (review before deleting)",
-        ...([...modifiedFiles].filter((f) => !createdFiles.has(f)).sort().map((f) => `- \`${f}\``)),
+        ...[...modifiedFiles]
+          .filter((f) => !createdFiles.has(f))
+          .sort()
+          .map((f) => `- \`${f}\``),
         "",
         `Total: ${createdFiles.size} created, ${modifiedFiles.size - createdFiles.size} modified`,
         "",
@@ -58,7 +61,12 @@ export default function (pi: ExtensionAPI) {
 
       writeFileSync(join(outDir, "ai-files.md"), lines.join("\n"), "utf-8");
     } catch (err) {
-      captureError({ component: "happy-to-delete", operation: "writeFileSync ai-files.md", error: err, severity: "data_loss" });
+      captureError({
+        component: "happy-to-delete",
+        operation: "writeFileSync ai-files.md",
+        error: err,
+        severity: "data_loss",
+      });
     }
   });
 

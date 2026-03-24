@@ -5,9 +5,8 @@ import type { SessionKnowledge } from "./db.ts";
 
 export function generateKnowledgeMarkdown(sessionId: string, k: SessionKnowledge): string {
   const name = sessionId.split("/").pop() ?? sessionId;
-  const durationStr = k.durationMs < 60_000
-    ? `${Math.round(k.durationMs / 1000)}s`
-    : `${Math.round(k.durationMs / 60_000)}m`;
+  const durationStr =
+    k.durationMs < 60_000 ? `${Math.round(k.durationMs / 1000)}s` : `${Math.round(k.durationMs / 60_000)}m`;
 
   const lines: string[] = [
     `# Session Summary`,

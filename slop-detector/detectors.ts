@@ -165,7 +165,7 @@ export function detectPerfectRecallFallacy(state: DetectorState): Detection | nu
 // "User's prompt forces AI to fabricate"
 export function detectTellMeALie(state: DetectorState): Detection | null {
   for (const prompt of state.userPrompts) {
-    const lower = prompt.toLowerCase();
+    const _lower = prompt.toLowerCase();
 
     // Forced structure: "give me exactly N" for something that might not have N answers
     if (/give me exactly \d+|list exactly \d+|name exactly \d+/i.test(prompt)) {

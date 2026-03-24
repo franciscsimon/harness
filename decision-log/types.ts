@@ -1,18 +1,18 @@
 // ─── Decision Record (XTDB row) ────────────────────────────────
 
 export interface DecisionRecord {
-  _id: string;                   // "dec:<uuid>"
-  project_id: string;            // FK → projects._id
-  session_id: string;            // session that produced this decision
-  ts: number;                    // epoch ms
-  task: string;                  // what was the agent trying to do
-  what: string;                  // what was tried or decided
+  _id: string; // "dec:<uuid>"
+  project_id: string; // FK → projects._id
+  session_id: string; // session that produced this decision
+  ts: number; // epoch ms
+  task: string; // what was the agent trying to do
+  what: string; // what was tried or decided
   outcome: "success" | "failure" | "deferred";
-  why: string;                   // reasoning / root cause
-  files: string | null;          // JSON array of related file paths
-  alternatives: string | null;   // alternatives considered
-  agent: string | null;          // which agent made the decision
-  tags: string | null;           // JSON array of tags
+  why: string; // reasoning / root cause
+  files: string | null; // JSON array of related file paths
+  alternatives: string | null; // alternatives considered
+  agent: string | null; // which agent made the decision
+  tags: string | null; // JSON array of tags
   jsonld: string;
 }
 

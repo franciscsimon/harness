@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:6968ea7e-55b5-4986-80fb-70ba5282cfa7",
-      "@type": [
-        "ev:AgentEnd"
-      ],
+      "@type": ["ev:AgentEnd"],
       "ev:eventName": [
         {
           "@value": "agent_end"
@@ -74,9 +72,7 @@
     },
     {
       "@id": "_:env_6968ea7e-55b5-4986-80fb-70ba5282cfa7",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

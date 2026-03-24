@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { basename, resolve } from "node:path";
 import { normalizeGitUrl } from "./normalize.ts";
-import type { ProjectIdentity, ExecFn } from "./types.ts";
+import type { ExecFn, ProjectIdentity } from "./types.ts";
 
 /**
  * Resolve project identity from a working directory.

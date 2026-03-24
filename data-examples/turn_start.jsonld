@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:2b84e92d-e28e-439f-bc85-1f730d20ab2d",
-      "@type": [
-        "ev:TurnStart"
-      ],
+      "@type": ["ev:TurnStart"],
       "ev:eventName": [
         {
           "@value": "turn_start"
@@ -80,9 +78,7 @@
     },
     {
       "@id": "_:env_2b84e92d-e28e-439f-bc85-1f730d20ab2d",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

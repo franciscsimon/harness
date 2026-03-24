@@ -1,5 +1,5 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { complete, getModel } from "@mariozechner/pi-ai";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 // ─── Custom Compaction Extension ──────────────────────────────────
 // Replaces default compaction with a full summary that preserves
@@ -8,11 +8,11 @@ import { complete, getModel } from "@mariozechner/pi-ai";
 
 export default function (pi: ExtensionAPI) {
   let filesModified: string[] = [];
-  let decisions: string[] = [];
+  let _decisions: string[] = [];
 
   pi.on("session_start", async () => {
     filesModified = [];
-    decisions = [];
+    _decisions = [];
   });
 
   // Track file modifications
@@ -49,18 +49,17 @@ export default function (pi: ExtensionAPI) {
     }
 
     try {
-      const filesSection = filesModified.length > 0
-        ? `\nFiles modified this session: ${filesModified.join(", ")}`
-        : "";
+      const filesSection = filesModified.length > 0 ? `\nFiles modified this session: ${filesModified.join(", ")}` : "";
 
       const result = await complete({
         model,
         messages: [
           {
             role: "user",
-            content: [{
-              type: "text",
-              text: `Summarize this coding session conversation into a structured compaction summary. Preserve:
+            content: [
+              {
+                type: "text",
+                text: `Summarize this coding session conversation into a structured compaction summary. Preserve:
 1. What the user asked for (goal)
 2. Key decisions made and their rationale
 3. Files created/modified and why
@@ -72,7 +71,8 @@ ${filesSection}
 
 Conversation:
 ${conversationText}`,
-            }],
+              },
+            ],
           },
         ],
         maxTokens: 2000,

@@ -25,7 +25,9 @@ async function collectSessionIds(db: Sql, rootSessionId: string): Promise<string
           queue.push(childId);
         }
       }
-    } catch { break; }
+    } catch {
+      break;
+    }
   }
   return ids;
 }
@@ -35,29 +37,52 @@ async function collectProvenanceGraph(db: Sql, sessionIds: string[]): Promise<an
 
   for (const sid of sessionIds) {
     try {
-      const avRows = await db`SELECT jsonld FROM artifact_versions WHERE session_id = ${sid} AND jsonld != '' ORDER BY ts`;
-      for (const r of avRows) { if (r.jsonld) graph.push(JSON.parse(r.jsonld)); }
-    } catch { /* parse fallback — use default */ }
+      const avRows =
+        await db`SELECT jsonld FROM artifact_versions WHERE session_id = ${sid} AND jsonld != '' ORDER BY ts`;
+      for (const r of avRows) {
+        if (r.jsonld) graph.push(JSON.parse(r.jsonld));
+      }
+    } catch {
+      /* parse fallback — use default */
+    }
 
     try {
       const artRows = await db`SELECT jsonld FROM artifacts WHERE session_id = ${sid} AND jsonld != '' ORDER BY ts`;
-      for (const r of artRows) { if (r.jsonld) graph.push(JSON.parse(r.jsonld)); }
-    } catch { /* parse fallback — use default */ }
+      for (const r of artRows) {
+        if (r.jsonld) graph.push(JSON.parse(r.jsonld));
+      }
+    } catch {
+      /* parse fallback — use default */
+    }
 
     try {
       const decRows = await db`SELECT jsonld FROM decisions WHERE session_id = ${sid} AND jsonld != '' ORDER BY ts`;
-      for (const r of decRows) { if (r.jsonld) graph.push(JSON.parse(r.jsonld)); }
-    } catch { /* parse fallback — use default */ }
+      for (const r of decRows) {
+        if (r.jsonld) graph.push(JSON.parse(r.jsonld));
+      }
+    } catch {
+      /* parse fallback — use default */
+    }
 
     try {
-      const delRows = await db`SELECT jsonld FROM delegations WHERE (parent_session_id = ${sid} OR child_session_id = ${sid}) AND jsonld != '' ORDER BY ts`;
-      for (const r of delRows) { if (r.jsonld) graph.push(JSON.parse(r.jsonld)); }
-    } catch { /* parse fallback — use default */ }
+      const delRows =
+        await db`SELECT jsonld FROM delegations WHERE (parent_session_id = ${sid} OR child_session_id = ${sid}) AND jsonld != '' ORDER BY ts`;
+      for (const r of delRows) {
+        if (r.jsonld) graph.push(JSON.parse(r.jsonld));
+      }
+    } catch {
+      /* parse fallback — use default */
+    }
 
     try {
-      const pmRows = await db`SELECT jsonld FROM session_postmortems WHERE session_id = ${sid} AND jsonld != '' ORDER BY ts`;
-      for (const r of pmRows) { if (r.jsonld) graph.push(JSON.parse(r.jsonld)); }
-    } catch { /* parse fallback — use default */ }
+      const pmRows =
+        await db`SELECT jsonld FROM session_postmortems WHERE session_id = ${sid} AND jsonld != '' ORDER BY ts`;
+      for (const r of pmRows) {
+        if (r.jsonld) graph.push(JSON.parse(r.jsonld));
+      }
+    } catch {
+      /* parse fallback — use default */
+    }
   }
 
   return deduplicateById(graph);
@@ -65,7 +90,7 @@ async function collectProvenanceGraph(db: Sql, sessionIds: string[]): Promise<an
 
 function deduplicateById(graph: any[]): any[] {
   const seen = new Set<string>();
-  return graph.filter(node => {
+  return graph.filter((node) => {
     const id = node["@id"];
     if (!id || seen.has(id)) return false;
     seen.add(id);
@@ -73,8 +98,11 @@ function deduplicateById(graph: any[]): any[] {
   });
 }
 
-export async function cmdExportProvenance(db: Sql, sessionId: string | null, args: string[], ctx: any) {
-  if (!sessionId) { ctx.ui.notify("No active session", "error"); return; }
+export async function cmdExportProvenance(db: Sql, sessionId: string | null, _args: string[], ctx: any) {
+  if (!sessionId) {
+    ctx.ui.notify("No active session", "error");
+    return;
+  }
 
   const sessionIds = await collectSessionIds(db, sessionId);
   const graph = await collectProvenanceGraph(db, sessionIds);
@@ -84,7 +112,9 @@ export async function cmdExportProvenance(db: Sql, sessionId: string | null, arg
     return;
   }
 
-  for (const node of graph) { delete node["@context"]; }
+  for (const node of graph) {
+    delete node["@context"];
+  }
 
   const bundle = {
     "@context": PROV_CONTEXT,

@@ -1,8 +1,8 @@
 // ─── Accumulator ───────────────────────────────────────────────────
 // Pure function: (state, eventName, eventData) → state. No I/O.
 
-import type { RunState, CurrentTurn } from "./types.ts";
-import { isMutation, inputSummary } from "./mutations.ts";
+import { inputSummary, isMutation } from "./mutations.ts";
+import type { CurrentTurn, RunState } from "./types.ts";
 
 function freshTurn(): CurrentTurn {
   return {
@@ -129,13 +129,9 @@ export function accumulate(
         // Match by toolCallId in the tool_call_event_ids — find the mutation
         // whose toolResultEventId is still null (most recent unpatched)
         const toolName = typeof event.toolName === "string" ? event.toolName : "";
-        const idx = s.mutations.findIndex(
-          (m) => m.toolName === toolName && m.toolResultEventId === null,
-        );
+        const idx = s.mutations.findIndex((m) => m.toolName === toolName && m.toolResultEventId === null);
         if (idx !== -1) {
-          s.mutations = s.mutations.map((m, i) =>
-            i === idx ? { ...m, toolResultEventId: eventId } : m,
-          );
+          s.mutations = s.mutations.map((m, i) => (i === idx ? { ...m, toolResultEventId: eventId } : m));
         }
       }
       break;
@@ -161,10 +157,10 @@ export function accumulate(
               const textBlock = content.find((b: any) => b?.type === "text" && b?.text);
               if (textBlock) {
                 const text = (textBlock as any).text as string;
-                s.outputSummary = text.length > 500 ? text.slice(0, 497) + "..." : text;
+                s.outputSummary = text.length > 500 ? `${text.slice(0, 497)}...` : text;
               }
             } else if (typeof content === "string") {
-              s.outputSummary = content.length > 500 ? content.slice(0, 497) + "..." : content;
+              s.outputSummary = content.length > 500 ? `${content.slice(0, 497)}...` : content;
             }
             break;
           }

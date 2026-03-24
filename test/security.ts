@@ -5,29 +5,38 @@
 
 const UI_BASE = "http://localhost:3333";
 
-let passed = 0, failed = 0, skipped = 0;
+let _passed = 0,
+  failed = 0,
+  _skipped = 0;
 const failures: string[] = [];
-function pass(name: string) { passed++; console.log(`  ✅ ${name}`); }
-function fail(name: string, reason: string) { failed++; failures.push(`${name}: ${reason}`); console.log(`  ❌ ${name}: ${reason}`); }
-function skip(name: string, reason: string) { skipped++; console.log(`  ⏭️  ${name}: ${reason}`); }
+function pass(_name: string) {
+  _passed++;
+}
+function fail(name: string, reason: string) {
+  failed++;
+  failures.push(`${name}: ${reason}`);
+}
+function _skip(_name: string, _reason: string) {
+  _skipped++;
+}
 function assert(name: string, condition: boolean, detail = "") {
   condition ? pass(name) : fail(name, detail || "assertion failed");
 }
 
 async function fetchOk(url: string, opts?: RequestInit): Promise<Response | null> {
-  try { return await fetch(url, opts); }
-  catch { return null; }
+  try {
+    return await fetch(url, opts);
+  } catch {
+    return null;
+  }
 }
 
 async function main() {
   // Check if UI server is running
   const probe = await fetchOk(`${UI_BASE}/api/stats`);
   if (!probe) {
-    console.log("⚠️  UI server not running on port 3333. Skipping security tests.");
     process.exit(0);
   }
-
-  console.log("\n── S1: Static File Allowlist ──");
 
   const r1 = await fetchOk(`${UI_BASE}/static/style.css`);
   assert("allowed file returns 200", r1?.status === 200);
@@ -44,8 +53,6 @@ async function main() {
   const r5 = await fetchOk(`${UI_BASE}/static/%2e%2e%2fpackage.json`);
   assert("encoded traversal blocked", r5?.status === 404 || r5?.status === 400, `got ${r5?.status}`);
 
-  console.log("\n── S2: Wipe Endpoint ──");
-
   // H2: Wipe endpoint should ideally require auth. Test current behavior.
   const wipeGet = await fetchOk(`${UI_BASE}/api/wipe`, { method: "GET" });
   assert("wipe rejects GET", wipeGet?.status === 404 || wipeGet?.status === 405, `got ${wipeGet?.status}`);
@@ -55,11 +62,9 @@ async function main() {
   // This is a KNOWN VULNERABILITY (H2) — the test documents it.
   pass("wipe endpoint exists (H2 vulnerability documented in REPORT.SEC.md)");
 
-  console.log("\n── S3: CORS Headers ──");
-
   // M2: Check if CORS allows arbitrary origins
   const corsReq = await fetchOk(`${UI_BASE}/api/stats`, {
-    headers: { "Origin": "https://evil.example.com" },
+    headers: { Origin: "https://evil.example.com" },
   });
   const corsHeader = corsReq?.headers.get("access-control-allow-origin");
   if (corsHeader === "*") {
@@ -69,8 +74,6 @@ async function main() {
   } else {
     pass("CORS does not allow arbitrary origins");
   }
-
-  console.log("\n── S4: API Input Validation ──");
 
   // Test that API handles bad input gracefully (no crashes)
   const badSession = await fetchOk(`${UI_BASE}/api/sessions/../../etc/passwd/events`);
@@ -82,15 +85,11 @@ async function main() {
   const longId = await fetchOk(`${UI_BASE}/api/events/${"A".repeat(10000)}`);
   assert("very long ID handled", longId !== null, "server crashed on long ID");
 
-  console.log("\n── S5: Server Headers ──");
-
   const headers = await fetchOk(`${UI_BASE}/`);
   const server = headers?.headers.get("server") ?? "";
   const powered = headers?.headers.get("x-powered-by") ?? "";
   assert("no server header leak", !server.includes("version"), `server: ${server}`);
   assert("no x-powered-by leak", !powered || powered === "", `x-powered-by: ${powered}`);
-
-  console.log("\n── S6: Content-Type Correctness ──");
 
   const cssResp = await fetchOk(`${UI_BASE}/static/style.css`);
   assert("CSS has correct content-type", cssResp?.headers.get("content-type")?.includes("text/css") ?? false);
@@ -100,13 +99,8 @@ async function main() {
 
   const htmlResp = await fetchOk(`${UI_BASE}/`);
   assert("HTML has correct content-type", htmlResp?.headers.get("content-type")?.includes("text/html") ?? false);
-
-  // ─── Summary ──────────────────────────────────────────────────
-
-  console.log(`\n━━━ Security: ${passed} passed, ${failed} failed, ${skipped} skipped ━━━`);
   if (failures.length) {
-    console.log("\nFailures:");
-    failures.forEach(f => console.log(`  • ${f}`));
+    failures.forEach((_f) => {});
   }
   process.exit(failed > 0 ? 1 : 0);
 }

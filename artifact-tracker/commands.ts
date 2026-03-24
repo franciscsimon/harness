@@ -1,5 +1,5 @@
-import { resolve } from "node:path";
 import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { Sql } from "./db.js";
 
 export async function cmdList(db: Sql, sessionId: string | null, ctx: any) {
@@ -28,7 +28,7 @@ export async function cmdList(db: Sql, sessionId: string | null, ctx: any) {
   const grouped = new Map<string, any[]>();
   for (const r of rows) {
     if (!grouped.has(r.relative_path)) grouped.set(r.relative_path, []);
-    grouped.get(r.relative_path)!.push(r);
+    grouped.get(r.relative_path)?.push(r);
   }
 
   const lines = ["## Archived Artifacts\n"];
@@ -43,21 +43,28 @@ export async function cmdList(db: Sql, sessionId: string | null, ctx: any) {
 
 export async function cmdRestore(db: Sql, _sessionId: string | null, args: string[], ctx: any) {
   const filePath = args[0];
-  if (!filePath) { ctx.ui.notify("Usage: /artifacts restore <file> [--version N]", "info"); return; }
+  if (!filePath) {
+    ctx.ui.notify("Usage: /artifacts restore <file> [--version N]", "info");
+    return;
+  }
 
   let version: number | null = null;
   const vIdx = args.indexOf("--version");
   if (vIdx >= 0 && args[vIdx + 1]) version = parseInt(args[vIdx + 1], 10);
 
-  const rows = version != null
-    ? await db`SELECT content, version, relative_path FROM artifact_versions
-        WHERE relative_path LIKE ${"%" + filePath + "%"} AND version = ${version}
+  const rows =
+    version != null
+      ? await db`SELECT content, version, relative_path FROM artifact_versions
+        WHERE relative_path LIKE ${`%${filePath}%`} AND version = ${version}
         ORDER BY ts DESC LIMIT 1`
-    : await db`SELECT content, version, relative_path FROM artifact_versions
-        WHERE relative_path LIKE ${"%" + filePath + "%"}
+      : await db`SELECT content, version, relative_path FROM artifact_versions
+        WHERE relative_path LIKE ${`%${filePath}%`}
         ORDER BY ts DESC LIMIT 1`;
 
-  if (rows.length === 0) { ctx.ui.notify(`No artifact matching "${filePath}"`, "error"); return; }
+  if (rows.length === 0) {
+    ctx.ui.notify(`No artifact matching "${filePath}"`, "error");
+    return;
+  }
 
   const row = rows[0];
   const outPath = resolve(process.cwd(), row.relative_path);
@@ -67,22 +74,32 @@ export async function cmdRestore(db: Sql, _sessionId: string | null, args: strin
 
 export async function cmdHistory(db: Sql, _sessionId: string | null, args: string[], ctx: any) {
   const filePath = args[0];
-  if (!filePath) { ctx.ui.notify("Usage: /artifacts history <file>", "info"); return; }
+  if (!filePath) {
+    ctx.ui.notify("Usage: /artifacts history <file>", "info");
+    return;
+  }
 
   const rows = await db`
     SELECT version, content_hash, size_bytes, operation, ts, session_id
-    FROM artifact_versions WHERE relative_path LIKE ${"%" + filePath + "%"}
+    FROM artifact_versions WHERE relative_path LIKE ${`%${filePath}%`}
     ORDER BY ts ASC
   `;
 
-  if (rows.length === 0) { ctx.ui.notify(`No history for "${filePath}"`, "info"); return; }
+  if (rows.length === 0) {
+    ctx.ui.notify(`No history for "${filePath}"`, "info");
+    return;
+  }
 
-  const lines = [`## History: ${filePath}\n`,
+  const lines = [
+    `## History: ${filePath}\n`,
     "| Version | Hash | Size | Op | Time | Session |",
-    "|---------|------|------|----|------|---------|"];
+    "|---------|------|------|----|------|---------|",
+  ];
   for (const r of rows) {
     const ts = new Date(Number(r.ts)).toISOString().slice(0, 19);
-    lines.push(`| v${r.version} | ${r.content_hash} | ${r.size_bytes}B | ${r.operation} | ${ts} | ${String(r.session_id).slice(0, 12)}… |`);
+    lines.push(
+      `| v${r.version} | ${r.content_hash} | ${r.size_bytes}B | ${r.operation} | ${ts} | ${String(r.session_id).slice(0, 12)}… |`,
+    );
   }
   ctx.ui.notify(lines.join("\n"), "info");
 }

@@ -19,7 +19,7 @@ const lines: string[] = [
   `# Generated: ${new Date().toISOString()}`,
   `# Strategy: ${config["code:strategy"] ?? "rolling"}`,
   "",
-  "version: \"0.5\"",
+  'version: "0.5"',
   "",
   "log_level: info",
   "log_length: 3000",
@@ -90,5 +90,3 @@ for (const svc of services) {
 
 const yaml = lines.join("\n");
 writeFileSync(outputPath, yaml);
-console.log(`✅ Generated ${outputPath}`);
-console.log(`   ${services.length} services from .cd.jsonld`);

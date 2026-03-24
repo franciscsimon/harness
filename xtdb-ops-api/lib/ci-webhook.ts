@@ -1,6 +1,5 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import postgres from "postgres";
-import { randomUUID } from "node:crypto";
 
 const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
 const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");
@@ -11,9 +10,14 @@ let sql: ReturnType<typeof postgres> | null = null;
 function db() {
   if (!sql) {
     sql = postgres({
-      host: XTDB_HOST, port: XTDB_PORT,
-      database: "xtdb", user: "xtdb", password: "xtdb",
-      max: 2, idle_timeout: 30, connect_timeout: 10,
+      host: XTDB_HOST,
+      port: XTDB_PORT,
+      database: "xtdb",
+      user: "xtdb",
+      password: "xtdb",
+      max: 2,
+      idle_timeout: 30,
+      connect_timeout: 10,
     });
   }
   return sql;
@@ -73,7 +77,9 @@ async function resolveProjectId(projectRef: string): Promise<string | null> {
         return row._id;
       }
     }
-  } catch { /* table may not exist */ }
+  } catch {
+    /* table may not exist */
+  }
   return null;
 }
 
@@ -124,7 +130,14 @@ export async function processCIEvent(event: CIEvent): Promise<{ entity_id: strin
         ${t(s.status)}, ${t(null)}, ${t(s.git_commit ?? null)},
         ${n(now)}, ${t(jsonld)}
       )`;
-      await emitLifecycleEvent("test_run_completed", id, "test_runs", projectId, `${s.suite_name ?? "test"}: ${s.status} (${s.passed ?? 0} passed, ${s.failed ?? 0} failed)`, now);
+      await emitLifecycleEvent(
+        "test_run_completed",
+        id,
+        "test_runs",
+        projectId,
+        `${s.suite_name ?? "test"}: ${s.status} (${s.passed ?? 0} passed, ${s.failed ?? 0} failed)`,
+        now,
+      );
       return { entity_id: id, entity_type: "test_runs" };
     }
 
@@ -151,7 +164,14 @@ export async function processCIEvent(event: CIEvent): Promise<{ entity_id: strin
         ${t(source)}, ${t(s.status)}, ${t(null)}, ${t(s.notes ?? null)},
         ${n(now)}, ${n(now)}, ${n(now)}, ${t(jsonld)}
       )`;
-      await emitLifecycleEvent("deployment_" + s.status, id, "deployments", projectId, `Deploy to ${s.environment ?? "unknown"}: ${s.status}`, now);
+      await emitLifecycleEvent(
+        `deployment_${s.status}`,
+        id,
+        "deployments",
+        projectId,
+        `Deploy to ${s.environment ?? "unknown"}: ${s.status}`,
+        now,
+      );
       return { entity_id: id, entity_type: "deployments" };
     }
 
@@ -179,21 +199,39 @@ export async function processCIEvent(event: CIEvent): Promise<{ entity_id: strin
         ${t(null)}, ${t(s.git_tag ?? null)}, ${t(s.git_commit ?? null)},
         ${t(null)}, ${t("published")}, ${n(now)}, ${t(jsonld)}
       )`;
-      await emitLifecycleEvent("release_created", id, "releases", projectId, `Release ${s.version ?? s.git_tag ?? "unknown"} published`, now);
+      await emitLifecycleEvent(
+        "release_created",
+        id,
+        "releases",
+        projectId,
+        `Release ${s.version ?? s.git_tag ?? "unknown"} published`,
+        now,
+      );
       return { entity_id: id, entity_type: "releases" };
     }
-
-    case "build.finished":
-    case "artifact.published":
     default: {
       const id = `lev:${randomUUID()}`;
-      await emitLifecycleEvent(event.type.replace(".", "_"), id, "ci_event", projectId, `${event.type} from ${source}: ${s.status}`, now);
+      await emitLifecycleEvent(
+        event.type.replace(".", "_"),
+        id,
+        "ci_event",
+        projectId,
+        `${event.type} from ${source}: ${s.status}`,
+        now,
+      );
       return { entity_id: id, entity_type: "lifecycle_events" };
     }
   }
 }
 
-async function emitLifecycleEvent(eventType: string, entityId: string, entityType: string, projectId: string | null, summary: string, ts: number) {
+async function emitLifecycleEvent(
+  eventType: string,
+  entityId: string,
+  entityType: string,
+  projectId: string | null,
+  summary: string,
+  ts: number,
+) {
   const id = `lev:${randomUUID()}`;
   try {
     await db()`INSERT INTO lifecycle_events (
@@ -202,7 +240,5 @@ async function emitLifecycleEvent(eventType: string, entityId: string, entityTyp
       ${t(id)}, ${t(eventType)}, ${t(entityId)}, ${t(entityType)},
       ${t(projectId)}, ${t(summary)}, ${n(ts)}
     )`;
-  } catch (err) {
-    console.warn(`[ci-webhook] lifecycle_events insert failed (table may not exist yet): ${err}`);
-  }
+  } catch (_err) {}
 }

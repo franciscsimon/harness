@@ -26,13 +26,13 @@ const YAK_SHAVE_PATTERNS = [
 
 export default function (pi: ExtensionAPI) {
   let recentErrors: string[] = [];
-  let offeredThisSession = new Set<string>();
-  let yakShaveCount = 0;
+  const offeredThisSession = new Set<string>();
+  let _yakShaveCount = 0;
 
-  pi.on("session_start", async (_event, ctx) => {
+  pi.on("session_start", async (_event, _ctx) => {
     recentErrors = [];
     offeredThisSession.clear();
-    yakShaveCount = 0;
+    _yakShaveCount = 0;
   });
 
   pi.on("tool_execution_end", async (event, ctx) => {
@@ -43,7 +43,7 @@ export default function (pi: ExtensionAPI) {
     let errorText = "";
     if (e.result?.content) {
       for (const item of e.result.content) {
-        if (item.type === "text") errorText += item.text + "\n";
+        if (item.type === "text") errorText += `${item.text}\n`;
       }
     }
     if (!errorText && e.result) {
@@ -61,7 +61,7 @@ export default function (pi: ExtensionAPI) {
         if (offeredThisSession.has(key)) continue;
         offeredThisSession.add(key);
 
-        yakShaveCount++;
+        _yakShaveCount++;
         ctx.ui.notify(
           `🐃 Yak shave detected: **${pattern.label}**\n` +
             `This looks like an environment/tooling issue, not an application bug.\n` +
@@ -107,8 +107,7 @@ export default function (pi: ExtensionAPI) {
         }
         const latest = recentErrors[recentErrors.length - 1];
         ctx.ui.notify(
-          `🐃 To delegate the latest yak shave, run:\n` +
-            `/spawn Fix environment issue: ${latest.slice(0, 80)}`,
+          `🐃 To delegate the latest yak shave, run:\n` + `/spawn Fix environment issue: ${latest.slice(0, 80)}`,
           "info",
         );
         return;

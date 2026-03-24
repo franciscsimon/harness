@@ -12,11 +12,11 @@ type Sql = ReturnType<typeof postgres>;
 // Ref: https://lexler.github.io/augmented-coding-patterns/anti-patterns/sunk-cost
 
 interface SunkCostConfig {
-  maxFileEdits: number;       // Same file edited N+ times
-  maxCommandRetries: number;  // Same command pattern N+ times
+  maxFileEdits: number; // Same file edited N+ times
+  maxCommandRetries: number; // Same command pattern N+ times
   errorRateThreshold: number; // Error rate over last N calls
-  maxTurnsNoTest: number;     // Turns without a test run
-  windowSize: number;         // Sliding window for error rate
+  maxTurnsNoTest: number; // Turns without a test run
+  windowSize: number; // Sliding window for error rate
 }
 
 const DEFAULTS: SunkCostConfig = {
@@ -34,10 +34,10 @@ export default function (pi: ExtensionAPI) {
 
   let fileEditCounts: Record<string, number> = {};
   let commandCounts: Record<string, number> = {};
-  let recentResults: boolean[] = [];  // true = error
+  let recentResults: boolean[] = []; // true = error
   let turnIndex = 0;
   let lastTestTurn = 0;
-  let notifiedThisRun = new Set<string>();
+  const notifiedThisRun = new Set<string>();
   let sql: Sql | null = null;
 
   // ── Cross-session history from XTDB ──
@@ -55,7 +55,16 @@ export default function (pi: ExtensionAPI) {
   async function connectDb(): Promise<Sql | null> {
     if (sql) return sql;
     try {
-      sql = postgres({ host: XTDB_HOST, port: XTDB_PORT, database: "xtdb", user: "xtdb", password: "xtdb", max: 1, idle_timeout: 30, connect_timeout: 10 });
+      sql = postgres({
+        host: XTDB_HOST,
+        port: XTDB_PORT,
+        database: "xtdb",
+        user: "xtdb",
+        password: "xtdb",
+        max: 1,
+        idle_timeout: 30,
+        connect_timeout: 10,
+      });
       await sql`SELECT 1 AS ok`;
       // Seed table
       await sql`INSERT INTO file_metrics (_id, project_id, session_id, file_path, edit_count, error_count, ts)
@@ -91,7 +100,9 @@ export default function (pi: ExtensionAPI) {
         const errors = Number(r.total_errors);
         if (errors > 0) priorFileErrors[r.file_path] = errors;
       }
-    } catch { /* table may not exist yet */ }
+    } catch {
+      /* table may not exist yet */
+    }
   });
 
   pi.on("agent_start", async () => {
@@ -197,7 +208,8 @@ export default function (pi: ExtensionAPI) {
 
     const files = overEdited.map(([f, c]) => `${f.split("/").pop()} (${c}x)`).join(", ");
     return {
-      systemPrompt: (event as any).systemPrompt +
+      systemPrompt:
+        (event as any).systemPrompt +
         `\n\nIMPORTANT: Files ${files} have been edited many times. ` +
         `If your current approach isn't working, consider an entirely different strategy. ` +
         `Don't keep trying the same thing.`,
@@ -224,12 +236,21 @@ export default function (pi: ExtensionAPI) {
           await db`INSERT INTO file_metrics (_id, project_id, session_id, file_path, edit_count, error_count, ts)
             VALUES (${t(id)}, ${t(projectId)}, ${t(sessionId)}, ${t(path)}, ${n(edits)}, ${n(fileErrors[path] ?? 0)}, ${n(now)})`;
         } catch (err) {
-          captureError({ component: "sunk-cost-detector", operation: "INSERT file_metrics", error: err, severity: "data_loss" });
+          captureError({
+            component: "sunk-cost-detector",
+            operation: "INSERT file_metrics",
+            error: err,
+            severity: "data_loss",
+          });
         }
       }
     }
     if (sql) {
-      try { await sql.end(); } catch { /* cleanup — safe to ignore */ }
+      try {
+        await sql.end();
+      } catch {
+        /* cleanup — safe to ignore */
+      }
       sql = null;
     }
   });
@@ -245,9 +266,11 @@ export default function (pi: ExtensionAPI) {
       const summary = [
         `📊 Current approach stats:`,
         `  Turns: ${turnIndex}`,
-        `  Error rate: ${recentResults.length > 0 ? Math.round(recentResults.filter(Boolean).length / recentResults.length * 100) : 0}%`,
+        `  Error rate: ${recentResults.length > 0 ? Math.round((recentResults.filter(Boolean).length / recentResults.length) * 100) : 0}%`,
         files.length > 0 ? `  Most-edited files:\n${files.join("\n")}` : "",
-      ].filter(Boolean).join("\n");
+      ]
+        .filter(Boolean)
+        .join("\n");
 
       ctx.ui.notify(summary, "info");
 
@@ -257,7 +280,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify("Approach abandoned. Starting fresh.", "success");
         pi.sendUserMessage(
           "The previous approach wasn't working. Let's start fresh with a completely different strategy. " +
-          "What are the alternatives?",
+            "What are the alternatives?",
           { deliverAs: "followUp" },
         );
       }

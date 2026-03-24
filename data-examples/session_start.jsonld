@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:b858e941-0573-47b7-bfef-e8f15e62c7a0",
-      "@type": [
-        "ev:SessionStart"
-      ],
+      "@type": ["ev:SessionStart"],
       "ev:eventName": [
         {
           "@value": "session_start"
@@ -68,9 +66,7 @@
     },
     {
       "@id": "_:env_b858e941-0573-47b7-bfef-e8f15e62c7a0",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

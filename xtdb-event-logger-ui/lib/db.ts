@@ -5,7 +5,16 @@ import postgres from "postgres";
 const host = process.env.XTDB_EVENT_HOST ?? "localhost";
 const port = Number(process.env.XTDB_EVENT_PORT ?? "5433");
 
-const sql = postgres({ host, port, database: "xtdb", user: "xtdb", password: "xtdb", max: 3, idle_timeout: 30, connect_timeout: 10 });
+const sql = postgres({
+  host,
+  port,
+  database: "xtdb",
+  user: "xtdb",
+  password: "xtdb",
+  max: 3,
+  idle_timeout: 30,
+  connect_timeout: 10,
+});
 
 const t = (v: string | null) => sql.typed(v as any, 25);
 const n = (v: number | null) => sql.typed(v as any, 20);
@@ -14,22 +23,155 @@ const n = (v: number | null) => sql.typed(v as any, 20);
 // XTDB requires typed parameters (OID 25=text, 20=bigint, 16=boolean)
 // and quoting of reserved words (name, path, version, status, etc.).
 
-const RESERVED = new Set(["position", "type", "name", "status", "version", "source", "path", "url", "description", "tag"]);
-function q(col: string): string { return RESERVED.has(col) ? `"${col}"` : col; }
+const RESERVED = new Set([
+  "position",
+  "type",
+  "name",
+  "status",
+  "version",
+  "source",
+  "path",
+  "url",
+  "description",
+  "tag",
+]);
+function q(col: string): string {
+  return RESERVED.has(col) ? `"${col}"` : col;
+}
 
 type ColType = "text" | "bigint" | "boolean";
-interface SeedDef { table: string; columns: Record<string, ColType> }
+interface SeedDef {
+  table: string;
+  columns: Record<string, ColType>;
+}
 
 const seedDefs: SeedDef[] = [
-  { table: "decisions", columns: { _id: "text", project_id: "text", session_id: "text", ts: "bigint", task: "text", what: "text", outcome: "text", why: "text", files: "text", alternatives: "text", agent: "text", tags: "text", jsonld: "text" } },
-  { table: "projects", columns: { _id: "text", canonical_id: "text", name: "text", identity_type: "text", git_remote_url: "text", git_root_path: "text", first_seen_ts: "bigint", last_seen_ts: "bigint", session_count: "bigint", jsonld: "text" } },
-  { table: "session_projects", columns: { _id: "text", session_id: "text", project_id: "text", canonical_id: "text", cwd: "text", git_root_path: "text", ts: "bigint", is_first_session: "boolean", jsonld: "text" } },
-  { table: "delegations", columns: { _id: "text", parent_session_id: "text", child_session_id: "text", project_id: "text", agent_name: "text", task: "text", status: "text", exit_code: "bigint", ts: "bigint", jsonld: "text" } },
-  { table: "file_metrics", columns: { _id: "text", project_id: "text", session_id: "text", file_path: "text", edit_count: "bigint", error_count: "bigint", ts: "bigint" } },
-  { table: "session_postmortems", columns: { _id: "text", project_id: "text", session_id: "text", goal: "text", what_worked: "text", what_failed: "text", files_changed: "text", error_count: "bigint", turn_count: "bigint", ts: "bigint", jsonld: "text" } },
-  { table: "artifacts", columns: { _id: "text", project_id: "text", session_id: "text", path: "text", content_hash: "text", kind: "text", operation: "text", tool_call_id: "text", ts: "bigint", jsonld: "text" } },
-  { table: "artifact_versions", columns: { _id: "text", session_id: "text", path: "text", relative_path: "text", version: "bigint", content_hash: "text", content: "text", size_bytes: "bigint", operation: "text", tool_call_id: "text", ts: "bigint", jsonld: "text" } },
-  { table: "artifact_reads", columns: { _id: "text", session_id: "text", path: "text", tool_call_id: "text", ts: "bigint" } },
+  {
+    table: "decisions",
+    columns: {
+      _id: "text",
+      project_id: "text",
+      session_id: "text",
+      ts: "bigint",
+      task: "text",
+      what: "text",
+      outcome: "text",
+      why: "text",
+      files: "text",
+      alternatives: "text",
+      agent: "text",
+      tags: "text",
+      jsonld: "text",
+    },
+  },
+  {
+    table: "projects",
+    columns: {
+      _id: "text",
+      canonical_id: "text",
+      name: "text",
+      identity_type: "text",
+      git_remote_url: "text",
+      git_root_path: "text",
+      first_seen_ts: "bigint",
+      last_seen_ts: "bigint",
+      session_count: "bigint",
+      jsonld: "text",
+    },
+  },
+  {
+    table: "session_projects",
+    columns: {
+      _id: "text",
+      session_id: "text",
+      project_id: "text",
+      canonical_id: "text",
+      cwd: "text",
+      git_root_path: "text",
+      ts: "bigint",
+      is_first_session: "boolean",
+      jsonld: "text",
+    },
+  },
+  {
+    table: "delegations",
+    columns: {
+      _id: "text",
+      parent_session_id: "text",
+      child_session_id: "text",
+      project_id: "text",
+      agent_name: "text",
+      task: "text",
+      status: "text",
+      exit_code: "bigint",
+      ts: "bigint",
+      jsonld: "text",
+    },
+  },
+  {
+    table: "file_metrics",
+    columns: {
+      _id: "text",
+      project_id: "text",
+      session_id: "text",
+      file_path: "text",
+      edit_count: "bigint",
+      error_count: "bigint",
+      ts: "bigint",
+    },
+  },
+  {
+    table: "session_postmortems",
+    columns: {
+      _id: "text",
+      project_id: "text",
+      session_id: "text",
+      goal: "text",
+      what_worked: "text",
+      what_failed: "text",
+      files_changed: "text",
+      error_count: "bigint",
+      turn_count: "bigint",
+      ts: "bigint",
+      jsonld: "text",
+    },
+  },
+  {
+    table: "artifacts",
+    columns: {
+      _id: "text",
+      project_id: "text",
+      session_id: "text",
+      path: "text",
+      content_hash: "text",
+      kind: "text",
+      operation: "text",
+      tool_call_id: "text",
+      ts: "bigint",
+      jsonld: "text",
+    },
+  },
+  {
+    table: "artifact_versions",
+    columns: {
+      _id: "text",
+      session_id: "text",
+      path: "text",
+      relative_path: "text",
+      version: "bigint",
+      content_hash: "text",
+      content: "text",
+      size_bytes: "bigint",
+      operation: "text",
+      tool_call_id: "text",
+      ts: "bigint",
+      jsonld: "text",
+    },
+  },
+  {
+    table: "artifact_reads",
+    columns: { _id: "text", session_id: "text", path: "text", tool_call_id: "text", ts: "bigint" },
+  },
 ];
 
 const OID: Record<ColType, number> = { text: 25, bigint: 20, boolean: 16 };
@@ -43,12 +185,14 @@ async function ensureTables(): Promise<void> {
     const colList = cols.map(q).join(", ");
     const placeholders = cols.map((_, i) => `$${i + 1}`).join(", ");
     const values = cols.map((col, i) =>
-      col === "_id" ? sql.typed(SEED_ID as any, OID[types[i]]) : sql.typed(ZERO[types[i]] as any, OID[types[i]])
+      col === "_id" ? sql.typed(SEED_ID as any, OID[types[i]]) : sql.typed(ZERO[types[i]] as any, OID[types[i]]),
     );
     try {
       await sql.unsafe(`INSERT INTO ${def.table} (${colList}) VALUES (${placeholders})`, values);
       await sql.unsafe(`DELETE FROM ${def.table} WHERE _id = $1`, [sql.typed(SEED_ID as any, 25)]);
-    } catch { /* table may already exist */ }
+    } catch {
+      /* table may already exist */
+    }
   }
 }
 
@@ -98,13 +242,9 @@ export interface SessionSummary {
 /**
  * Get events with optional filters. Returns newest first by default.
  */
-export async function getEvents(opts: {
-  category?: string;
-  eventName?: string;
-  sessionId?: string;
-  afterSeq?: number;
-  limit?: number;
-} = {}): Promise<EventRow[]> {
+export async function getEvents(
+  opts: { category?: string; eventName?: string; sessionId?: string; afterSeq?: number; limit?: number } = {},
+): Promise<EventRow[]> {
   const limit = opts.limit ?? 100;
 
   // Use typed helpers (t/n) with tagged templates for XTDB compatibility.
@@ -897,7 +1037,10 @@ export async function getArtifactVersion(id: string): Promise<ArtifactVersionRow
   return (rows[0] as unknown as ArtifactVersionRow) ?? null;
 }
 
-export async function getAdjacentVersions(path: string, ts: number): Promise<{
+export async function getAdjacentVersions(
+  path: string,
+  ts: number,
+): Promise<{
   prev: ArtifactVersionSummary | null;
   next: ArtifactVersionSummary | null;
 }> {
@@ -964,7 +1107,9 @@ export async function getProjectLifecycleEvents(projectId: string): Promise<Life
       ORDER BY ts DESC
     `;
     return rows as unknown as LifecycleEventRow[];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 export async function getProjectDependencies(projectId: string): Promise<ProjectDependencyRow[]> {
@@ -975,7 +1120,9 @@ export async function getProjectDependencies(projectId: string): Promise<Project
       ORDER BY name
     `;
     return rows as unknown as ProjectDependencyRow[];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 export async function getProjectTags(projectId: string): Promise<ProjectTagRow[]> {
@@ -986,7 +1133,9 @@ export async function getProjectTags(projectId: string): Promise<ProjectTagRow[]
       ORDER BY tag
     `;
     return rows as unknown as ProjectTagRow[];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 export async function getProjectDecommissions(projectId: string): Promise<DecommissionRow[]> {
@@ -997,7 +1146,9 @@ export async function getProjectDecommissions(projectId: string): Promise<Decomm
       ORDER BY ts DESC
     `;
     return rows as unknown as DecommissionRow[];
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 // ─── Errors ────────────────────────────────────────────────────────
@@ -1025,45 +1176,44 @@ export interface ErrorSummary {
   byComponent: Record<string, number>;
 }
 
-export async function getErrors(opts: {
-  severity?: string;
-  component?: string;
-  limit?: number;
-  projectId?: string;
-} = {}): Promise<ErrorRow[]> {
+export async function getErrors(
+  opts: { severity?: string; component?: string; limit?: number; projectId?: string } = {},
+): Promise<ErrorRow[]> {
   const limit = opts.limit ?? 100;
   try {
     let rows: ErrorRow[];
     if (opts.severity && opts.component) {
-      rows = await sql`
+      rows = (await sql`
         SELECT * FROM errors
         WHERE severity = ${t(opts.severity)} AND component = ${t(opts.component)}
         ORDER BY ts DESC LIMIT ${n(limit)}
-      ` as unknown as ErrorRow[];
+      `) as unknown as ErrorRow[];
     } else if (opts.severity) {
-      rows = await sql`
+      rows = (await sql`
         SELECT * FROM errors
         WHERE severity = ${t(opts.severity)}
         ORDER BY ts DESC LIMIT ${n(limit)}
-      ` as unknown as ErrorRow[];
+      `) as unknown as ErrorRow[];
     } else if (opts.component) {
-      rows = await sql`
+      rows = (await sql`
         SELECT * FROM errors
         WHERE component = ${t(opts.component)}
         ORDER BY ts DESC LIMIT ${n(limit)}
-      ` as unknown as ErrorRow[];
+      `) as unknown as ErrorRow[];
     } else {
-      rows = await sql`
+      rows = (await sql`
         SELECT * FROM errors
         ORDER BY ts DESC LIMIT ${n(limit)}
-      ` as unknown as ErrorRow[];
+      `) as unknown as ErrorRow[];
     }
     // Project filtering applied in JS (XTDB tagged templates make dynamic WHERE complex)
     if (opts.projectId) {
-      rows = rows.filter(r => (r as any).project_id === opts.projectId);
+      rows = rows.filter((r) => (r as any).project_id === opts.projectId);
     }
     return rows;
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 export async function getErrorSummary(): Promise<ErrorSummary> {
@@ -1073,10 +1223,17 @@ export async function getErrorSummary(): Promise<ErrorSummary> {
     const bySeverity: Record<string, number> = {};
     const byComponent: Record<string, number> = {};
     let total = 0;
-    for (const r of bySev) { bySeverity[r.severity] = Number(r.cnt); total += Number(r.cnt); }
-    for (const r of byComp) { byComponent[r.component] = Number(r.cnt); }
+    for (const r of bySev) {
+      bySeverity[r.severity] = Number(r.cnt);
+      total += Number(r.cnt);
+    }
+    for (const r of byComp) {
+      byComponent[r.component] = Number(r.cnt);
+    }
     return { total, bySeverity, byComponent };
-  } catch { return { total: 0, bySeverity: {}, byComponent: {} }; }
+  } catch {
+    return { total: 0, bySeverity: {}, byComponent: {} };
+  }
 }
 
 // ─── Test Runs ─────────────────────────────────────────────────────
@@ -1084,51 +1241,62 @@ export async function getErrorSummary(): Promise<ErrorSummary> {
 export async function getTestRuns(projectId?: string, limit = 50): Promise<any[]> {
   try {
     if (projectId) {
-      return await sql`SELECT * FROM test_runs WHERE project_id = ${t(projectId)} ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+      return (await sql`SELECT * FROM test_runs WHERE project_id = ${t(projectId)} ORDER BY ts DESC LIMIT ${n(limit)}`) as any[];
     }
-    return await sql`SELECT * FROM test_runs ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
-  } catch { return []; }
+    return (await sql`SELECT * FROM test_runs ORDER BY ts DESC LIMIT ${n(limit)}`) as any[];
+  } catch {
+    return [];
+  }
 }
 
 // ─── CI Runs ───────────────────────────────────────────────────────
 
 export async function getCIRuns(limit = 50): Promise<any[]> {
   try {
-    return await sql`SELECT _id, repo, ref, commit_hash, commit_message, pusher, status, steps_passed, steps_failed, duration_ms, ts, step_results FROM ci_runs ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
-  } catch { return []; }
+    return (await sql`SELECT _id, repo, ref, commit_hash, commit_message, pusher, status, steps_passed, steps_failed, duration_ms, ts, step_results FROM ci_runs ORDER BY ts DESC LIMIT ${n(limit)}`) as any[];
+  } catch {
+    return [];
+  }
 }
 
 export async function getCIRun(id: string): Promise<any | null> {
   try {
-    const rows = await sql`SELECT _id, repo, ref, commit_hash, commit_message, pusher, status, steps_passed, steps_failed, duration_ms, ts, step_results, jsonld FROM ci_runs WHERE _id = ${t(id)}` as any[];
+    const rows =
+      (await sql`SELECT _id, repo, ref, commit_hash, commit_message, pusher, status, steps_passed, steps_failed, duration_ms, ts, step_results, jsonld FROM ci_runs WHERE _id = ${t(id)}`) as any[];
     return rows[0] ?? null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // ─── Docker Events ─────────────────────────────────────────────
 
-export async function getDockerEvents(opts: {
-  severity?: string;
-  action?: string;
-  service?: string;
-  limit?: number;
-} = {}): Promise<any[]> {
+export async function getDockerEvents(
+  opts: { severity?: string; action?: string; service?: string; limit?: number } = {},
+): Promise<any[]> {
   const limit = opts.limit ?? 100;
   try {
     let rows: any[];
     if (opts.severity && opts.service) {
-      rows = await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events WHERE severity = ${t(opts.severity)} AND service_name = ${t(opts.service)} ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+      rows =
+        (await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events WHERE severity = ${t(opts.severity)} AND service_name = ${t(opts.service)} ORDER BY ts DESC LIMIT ${n(limit)}`) as any[];
     } else if (opts.severity) {
-      rows = await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events WHERE severity = ${t(opts.severity)} ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+      rows =
+        (await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events WHERE severity = ${t(opts.severity)} ORDER BY ts DESC LIMIT ${n(limit)}`) as any[];
     } else if (opts.service) {
-      rows = await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events WHERE service_name = ${t(opts.service)} ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+      rows =
+        (await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events WHERE service_name = ${t(opts.service)} ORDER BY ts DESC LIMIT ${n(limit)}`) as any[];
     } else if (opts.action) {
-      rows = await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events WHERE action = ${t(opts.action)} ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+      rows =
+        (await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events WHERE action = ${t(opts.action)} ORDER BY ts DESC LIMIT ${n(limit)}`) as any[];
     } else {
-      rows = await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events ORDER BY ts DESC LIMIT ${n(limit)}` as any[];
+      rows =
+        (await sql`SELECT _id, event_type, action, container_id, container_name, service_name, compose_project, image, exit_code, severity, ts, ts_nano FROM docker_events ORDER BY ts DESC LIMIT ${n(limit)}`) as any[];
     }
     return rows;
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 export async function getDockerEventsSummary(): Promise<{
@@ -1138,20 +1306,24 @@ export async function getDockerEventsSummary(): Promise<{
   recentCritical: any[];
 }> {
   try {
-    const totalRows = await sql`SELECT COUNT(*) as cnt FROM docker_events` as any[];
+    const totalRows = (await sql`SELECT COUNT(*) as cnt FROM docker_events`) as any[];
     const total = Number(totalRows[0]?.cnt ?? 0);
 
-    const sevRows = await sql`SELECT severity, COUNT(*) as cnt FROM docker_events GROUP BY severity` as any[];
+    const sevRows = (await sql`SELECT severity, COUNT(*) as cnt FROM docker_events GROUP BY severity`) as any[];
     const bySeverity: Record<string, number> = {};
     for (const r of sevRows) bySeverity[r.severity] = Number(r.cnt);
 
-    const svcRows = await sql`SELECT service_name, COUNT(*) as cnt FROM docker_events WHERE service_name != '' GROUP BY service_name ORDER BY cnt DESC LIMIT ${n(10)}` as any[];
+    const svcRows =
+      (await sql`SELECT service_name, COUNT(*) as cnt FROM docker_events WHERE service_name != '' GROUP BY service_name ORDER BY cnt DESC LIMIT ${n(10)}`) as any[];
     const topServices = svcRows.map((r: any) => ({ name: r.service_name, count: Number(r.cnt) }));
 
-    const critRows = await sql`SELECT _id, action, container_name, service_name, exit_code, severity, ts FROM docker_events WHERE severity IN ('critical', 'error') ORDER BY ts DESC LIMIT ${n(10)}` as any[];
+    const critRows =
+      (await sql`SELECT _id, action, container_name, service_name, exit_code, severity, ts FROM docker_events WHERE severity IN ('critical', 'error') ORDER BY ts DESC LIMIT ${n(10)}`) as any[];
 
     return { total, bySeverity, topServices, recentCritical: critRows };
-  } catch { return { total: 0, bySeverity: {}, topServices: [], recentCritical: [] }; }
+  } catch {
+    return { total: 0, bySeverity: {}, topServices: [], recentCritical: [] };
+  }
 }
 
 /**

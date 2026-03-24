@@ -1,5 +1,5 @@
 import { layout } from "../components/layout.ts";
-import { relativeTime, formatDuration, escapeHtml } from "../lib/format.ts";
+import { escapeHtml, formatDuration, relativeTime } from "../lib/format.ts";
 
 const EVENT_API = process.env.EVENT_API_URL ?? "http://localhost:3333";
 
@@ -11,7 +11,15 @@ export async function renderCIRunDetail(id: string, projectId?: string): Promise
   } catch {}
 
   if (!run) {
-    return layout(`<main class="container"><h1>CI Run Not Found</h1><p>No run with ID <code>${escapeHtml(id)}</code></p><a href="${projectId ? `/projects/${projectId}/ci` : `/ci`}">← Back to CI Runs</a></main>`, { title: "CI Run Not Found", activePath: projectId ? `/projects/${projectId}/ci` : "/ci", projectId, activeSection: "ci" });
+    return layout(
+      `<main class="container"><h1>CI Run Not Found</h1><p>No run with ID <code>${escapeHtml(id)}</code></p><a href="${projectId ? `/projects/${projectId}/ci` : `/ci`}">← Back to CI Runs</a></main>`,
+      {
+        title: "CI Run Not Found",
+        activePath: projectId ? `/projects/${projectId}/ci` : "/ci",
+        projectId,
+        activeSection: "ci",
+      },
+    );
   }
 
   const statusEmoji = run.status === "passed" ? "✅" : "❌";
@@ -25,14 +33,19 @@ export async function renderCIRunDetail(id: string, projectId?: string): Promise
   // Parse step results
   let steps: any[] = [];
   if (run.step_results) {
-    try { steps = JSON.parse(run.step_results); } catch {}
+    try {
+      steps = JSON.parse(run.step_results);
+    } catch {}
   }
 
-  const stepsHtml = steps.length > 0 ? steps.map((s: any) => {
-    const sEmoji = s.status === "passed" ? "✅" : s.status === "failed" ? "❌" : "⏭️";
-    const sColor = s.status === "passed" ? "#238636" : s.status === "failed" ? "#da3633" : "#8b949e";
-    const output = s.output ? escapeHtml(s.output) : "";
-    return `
+  const stepsHtml =
+    steps.length > 0
+      ? steps
+          .map((s: any) => {
+            const sEmoji = s.status === "passed" ? "✅" : s.status === "failed" ? "❌" : "⏭️";
+            const sColor = s.status === "passed" ? "#238636" : s.status === "failed" ? "#da3633" : "#8b949e";
+            const output = s.output ? escapeHtml(s.output) : "";
+            return `
       <div style="margin:0.75rem 0;padding:1rem;background:#0d1117;border:1px solid #30363d;border-radius:6px;border-left:3px solid ${sColor}">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <strong>${sEmoji} ${escapeHtml(s.name)}</strong>
@@ -40,7 +53,9 @@ export async function renderCIRunDetail(id: string, projectId?: string): Promise
         </div>
         ${output ? `<pre style="margin:0.75rem 0 0;padding:0.75rem;background:#161b22;border-radius:4px;overflow-x:auto;font-size:0.8rem;max-height:500px;overflow-y:auto;color:#c9d1d9;white-space:pre-wrap;word-break:break-all">${output}</pre>` : ""}
       </div>`;
-  }).join("") : `<p class="empty-msg">No step details recorded</p>`;
+          })
+          .join("")
+      : `<p class="empty-msg">No step details recorded</p>`;
 
   const content = `
     <main class="container">
@@ -58,7 +73,7 @@ export async function renderCIRunDetail(id: string, projectId?: string): Promise
         </div>
         <div class="card" style="padding:1rem">
           <div style="color:#8b949e;font-size:0.85rem">Steps</div>
-          <div style="font-size:1.2rem"><span style="color:#238636">${passed} passed</span> · <span style="color:${failed > 0 ? '#da3633' : '#8b949e'}">${failed} failed</span></div>
+          <div style="font-size:1.2rem"><span style="color:#238636">${passed} passed</span> · <span style="color:${failed > 0 ? "#da3633" : "#8b949e"}">${failed} failed</span></div>
         </div>
         <div class="card" style="padding:1rem">
           <div style="color:#8b949e;font-size:0.85rem">Time</div>
@@ -81,5 +96,10 @@ export async function renderCIRunDetail(id: string, projectId?: string): Promise
       ${stepsHtml}
     </main>`;
 
-  return layout(content, { title: `CI: ${run.repo}@${hash}`, activePath: projectId ? `/projects/${projectId}/ci` : "/ci", projectId, activeSection: "ci" });
+  return layout(content, {
+    title: `CI: ${run.repo}@${hash}`,
+    activePath: projectId ? `/projects/${projectId}/ci` : "/ci",
+    projectId,
+    activeSection: "ci",
+  });
 }

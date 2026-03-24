@@ -6,15 +6,19 @@
 
 import { layout } from "../components/layout.ts";
 import { fetchArtifacts, fetchArtifactVersions } from "../lib/api.ts";
-import { relativeTime, escapeHtml } from "../lib/format.ts";
+import { escapeHtml, relativeTime } from "../lib/format.ts";
 
 const KIND_COLORS: Record<string, string> = {
-  code: "#3b82f6", doc: "#22c55e", config: "#eab308", asset: "#8b5cf6", other: "#6b7280",
+  code: "#3b82f6",
+  doc: "#22c55e",
+  config: "#eab308",
+  asset: "#8b5cf6",
+  other: "#6b7280",
 };
 
 const OP_ICONS: Record<string, string> = { write: "📝", edit: "✏️" };
 
-function formatSize(bytes: number): string {
+function _formatSize(bytes: number): string {
   if (!bytes) return "—";
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -38,16 +42,17 @@ export async function renderArtifacts(projectId?: string): Promise<string> {
     return tsB - tsA;
   });
 
-  const cards = paths.map((path) => {
-    const versions = byPath.get(path)!;
-    const latest = versions[0];
-    const fileName = path.split("/").pop() ?? path;
-    const relPath = path.replace(/.*harness\//, "");
-    const kind = latest.kind ?? "other";
-    const color = KIND_COLORS[kind] ?? "#6b7280";
-    const latestSession = (latest.session_id ?? "").split("/").pop() ?? "";
+  const cards = paths
+    .map((path) => {
+      const versions = byPath.get(path)!;
+      const latest = versions[0];
+      const fileName = path.split("/").pop() ?? path;
+      const relPath = path.replace(/.*harness\//, "");
+      const kind = latest.kind ?? "other";
+      const color = KIND_COLORS[kind] ?? "#6b7280";
+      const latestSession = (latest.session_id ?? "").split("/").pop() ?? "";
 
-    return `<div class="art-card" data-path="${escapeHtml(path)}" data-session="${escapeHtml(latest.session_id ?? "")}">
+      return `<div class="art-card" data-path="${escapeHtml(path)}" data-session="${escapeHtml(latest.session_id ?? "")}">
       <div class="art-card-top">
         <span class="art-op">${OP_ICONS[latest.operation] ?? "•"}</span>
         <a href="/artifacts/versions?path=${encodeURIComponent(path)}" class="art-filename">${escapeHtml(fileName)}</a>
@@ -61,7 +66,8 @@ export async function renderArtifacts(projectId?: string): Promise<string> {
         ${latestSession ? `<span>Session: <code>${escapeHtml(latestSession)}</code></span>` : ""}
       </div>
     </div>`;
-  }).join("\n");
+    })
+    .join("\n");
 
   const content = `
     <div class="page-header">
@@ -85,7 +91,12 @@ export async function renderArtifacts(projectId?: string): Promise<string> {
     </script>
   `;
 
-  return layout(content, { title: "Artifacts", activePath: projectId ? `/projects/${projectId}/artifacts` : "/artifacts", projectId, activeSection: "artifacts" });
+  return layout(content, {
+    title: "Artifacts",
+    activePath: projectId ? `/projects/${projectId}/artifacts` : "/artifacts",
+    projectId,
+    activeSection: "artifacts",
+  });
 }
 
 // ─── Artifact Versions Page ────────────────────────────────────
@@ -95,7 +106,9 @@ export async function renderArtifactVersions(path: string, projectId?: string): 
   const versions = (await fetchArtifactVersions(path)) ?? [];
   const fileName = path.split("/").pop() ?? path;
 
-  const rows = versions.map((v: any) => `
+  const rows = versions
+    .map(
+      (v: any) => `
     <div class="art-card">
       <div class="art-card-top">
         <span class="art-op">${OP_ICONS[v.operation] ?? "•"}</span>
@@ -109,7 +122,9 @@ export async function renderArtifactVersions(path: string, projectId?: string): 
         ${v._id ? `<a href="/artifacts/content/${encodeURIComponent(v._id)}" class="sb-link" style="font-size:0.8rem">📄 View content</a>` : ""}
       </div>
     </div>
-  `).join("\n");
+  `,
+    )
+    .join("\n");
 
   const content = `
     <div class="page-header">
@@ -122,5 +137,10 @@ export async function renderArtifactVersions(path: string, projectId?: string): 
     </div>
   `;
 
-  return layout(content, { title: fileName + " versions", activePath: projectId ? `/projects/${projectId}/artifacts` : "/artifacts", projectId, activeSection: "artifacts" });
+  return layout(content, {
+    title: `${fileName} versions`,
+    activePath: projectId ? `/projects/${projectId}/artifacts` : "/artifacts",
+    projectId,
+    activeSection: "artifacts",
+  });
 }

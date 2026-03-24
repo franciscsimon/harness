@@ -1,13 +1,13 @@
-import {
-  createAgentSession, SessionManager, AuthStorage, ModelRegistry,
-  DefaultResourceLoader,
-  type AgentSession, type SessionStats,
-} from "@mariozechner/pi-coding-agent";
-import { getModel } from "@mariozechner/pi-ai";
 import { randomUUID } from "node:crypto";
-
-// emitSessionShutdownEvent is not re-exported from the main index
-import { emitSessionShutdownEvent } from "@mariozechner/pi-coding-agent/dist/core/extensions/runner.js";
+import { getModel } from "@mariozechner/pi-ai";
+import {
+  type AgentSession,
+  AuthStorage,
+  createAgentSession,
+  DefaultResourceLoader,
+  ModelRegistry,
+  SessionManager,
+} from "@mariozechner/pi-coding-agent";
 
 const MAX_SESSIONS = 5;
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -33,7 +33,10 @@ function requestDialog(wsSend: WsSend, msg: Record<string, unknown>, timeoutMs?:
   return new Promise((resolve) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (timeoutMs && timeoutMs > 0) {
-      timer = setTimeout(() => { pendingDialogs.delete(id); resolve(undefined); }, timeoutMs);
+      timer = setTimeout(() => {
+        pendingDialogs.delete(id);
+        resolve(undefined);
+      }, timeoutMs);
     }
     pendingDialogs.set(id, { resolve, timer });
     wsSend({ ...msg, id });
@@ -44,7 +47,6 @@ interface PoolEntry {
   session: AgentSession;
   lastActivity: number;
   unsubscribe?: () => void;
-
 }
 
 const pool = new Map<string, PoolEntry>();
@@ -64,11 +66,21 @@ function buildUiContext(wsSend: WsSend): any {
     setStatus: (key: string, text: string | undefined) => {
       wsSend({ type: "ui:status", key, text: text ?? "" });
     },
-    setWorkingMessage: (_message?: string) => { /* no-op for web */ },
-    setWidget: (_key: string, _content: any, _options?: any) => { /* no-op for web */ },
-    setFooter: (_factory: any) => { /* no-op for web */ },
-    setHeader: (_factory: any) => { /* no-op for web */ },
-    setTitle: (_title: string) => { /* no-op for web */ },
+    setWorkingMessage: (_message?: string) => {
+      /* no-op for web */
+    },
+    setWidget: (_key: string, _content: any, _options?: any) => {
+      /* no-op for web */
+    },
+    setFooter: (_factory: any) => {
+      /* no-op for web */
+    },
+    setHeader: (_factory: any) => {
+      /* no-op for web */
+    },
+    setTitle: (_title: string) => {
+      /* no-op for web */
+    },
     onTerminalInput: (_handler: any) => () => {},
     select: (title: string, options: string[], opts?: { timeout?: number }) => {
       return requestDialog(wsSend, { type: "ui:select", title, options }, opts?.timeout);
@@ -85,7 +97,9 @@ function buildUiContext(wsSend: WsSend): any {
     getEditorText: () => "",
     editor: async () => undefined,
     setEditorComponent: () => {},
-    get theme() { return undefined; },
+    get theme() {
+      return undefined;
+    },
     getAllThemes: () => [],
     getTheme: () => undefined,
     setTheme: () => ({ success: false, error: "UI not available" }),
@@ -112,8 +126,11 @@ export async function createPoolSession(
   if (createNew) {
     sessionManager = SessionManager.create(cwd);
   } else if (sessionFile) {
-    try { sessionManager = SessionManager.open(sessionFile); }
-    catch { sessionManager = SessionManager.continueRecent(cwd); }
+    try {
+      sessionManager = SessionManager.open(sessionFile);
+    } catch {
+      sessionManager = SessionManager.continueRecent(cwd);
+    }
   } else {
     sessionManager = SessionManager.continueRecent(cwd);
   }
@@ -162,13 +179,17 @@ export async function destroyPoolSession(connectionId: string): Promise<void> {
   // P1 FIX: Fire session_shutdown so extensions clean up (close DB connections, flush writes)
   try {
     // dispose() handles extension cleanup including session_shutdown events
-  } catch { /* best-effort cleanup */ }
+  } catch {
+    /* best-effort cleanup */
+  }
 
   entry.session.dispose();
   pool.delete(connectionId);
 }
 
-export function poolSize(): number { return pool.size; }
+export function poolSize(): number {
+  return pool.size;
+}
 
 export async function setSessionModel(session: AgentSession, provider: string, modelId: string): Promise<boolean> {
   const model = getModel(provider, modelId);
@@ -180,7 +201,9 @@ export async function setSessionModel(session: AgentSession, provider: string, m
 // ─── Context & Stats ──────────────────────────────────────────────
 
 export function getContextUsageInfo(session: AgentSession): {
-  tokens: number | null; contextWindow: number; percent: number | null;
+  tokens: number | null;
+  contextWindow: number;
+  percent: number | null;
 } | null {
   const usage = session.getContextUsage();
   if (!usage) return null;
@@ -189,7 +212,10 @@ export function getContextUsageInfo(session: AgentSession): {
 
 // P2: Session stats for sidebar
 export function getSessionStatsInfo(session: AgentSession): {
-  userMessages: number; assistantMessages: number; toolCalls: number; totalMessages: number;
+  userMessages: number;
+  assistantMessages: number;
+  toolCalls: number;
+  totalMessages: number;
   tokens: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
   cost: number;
 } {
@@ -205,8 +231,13 @@ export function getSessionStatsInfo(session: AgentSession): {
 }
 
 export function getSessionInfo(session: AgentSession): {
-  sessionId: string; sessionFile?: string; model: string; provider?: string;
-  thinkingLevel: string; isStreaming: boolean; sessionName?: string;
+  sessionId: string;
+  sessionFile?: string;
+  model: string;
+  provider?: string;
+  thinkingLevel: string;
+  isStreaming: boolean;
+  sessionName?: string;
 } {
   return {
     sessionId: session.sessionId,
@@ -220,11 +251,13 @@ export function getSessionInfo(session: AgentSession): {
 }
 
 export function extractHistory(session: AgentSession): Array<{
-  role: string; text: string;
+  role: string;
+  text: string;
   toolCalls?: Array<{ name: string; input: string; output: string; isError: boolean }>;
 }> {
   const msgs: Array<{
-    role: string; text: string;
+    role: string;
+    text: string;
     toolCalls?: Array<{ name: string; input: string; output: string; isError: boolean }>;
   }> = [];
 
@@ -234,25 +267,40 @@ export function extractHistory(session: AgentSession): Array<{
   for (const m of session.messages) {
     if (m.role === "toolResult") {
       const mr = m as any;
-      const text = (mr.content ?? []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n");
+      const text = (mr.content ?? [])
+        .filter((c: any) => c.type === "text")
+        .map((c: any) => c.text)
+        .join("\n");
       if (mr.toolCallId) toolResults.set(mr.toolCallId, { output: text, isError: mr.isError ?? false });
     }
   }
 
   for (const m of session.messages) {
     if (m.role === "user") {
-      const text = m.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
+      const text = m.content
+        .filter((b: any) => b.type === "text")
+        .map((b: any) => b.text)
+        .join("\n");
       if (text) msgs.push({ role: "user", text });
     } else if (m.role === "assistant") {
-      const text = m.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n");
+      const text = m.content
+        .filter((b: any) => b.type === "text")
+        .map((b: any) => b.text)
+        .join("\n");
       const toolCalls = m.content
         .filter((b: any) => b.type === "tool_use" || b.type === "toolCall")
         .map((b: any) => {
           const result = toolResults.get(b.id);
           const input = b.input ?? b.arguments ?? {};
-          return { name: b.name, input: JSON.stringify(input, null, 2), output: result?.output ?? "", isError: result?.isError ?? false };
+          return {
+            name: b.name,
+            input: JSON.stringify(input, null, 2),
+            output: result?.output ?? "",
+            isError: result?.isError ?? false,
+          };
         });
-      if (text || toolCalls.length) msgs.push({ role: "assistant", text, toolCalls: toolCalls.length ? toolCalls : undefined });
+      if (text || toolCalls.length)
+        msgs.push({ role: "assistant", text, toolCalls: toolCalls.length ? toolCalls : undefined });
     }
   }
   return msgs;
@@ -265,11 +313,15 @@ export function getForkPoints(session: AgentSession): Array<{ id: string; text: 
       id: m.id,
       text: (m.text ?? "").slice(0, 100),
     }));
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 // P5: List all available slash commands (built-in + extension)
-export function getAvailableCommands(session: AgentSession): Array<{ name: string; description: string; source: string }> {
+export function getAvailableCommands(
+  session: AgentSession,
+): Array<{ name: string; description: string; source: string }> {
   const cmds: Array<{ name: string; description: string; source: string }> = [];
 
   // Built-in web-chat commands
@@ -290,7 +342,7 @@ export function getAvailableCommands(session: AgentSession): Array<{ name: strin
   // Extension-registered commands
   const runner = session.extensionRunner;
   if (runner) {
-    const reserved = new Set(cmds.map(c => c.name));
+    const reserved = new Set(cmds.map((c) => c.name));
     for (const cmd of runner.getRegisteredCommands(reserved)) {
       cmds.push({ name: cmd.name, description: cmd.description ?? "", source: "extension" });
     }

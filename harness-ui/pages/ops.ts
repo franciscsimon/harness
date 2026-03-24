@@ -13,14 +13,18 @@ export async function renderOps(projectId?: string): Promise<string> {
   const up = containers.filter((c) => c.ok).length;
   const appServices = await checkAppServices().catch(() => []);
 
-  const containerRows = containers.map((c) => `
+  const containerRows = containers
+    .map(
+      (c) => `
     <tr>
       <td><span class="backend-dot" style="background:${c.ok ? "#238636" : "#da3633"};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px"></span>${c.name}</td>
       <td><code>:${c.port}</code></td>
       <td>${c.role}</td>
       <td style="color:${c.ok ? "#238636" : "#da3633"};font-weight:600">${c.ok ? "Up" : "Down"}</td>
     </tr>
-  `).join("\n");
+  `,
+    )
+    .join("\n");
 
   const content = `
     <main class="ops-page">
@@ -37,12 +41,16 @@ export async function renderOps(projectId?: string): Promise<string> {
           <table class="data-table">
             <thead><tr><th>Service</th><th>Port</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
-              ${appServices.map(s => `<tr>
+              ${appServices
+                .map(
+                  (s) => `<tr>
                 <td><strong>${s.name}</strong></td>
                 <td><code>:${s.port}</code></td>
                 <td style="color:${s.ok ? "#238636" : "#da3633"};font-weight:600">${s.ok ? "✅ Up" : "❌ Down"}</td>
                 <td><button class="btn" onclick="deploySvc('${s.name}')">🔄 Redeploy</button></td>
-              </tr>`).join("\n")}
+              </tr>`,
+                )
+                .join("\n")}
             </tbody>
           </table>
         </div>

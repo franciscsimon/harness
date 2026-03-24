@@ -1,6 +1,6 @@
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from "node:fs";
-import { join, basename } from "node:path";
 
 // ─── Knowledge Composer Extension ─────────────────────────────────
 // Compose multiple knowledge docs into focused, composable files.
@@ -10,16 +10,16 @@ import { join, basename } from "node:path";
 const KNOWLEDGE_DIR = join(process.env.HOME ?? "~", ".pi", "agent", "knowledge");
 
 export default function (pi: ExtensionAPI) {
-  let composed: Map<string, string> = new Map();
+  const composed: Map<string, string> = new Map();
 
-  pi.on("session_start", async () => { composed.clear(); });
+  pi.on("session_start", async () => {
+    composed.clear();
+  });
 
   // ── Inject composed knowledge into context ──
   pi.on("context", async (event) => {
     if (composed.size === 0) return;
-    const text = [...composed.entries()]
-      .map(([name, content]) => `### 📘 ${name}\n\n${content}`)
-      .join("\n\n---\n\n");
+    const text = [...composed.entries()].map(([name, content]) => `### 📘 ${name}\n\n${content}`).join("\n\n---\n\n");
 
     const messages = [...event.messages];
     messages.push({
@@ -50,15 +50,14 @@ export default function (pi: ExtensionAPI) {
 
       if (cmd === "add") {
         const names = parts.slice(1);
-        if (names.length === 0) { ctx.ui.notify("Usage: /compose add <file1> [file2...]", "error"); return; }
+        if (names.length === 0) {
+          ctx.ui.notify("Usage: /compose add <file1> [file2...]", "error");
+          return;
+        }
 
         let added = 0;
         for (const name of names) {
-          const candidates = [
-            join(KNOWLEDGE_DIR, name),
-            join(KNOWLEDGE_DIR, name + ".md"),
-            name,
-          ];
+          const candidates = [join(KNOWLEDGE_DIR, name), join(KNOWLEDGE_DIR, `${name}.md`), name];
           for (const p of candidates) {
             if (existsSync(p)) {
               const content = readFileSync(p, "utf-8");
@@ -76,7 +75,7 @@ export default function (pi: ExtensionAPI) {
 
       if (cmd === "remove") {
         const name = parts[1];
-        if (composed.delete(name ?? "") || composed.delete((name ?? "") + ".md")) {
+        if (composed.delete(name ?? "") || composed.delete(`${name ?? ""}.md`)) {
           ctx.ui.setStatus("compose", composed.size > 0 ? `📘 ${composed.size} knowledge` : "");
           ctx.ui.notify(`Removed: ${name}`, "info");
         } else {
@@ -86,7 +85,10 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (cmd === "active") {
-        if (composed.size === 0) { ctx.ui.notify("No knowledge composed. Use /compose add <file>.", "info"); return; }
+        if (composed.size === 0) {
+          ctx.ui.notify("No knowledge composed. Use /compose add <file>.", "info");
+          return;
+        }
         const lines = [...composed.entries()].map(([k, v]) => `  📘 ${k} (${v.length} chars)`);
         ctx.ui.notify(`📘 Active composition:\n${lines.join("\n")}`, "info");
         return;
@@ -102,9 +104,12 @@ export default function (pi: ExtensionAPI) {
       if (cmd === "create") {
         const name = parts[1];
         const content = parts.slice(2).join(" ");
-        if (!name || !content) { ctx.ui.notify("Usage: /compose create <name> <content>", "error"); return; }
+        if (!(name && content)) {
+          ctx.ui.notify("Usage: /compose create <name> <content>", "error");
+          return;
+        }
         mkdirSync(KNOWLEDGE_DIR, { recursive: true });
-        const file = join(KNOWLEDGE_DIR, name.endsWith(".md") ? name : name + ".md");
+        const file = join(KNOWLEDGE_DIR, name.endsWith(".md") ? name : `${name}.md`);
         writeFileSync(file, `# ${name}\n\n${content}\n`, "utf-8");
         ctx.ui.notify(`📘 Created: ${file}`, "success");
         return;
@@ -113,11 +118,17 @@ export default function (pi: ExtensionAPI) {
       // Default: list available
       if (!existsSync(KNOWLEDGE_DIR)) {
         mkdirSync(KNOWLEDGE_DIR, { recursive: true });
-        ctx.ui.notify(`📘 Knowledge dir created: ${KNOWLEDGE_DIR}\nAdd .md files there, then /compose add <file>.`, "info");
+        ctx.ui.notify(
+          `📘 Knowledge dir created: ${KNOWLEDGE_DIR}\nAdd .md files there, then /compose add <file>.`,
+          "info",
+        );
         return;
       }
       const files = readdirSync(KNOWLEDGE_DIR).filter((f) => f.endsWith(".md"));
-      if (files.length === 0) { ctx.ui.notify(`No .md files in ${KNOWLEDGE_DIR}`, "info"); return; }
+      if (files.length === 0) {
+        ctx.ui.notify(`No .md files in ${KNOWLEDGE_DIR}`, "info");
+        return;
+      }
       const lines = files.map((f) => `  ${composed.has(f) ? "✅" : "  "} ${f}`);
       ctx.ui.notify(`📘 Knowledge files:\n${lines.join("\n")}\n\nUse /compose add <file>`, "info");
     },

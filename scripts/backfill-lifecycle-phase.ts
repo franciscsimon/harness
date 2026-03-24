@@ -12,9 +12,8 @@ const t = (v: string | null) => sql.typed(v as any, 25);
 async function main() {
   // Get all projects
   const rows = await sql`SELECT _id, lifecycle_phase, config_json FROM projects`;
-  console.log(`Found ${rows.length} projects`);
 
-  let updated = 0;
+  let _updated = 0;
   for (const row of rows) {
     if (row.lifecycle_phase && row.config_json) continue;
 
@@ -34,12 +33,11 @@ async function main() {
       ${sql.typed(existing.session_count as any, 20)}, ${t("active")},
       ${t("{}")}, ${t(existing.jsonld)}
     )`;
-    updated++;
-    console.log(`  ✅ ${existing._id} (${existing.name}) → lifecycle_phase=active`);
+    _updated++;
   }
-
-  console.log(`\nBackfill complete: ${updated} updated, ${rows.length - updated} already had values`);
   await sql.end();
 }
 
-main().catch(err => { console.error(err); process.exit(1); });
+main().catch((_err) => {
+  process.exit(1);
+});

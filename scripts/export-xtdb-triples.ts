@@ -9,9 +9,9 @@
  * Run: NODE_PATH=xtdb-event-logger/node_modules npx jiti scripts/export-xtdb-triples.ts
  */
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import postgres from "postgres";
-import * as fs from "fs";
-import * as path from "path";
 
 const ROOT = path.resolve(__dirname, "..");
 const CALL_GRAPH = path.join(ROOT, "data", "call-graph.jsonld");
@@ -91,7 +91,7 @@ function literal(v: string, datatype?: string): string {
  * Convert a single JSON-LD node (from @graph or top-level) to N-Triple lines.
  * Handles simple flat JSON-LD — not a full JSON-LD processor.
  */
-function jsonldNodeToTriples(node: any, context?: Record<string, any>): string[] {
+function jsonldNodeToTriples(node: any, _context?: Record<string, any>): string[] {
   const triples: string[] = [];
   const id = node["@id"];
   if (!id) return triples;
@@ -219,18 +219,15 @@ async function main() {
             allTriples.push(...jsonldNodeToTriples(doc));
           }
           tableCount++;
-        } catch (e) {
+        } catch (_e) {
           // Skip malformed JSON-LD rows
         }
       }
 
       if (tableCount > 0) {
-        console.log(`  ${table}: ${tableCount} documents`);
         xtdbDocCount += tableCount;
       }
-    } catch (e) {
-      console.warn(`  ${table}: query failed — ${(e as Error).message?.slice(0, 60)}`);
-    }
+    } catch (_e) {}
   }
 
   await sql.end();
@@ -250,9 +247,7 @@ async function main() {
     delete meta["@graph"];
     delete meta["@context"];
     allTriples.push(...jsonldNodeToTriples(meta));
-    console.log(`  call-graph.jsonld: ${callGraphNodes} nodes`);
   } else {
-    console.warn("  ⚠ data/call-graph.jsonld not found — run parse-call-graph.ts first");
   }
 
   // 3. Deduplicate and write Turtle
@@ -267,14 +262,8 @@ async function main() {
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, output, "utf-8");
-
-  console.log(`\n✅ Written to ${OUT}`);
-  console.log(`   XTDB documents: ${xtdbDocCount}`);
-  console.log(`   Call graph nodes: ${callGraphNodes}`);
-  console.log(`   Total triples: ${uniqueTriples.length}`);
 }
 
-main().catch((e) => {
-  console.error("Fatal:", e);
+main().catch((_e) => {
   process.exit(1);
 });

@@ -8,9 +8,9 @@
 // Requires: docker socket mount, git, SSH access to Soft Serve
 
 import { execSync } from "node:child_process";
-import { readFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 
 // ─── Configuration ───────────────────────────────────────────────
 
@@ -22,8 +22,8 @@ const REGISTRY = process.env.REGISTRY ?? "localhost:5050";
 
 export interface BuildRequest {
   repo: string;
-  commit?: string;       // git SHA — if omitted, uses HEAD
-  services?: string[];   // subset of services to build — if omitted, builds all
+  commit?: string; // git SHA — if omitted, uses HEAD
+  services?: string[]; // subset of services to build — if omitted, builds all
   trigger: "ci-success" | "manual" | "api";
 }
 
@@ -50,7 +50,9 @@ export interface BuildResult {
 
 let currentBuild: { id: string; repo: string; startedAt: number } | null = null;
 
-export function getCurrentBuild() { return currentBuild; }
+export function getCurrentBuild() {
+  return currentBuild;
+}
 
 // ─── Main build function ─────────────────────────────────────────
 
@@ -65,34 +67,36 @@ export async function runBuild(req: BuildRequest): Promise<BuildResult> {
     // 1. Clone source
     mkdirSync(workDir, { recursive: true });
     const cloneUrl = `${SOFT_SERVE_SSH}/${req.repo}`;
-    console.log(`[build] Cloning ${cloneUrl} → ${workDir}`);
-    execSync(
-      `GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --depth 1 ${cloneUrl} ${workDir}`,
-      { timeout: 60_000, stdio: "pipe" }
-    );
+    execSync(`GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no" git clone --depth 1 ${cloneUrl} ${workDir}`, {
+      timeout: 60_000,
+      stdio: "pipe",
+    });
 
     // Checkout specific commit if provided
     if (req.commit) {
       try {
         execSync(`git fetch origin ${req.commit} && git checkout ${req.commit}`, {
-          cwd: workDir, timeout: 30_000, stdio: "pipe"
+          cwd: workDir,
+          timeout: 30_000,
+          stdio: "pipe",
         });
-      } catch {
-        // shallow clone may not have the commit — log but continue with HEAD
-        console.log(`[build] Could not checkout ${req.commit}, using HEAD`);
-      }
+      } catch {}
     }
 
     // Get actual commit SHA
     const commit = execSync("git rev-parse HEAD", { cwd: workDir, encoding: "utf-8" }).trim();
-    console.log(`[build] Commit: ${commit.slice(0, 8)}`);
 
     // 2. Read .cd.jsonld
     const cdPath = join(workDir, ".cd.jsonld");
     if (!existsSync(cdPath)) {
       return {
-        id: buildId, repo: req.repo, commit, trigger: req.trigger,
-        status: "failed", services: [], durationMs: Date.now() - startTime,
+        id: buildId,
+        repo: req.repo,
+        commit,
+        trigger: req.trigger,
+        status: "failed",
+        services: [],
+        durationMs: Date.now() - startTime,
       };
     }
 
@@ -102,42 +106,39 @@ export async function runBuild(req: BuildRequest): Promise<BuildResult> {
 
     // Filter to requested services if specified
     if (req.services?.length) {
-      serviceDefs = serviceDefs.filter((s: any) =>
-        req.services!.includes(s["schema:name"])
-      );
+      serviceDefs = serviceDefs.filter((s: any) => req.services?.includes(s["schema:name"]));
     }
-
-    // 3. Build all services in parallel
-    console.log(`[build] Building ${serviceDefs.length} services in parallel`);
-    const results = await Promise.all(
-      serviceDefs.map((svc: any) => buildService(svc, workDir, registry, commit))
-    );
+    const results = await Promise.all(serviceDefs.map((svc: any) => buildService(svc, workDir, registry, commit)));
 
     // 4. Determine overall status
-    const allSuccess = results.every(r => r.status === "success");
-    const allFailed = results.every(r => r.status === "failed");
+    const allSuccess = results.every((r) => r.status === "success");
+    const allFailed = results.every((r) => r.status === "failed");
     const status = allSuccess ? "success" : allFailed ? "failed" : "partial";
 
     const result: BuildResult = {
-      id: buildId, repo: req.repo, commit, trigger: req.trigger,
-      status, services: results, durationMs: Date.now() - startTime,
+      id: buildId,
+      repo: req.repo,
+      commit,
+      trigger: req.trigger,
+      status,
+      services: results,
+      durationMs: Date.now() - startTime,
     };
-
-    console.log(`[build] ${status}: ${results.filter(r => r.status === "success").length}/${results.length} services, ${result.durationMs}ms`);
     return result;
-
   } finally {
     currentBuild = null;
     // Cleanup work dir
-    try { rmSync(workDir, { recursive: true, force: true }); } catch { /* intentionally silent — cleanup is best-effort */ }
+    try {
+      rmSync(workDir, { recursive: true, force: true });
+    } catch {
+      /* intentionally silent — cleanup is best-effort */
+    }
   }
 }
 
 // ─── Build a single service ──────────────────────────────────────
 
-async function buildService(
-  svc: any, workDir: string, registry: string, commit: string
-): Promise<ServiceBuildResult> {
+async function buildService(svc: any, workDir: string, registry: string, commit: string): Promise<ServiceBuildResult> {
   const name: string = svc["schema:name"];
   const image: string = svc["oci:image"];
   const dockerfile: string = svc["code:dockerfile"];
@@ -149,29 +150,30 @@ async function buildService(
   const localTag = `${image}:latest`; // e.g. harness/event-api:latest — for docker compose
 
   try {
-    // Build with registry + local tags
-    console.log(`[build] ${name}: docker build -f ${dockerfile}`);
-    execSync(
-      `docker build --no-cache -f ${dockerfile} -t ${shaTag} -t ${latestTag} -t ${localTag} .`,
-      { cwd: workDir, timeout: 300_000, stdio: "pipe" }
-    );
-
-    // Push to registry
-    console.log(`[build] ${name}: pushing ${shaTag}`);
+    execSync(`docker build --no-cache -f ${dockerfile} -t ${shaTag} -t ${latestTag} -t ${localTag} .`, {
+      cwd: workDir,
+      timeout: 300_000,
+      stdio: "pipe",
+    });
     execSync(`docker push ${shaTag}`, { timeout: 120_000, stdio: "pipe" });
-    console.log(`[build] ${name}: pushing ${latestTag}`);
     execSync(`docker push ${latestTag}`, { timeout: 120_000, stdio: "pipe" });
 
     return {
-      name, image: fullImage, tags: [shaTag, latestTag, localTag],
-      status: "success", durationMs: Date.now() - startTime,
+      name,
+      image: fullImage,
+      tags: [shaTag, latestTag, localTag],
+      status: "success",
+      durationMs: Date.now() - startTime,
     };
   } catch (err: any) {
     const msg = err.stderr?.toString().slice(-500) ?? err.message ?? "unknown error";
-    console.error(`[build] ${name}: FAILED — ${msg.slice(0, 200)}`);
     return {
-      name, image: fullImage, tags: [],
-      status: "failed", durationMs: Date.now() - startTime, error: msg,
+      name,
+      image: fullImage,
+      tags: [],
+      status: "failed",
+      durationMs: Date.now() - startTime,
+      error: msg,
     };
   }
 }

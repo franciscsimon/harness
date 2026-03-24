@@ -4,7 +4,9 @@
   "type": "module",
   "description": "Pi.dev extension — retrieves prior work history before each task, warns about failed approaches",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "dependencies": {
     "postgres": "^3.4.8"

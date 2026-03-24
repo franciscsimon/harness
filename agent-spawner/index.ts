@@ -1,12 +1,11 @@
+import { spawn } from "node:child_process";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
-import { captureError } from "../lib/errors.ts";
-import { spawn } from "node:child_process";
-import { ids } from "../lib/jsonld/ids.ts";
-import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
 import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
-import { discoverAgents, formatAgentList } from "./agents.ts";
+import { captureError } from "../lib/errors.ts";
+import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
+import { ids } from "../lib/jsonld/ids.ts";
+import { discoverAgents } from "./agents.ts";
 
 // ─── Agent Spawner Extension ──────────────────────────────────────
 // Spawn separate pi sessions for parallel/background work.
@@ -32,7 +31,10 @@ export default function (pi: ExtensionAPI) {
     if (sql) return sql;
     try {
       sql = connectXtdb();
-      if (!await ensureConnected(sql)) { sql = null; return null; }
+      if (!(await ensureConnected(sql))) {
+        sql = null;
+        return null;
+      }
       // Seed delegations table
       await sql`INSERT INTO delegations (_id, parent_session_id, child_session_id, agent_name, task, status, exit_code, ts, jsonld)
         VALUES ('_seed', '', '', '', '', '', 0, 0, '')`;
@@ -79,9 +81,7 @@ export default function (pi: ExtensionAPI) {
         ${t(projectId)}, ${t(agentName)}, ${t(task.slice(0, 2000))},
         ${t(status)}, ${n(exitCode)}, ${n(now)}, ${t(jsonld)}
       )`;
-    } catch (err) {
-      console.error(`[agent-spawner] delegation persist failed: ${err}`);
-    }
+    } catch (_err) {}
   }
 
   // ── Restore state ──
@@ -147,9 +147,7 @@ export default function (pi: ExtensionAPI) {
 
       ctx.ui.setStatus("agents", `🔀 ${agents.length} agents`);
       ctx.ui.notify(
-        `🔀 Background agent #${id} spawned.\n` +
-          `Task: ${task.slice(0, 80)}\n` +
-          `Use /agents list to check status.`,
+        `🔀 Background agent #${id} spawned.\n` + `Task: ${task.slice(0, 80)}\n` + `Use /agents list to check status.`,
         "success",
       );
     },
@@ -199,13 +197,14 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", async (_event, ctx) => {
     const running = agents.filter((a) => a.status === "running");
     if (running.length > 0) {
-      ctx.ui.notify(
-        `⚠️ ${running.length} background agent(s) may still be running.`,
-        "warn",
-      );
+      ctx.ui.notify(`⚠️ ${running.length} background agent(s) may still be running.`, "warn");
     }
     if (sql) {
-      try { await sql.end(); } catch { /* cleanup — safe to ignore */ }
+      try {
+        await sql.end();
+      } catch {
+        /* cleanup — safe to ignore */
+      }
       sql = null;
     }
   });
@@ -214,17 +213,20 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "delegate",
     label: "Delegate to Agent",
-    description: "Delegate a task to a specialized agent running in a separate pi process with isolated context. Returns the agent's output.",
+    description:
+      "Delegate a task to a specialized agent running in a separate pi process with isolated context. Returns the agent's output.",
     promptSnippet: "Delegate a task to a specialized agent (separate process, isolated context)",
     promptGuidelines: [
       "Use delegate for tasks that benefit from a focused agent with clean context.",
-      "Available agents: " + discoverAgents().map((a) => `${a.name} (${a.description})`).join(", "),
+      `Available agents: ${discoverAgents()
+        .map((a) => `${a.name} (${a.description})`)
+        .join(", ")}`,
     ],
     parameters: Type.Object({
       agent: Type.Optional(Type.String({ description: "Agent name from ~/.pi/agent/agents/ (omit for default)" })),
       task: Type.String({ description: "Task description for the agent" }),
     }),
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, _signal, onUpdate, ctx) {
       const agents = discoverAgents();
       let agentPrompt: string | undefined;
       let agentName = params.agent ?? "worker";
@@ -260,7 +262,11 @@ export default function (pi: ExtensionAPI) {
       const { Text } = require("@mariozechner/pi-tui");
       const agent = args.agent ?? "worker";
       const task = String(args.task ?? "").slice(0, 60);
-      return new Text(`${theme.fg("toolTitle", theme.bold("delegate "))}${theme.fg("accent", agent)} ${theme.fg("dim", task)}`, 0, 0);
+      return new Text(
+        `${theme.fg("toolTitle", theme.bold("delegate "))}${theme.fg("accent", agent)} ${theme.fg("dim", task)}`,
+        0,
+        0,
+      );
     },
   });
 }
@@ -290,10 +296,17 @@ function runSubagent(task: string, agentPrompt?: string, cwd?: string): Promise<
 
     let stdout = "";
     let stderr = "";
-    proc.stdout?.on("data", (d: Buffer) => { stdout += d.toString(); });
-    proc.stderr?.on("data", (d: Buffer) => { stderr += d.toString(); });
+    proc.stdout?.on("data", (d: Buffer) => {
+      stdout += d.toString();
+    });
+    proc.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
 
-    const timeout = setTimeout(() => { proc.kill(); resolve({ output: "Timed out after 5 minutes", exitCode: 1, childSessionId: null }); }, 300_000);
+    const timeout = setTimeout(() => {
+      proc.kill();
+      resolve({ output: "Timed out after 5 minutes", exitCode: 1, childSessionId: null });
+    }, 300_000);
 
     proc.on("close", (code) => {
       clearTimeout(timeout);
@@ -309,7 +322,12 @@ function runSubagent(task: string, agentPrompt?: string, cwd?: string): Promise<
               childSessionId = parsed.id;
             }
           } catch (err) {
-            captureError({ component: "agent-spawner", operation: "parse agent stdout", error: err, severity: "degraded" });
+            captureError({
+              component: "agent-spawner",
+              operation: "parse agent stdout",
+              error: err,
+              severity: "degraded",
+            });
           }
         }
         // Extract final assistant text
@@ -317,10 +335,15 @@ function runSubagent(task: string, agentPrompt?: string, cwd?: string): Promise<
           const parsed = JSON.parse(lines[i]);
           if (parsed.type === "message" && parsed.message?.role === "assistant") {
             const text = parsed.message.content?.find((c: any) => c.type === "text");
-            if (text) { finalOutput = text.text; break; }
+            if (text) {
+              finalOutput = text.text;
+              break;
+            }
           }
         }
-      } catch { /* use raw stdout */ }
+      } catch {
+        /* use raw stdout */
+      }
       resolve({ output: finalOutput.slice(0, 10000), exitCode: code ?? 1, childSessionId });
     });
 

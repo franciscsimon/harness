@@ -4,7 +4,7 @@
  *
  * Re-exported from shared lib — see lib/jsonld/context.ts
  */
-import { NS, JSONLD_CONTEXT } from "../../lib/jsonld/context.ts";
+import { JSONLD_CONTEXT, NS } from "../../lib/jsonld/context.ts";
 
 /** Pi.dev events vocabulary */
 export const EV = NS.ev;

@@ -1,7 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
-import { runAllDetectors, type DetectorState, type Detection } from "./detectors.ts";
+import { type DetectorState, runAllDetectors } from "./detectors.ts";
 
 // ─── Slop Detector Extension ──────────────────────────────────────
 // Detect 5 anti-patterns: AI Slop, Answer Injection, Obsess Over Rules,
@@ -10,7 +9,7 @@ import { runAllDetectors, type DetectorState, type Detection } from "./detectors
 
 export default function (pi: ExtensionAPI) {
   let state: DetectorState = freshState();
-  let firedPatterns = new Set<string>();
+  const firedPatterns = new Set<string>();
   let sessionStart = Date.now();
 
   function freshState(): DetectorState {
@@ -132,23 +131,27 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "check_antipatterns",
     label: "Check Anti-patterns",
-    description: "Scan text for common AI slop patterns: filler phrases, answer injection, rule obsession, perfect recall fallacy.",
+    description:
+      "Scan text for common AI slop patterns: filler phrases, answer injection, rule obsession, perfect recall fallacy.",
     promptSnippet: "Scan text for AI anti-patterns (slop, answer injection, etc.)",
     promptGuidelines: ["Use check_antipatterns on your own output if the user seems dissatisfied with quality."],
     parameters: Type.Object({ text: Type.String({ description: "Text to analyze for anti-patterns" }) }),
     async execute(_tid: any, params: any) {
       const results: string[] = [];
       const slop = detectAiSlop(params.text);
-      if (slop.length > 0) results.push("AI Slop: " + slop.map((s: any) => s.phrase).join(", "));
+      if (slop.length > 0) results.push(`AI Slop: ${slop.map((s: any) => s.phrase).join(", ")}`);
       const injection = detectAnswerInjection(params.text);
-      if (injection.length > 0) results.push("Answer Injection: " + injection.map((a: any) => a.indicator).join(", "));
+      if (injection.length > 0) results.push(`Answer Injection: ${injection.map((a: any) => a.indicator).join(", ")}`);
       const rules = detectObsessOverRules(params.text);
-      if (rules.length > 0) results.push("Rule Obsession: " + rules.map((r: any) => r.indicator).join(", "));
+      if (rules.length > 0) results.push(`Rule Obsession: ${rules.map((r: any) => r.indicator).join(", ")}`);
       const recall = detectPerfectRecallFallacy(params.text);
-      if (recall.length > 0) results.push("Perfect Recall: " + recall.map((r: any) => r.indicator).join(", "));
-      if (results.length === 0) return { content: [{ type: "text", text: "✅ No anti-patterns detected." }], details: {} };
-      return { content: [{ type: "text", text: "⚠️ Anti-patterns found:\n" + results.join("\n") }], details: { count: results.length } };
+      if (recall.length > 0) results.push(`Perfect Recall: ${recall.map((r: any) => r.indicator).join(", ")}`);
+      if (results.length === 0)
+        return { content: [{ type: "text", text: "✅ No anti-patterns detected." }], details: {} };
+      return {
+        content: [{ type: "text", text: `⚠️ Anti-patterns found:\n${results.join("\n")}` }],
+        details: { count: results.length },
+      };
     },
   });
-
 }

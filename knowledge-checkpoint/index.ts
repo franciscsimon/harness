@@ -1,8 +1,7 @@
+import { mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
-import { writeFileSync, mkdirSync, readdirSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
 
 // ─── Knowledge Checkpoint Extension ───────────────────────────────
 // Periodically saves context snapshots so you can restore from
@@ -16,7 +15,7 @@ const DEFAULT_INTERVAL = 5; // turns between auto-checkpoints
 export default function (pi: ExtensionAPI) {
   let turnIndex = 0;
   let checkpointCount = 0;
-  let interval = DEFAULT_INTERVAL;
+  const interval = DEFAULT_INTERVAL;
   let filesModified: string[] = [];
   let toolUsage: Record<string, number> = {};
   let errorCount = 0;
@@ -87,11 +86,11 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── Track turns ──
-  pi.on("turn_start", async (event) => {
+  pi.on("turn_start", async (_event) => {
     turnIndex++;
   });
 
-  pi.on("turn_end", async (event, ctx) => {
+  pi.on("turn_end", async (_event, ctx) => {
     // Auto-checkpoint every N turns
     if (turnIndex - lastCheckpointTurn >= interval && turnIndex > 0) {
       lastCheckpointTurn = turnIndex;
@@ -166,12 +165,12 @@ export default function (pi: ExtensionAPI) {
         const uniqueFiles = [...new Set(filesModified)];
         ctx.ui.notify(
           `📍 Checkpoint Info:\n` +
-          `  Turn: ${turnIndex}\n` +
-          `  Checkpoints: ${checkpointCount}\n` +
-          `  Auto-interval: every ${interval} turns\n` +
-          `  Files modified: ${uniqueFiles.length}\n` +
-          `  Errors: ${errorCount}\n` +
-          `  Next auto-checkpoint: turn ${lastCheckpointTurn + interval}`,
+            `  Turn: ${turnIndex}\n` +
+            `  Checkpoints: ${checkpointCount}\n` +
+            `  Auto-interval: every ${interval} turns\n` +
+            `  Files modified: ${uniqueFiles.length}\n` +
+            `  Errors: ${errorCount}\n` +
+            `  Next auto-checkpoint: turn ${lastCheckpointTurn + interval}`,
           "info",
         );
         return;
@@ -190,10 +189,9 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: ["Use save_checkpoint before major refactoring or risky changes."],
     parameters: Type.Object({ label: Type.Optional(Type.String({ description: "Checkpoint label" })) }),
     async execute(_tid: any, params: any, _s: any, _u: any, ctx: any) {
-      const label = params.label || "agent-checkpoint-turn" + turnIndex;
+      const label = params.label || `agent-checkpoint-turn${turnIndex}`;
       const path = saveCheckpoint(label, ctx);
-      return { content: [{ type: "text", text: "📍 Checkpoint saved: " + path }], details: { path } };
+      return { content: [{ type: "text", text: `📍 Checkpoint saved: ${path}` }], details: { path } };
     },
   });
-
 }

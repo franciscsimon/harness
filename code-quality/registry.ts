@@ -50,7 +50,8 @@ export const REGISTRY: LanguageToolchain[] = [
         description: "TypeScript compiler type checking. Catches type errors the linter cannot.",
       },
     ],
-    notes: "Biome v2.4+ replaces ESLint+Prettier. For legacy projects already on ESLint, run `npx biome migrate eslint`.",
+    notes:
+      "Biome v2.4+ replaces ESLint+Prettier. For legacy projects already on ESLint, run `npx biome migrate eslint`.",
   },
 
   // ─── Go ─────────────────────────────────────────────────────────
@@ -93,7 +94,8 @@ export const REGISTRY: LanguageToolchain[] = [
         description: "Built-in test runner with race detector.",
       },
     ],
-    notes: "Go has the best built-in toolchain. gofmt + vet + test ship with the language. golangci-lint is the only external tool needed.",
+    notes:
+      "Go has the best built-in toolchain. gofmt + vet + test ship with the language. golangci-lint is the only external tool needed.",
   },
 
   // ─── Rust ───────────────────────────────────────────────────────
@@ -165,7 +167,8 @@ export const REGISTRY: LanguageToolchain[] = [
         description: "Standard Python test runner.",
       },
     ],
-    notes: "Ruff is the Biome of Python — replaces 5+ tools with one Rust binary. Use ruff over black/flake8/pylint for new projects.",
+    notes:
+      "Ruff is the Biome of Python — replaces 5+ tools with one Rust binary. Use ruff over black/flake8/pylint for new projects.",
   },
 
   // ─── Java ───────────────────────────────────────────────────────
@@ -212,7 +215,8 @@ export const REGISTRY: LanguageToolchain[] = [
       {
         name: "ktlint",
         role: "all-in-one",
-        install: "brew install ktlint || curl -sSLO https://github.com/pinterest/ktlint/releases/latest/download/ktlint && chmod +x ktlint",
+        install:
+          "brew install ktlint || curl -sSLO https://github.com/pinterest/ktlint/releases/latest/download/ktlint && chmod +x ktlint",
         check: "ktlint",
         fix: "ktlint --format",
         config: ".editorconfig",
@@ -382,7 +386,7 @@ export const REGISTRY: LanguageToolchain[] = [
       {
         name: "credo",
         role: "lint",
-        install: "# Add {:credo, \"~> 1.7\", only: [:dev, :test]} to mix.exs deps",
+        install: '# Add {:credo, "~> 1.7", only: [:dev, :test]} to mix.exs deps',
         check: "mix credo --strict",
         fix: "# No auto-fix — manual resolution required",
         config: ".credo.exs",
@@ -391,7 +395,7 @@ export const REGISTRY: LanguageToolchain[] = [
       {
         name: "dialyzer",
         role: "typecheck",
-        install: "# Add {:dialyxir, \"~> 1.4\", only: [:dev, :test]} to mix.exs deps",
+        install: '# Add {:dialyxir, "~> 1.4", only: [:dev, :test]} to mix.exs deps',
         check: "mix dialyzer",
         fix: "mix dialyzer",
         description: "Erlang/Elixir type checker. Uses success typing. Catches type mismatches.",
@@ -479,7 +483,8 @@ export const REGISTRY: LanguageToolchain[] = [
       {
         name: "tflint",
         role: "lint",
-        install: "brew install tflint || curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash",
+        install:
+          "brew install tflint || curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash",
         check: "tflint --recursive",
         fix: "tflint --fix",
         config: ".tflint.hcl",
@@ -550,10 +555,12 @@ export function findByExtension(ext: string): LanguageToolchain | undefined {
 }
 
 export function findByManifest(filename: string): LanguageToolchain | undefined {
-  return REGISTRY.find((tc) => tc.manifestFiles.some((m) => {
-    if (m.startsWith("*")) return filename.endsWith(m.slice(1));
-    return filename === m;
-  }));
+  return REGISTRY.find((tc) =>
+    tc.manifestFiles.some((m) => {
+      if (m.startsWith("*")) return filename.endsWith(m.slice(1));
+      return filename === m;
+    }),
+  );
 }
 
 export function findByLanguage(lang: string): LanguageToolchain | undefined {

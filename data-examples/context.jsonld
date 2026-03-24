@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:0a4f53c6-1500-4100-b404-ae1f922df03b",
-      "@type": [
-        "ev:Context"
-      ],
+      "@type": ["ev:Context"],
       "ev:eventName": [
         {
           "@value": "context"
@@ -74,9 +72,7 @@
     },
     {
       "@id": "_:env_0a4f53c6-1500-4100-b404-ae1f922df03b",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

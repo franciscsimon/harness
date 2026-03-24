@@ -2,11 +2,11 @@
 // HTTP API + queue watcher. Runs on :3337.
 // Usage: cd ci-runner && npm install && npx jiti server.ts
 
-import { Hono } from "hono";
-import { serve } from "@hono/node-server";
-import { readdirSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { serve } from "@hono/node-server";
+import { Hono } from "hono";
 
 // Import and start the queue watcher
 import { runnerState } from "./runner.ts";
@@ -37,13 +37,25 @@ app.get("/api/queue", (c) => {
   try {
     mkdirSync(QUEUE_DIR, { recursive: true });
     const files = readdirSync(QUEUE_DIR);
-    const pending = files.filter(f => f.endsWith(".json")).map(f => {
-      try { return JSON.parse(readFileSync(join(QUEUE_DIR, f), "utf-8")); } catch { return { file: f, error: "parse failed" }; }
-    });
-    const running = files.filter(f => f.endsWith(".running")).map(f => {
-      try { return JSON.parse(readFileSync(join(QUEUE_DIR, f), "utf-8")); } catch { return { file: f }; }
-    });
-    const failed = files.filter(f => f.endsWith(".failed")).length;
+    const pending = files
+      .filter((f) => f.endsWith(".json"))
+      .map((f) => {
+        try {
+          return JSON.parse(readFileSync(join(QUEUE_DIR, f), "utf-8"));
+        } catch {
+          return { file: f, error: "parse failed" };
+        }
+      });
+    const running = files
+      .filter((f) => f.endsWith(".running"))
+      .map((f) => {
+        try {
+          return JSON.parse(readFileSync(join(QUEUE_DIR, f), "utf-8"));
+        } catch {
+          return { file: f };
+        }
+      });
+    const failed = files.filter((f) => f.endsWith(".failed")).length;
     return c.json({ pending, running, failedCount: failed });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
@@ -56,7 +68,7 @@ app.post("/api/enqueue", async (c) => {
   try {
     const body = await c.req.json();
     const { repo, ref, commitHash, commitMessage, pusher } = body;
-    if (!repo || !commitHash) return c.json({ error: "Missing repo or commitHash" }, 400);
+    if (!(repo && commitHash)) return c.json({ error: "Missing repo or commitHash" }, 400);
 
     mkdirSync(QUEUE_DIR, { recursive: true });
     const job = {
@@ -78,6 +90,4 @@ app.post("/api/enqueue", async (c) => {
 
 // ── Start HTTP server ────────────────────────────────────────────
 
-serve({ fetch: app.fetch, port: CI_PORT }, () => {
-  console.log(`🌐 CI Runner API on http://localhost:${CI_PORT}`);
-});
+serve({ fetch: app.fetch, port: CI_PORT }, () => {});

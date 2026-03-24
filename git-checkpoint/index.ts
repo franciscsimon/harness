@@ -16,7 +16,10 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.registerShortcut("C-M-g", async (ctx) => {
-    if (!(await isGitRepo())) { ctx.ui.notify("Not a git repo.", "error"); return; }
+    if (!(await isGitRepo())) {
+      ctx.ui.notify("Not a git repo.", "error");
+      return;
+    }
     const ref = await stash(`manual-shortcut-turn${turnCount}`);
     ctx.ui.notify(ref ? `📌 Quick checkpoint: ${ref}` : "Nothing to stash.", ref ? "success" : "info");
   });
@@ -25,7 +28,9 @@ export default function (pi: ExtensionAPI) {
     try {
       const r = await pi.exec("git", ["rev-parse", "--is-inside-work-tree"], {});
       return r.stdout?.trim() === "true";
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }
 
   async function stash(label: string): Promise<string | null> {
@@ -47,12 +52,12 @@ export default function (pi: ExtensionAPI) {
     stashes.clear();
     turnCount = 0;
     enabled = pi.getFlag("checkpoints") !== false;
-    if (enabled && await isGitRepo()) {
+    if (enabled && (await isGitRepo())) {
       ctx.ui.setStatus("git-cp", "📌 Git checkpoints on");
     }
   });
 
-  pi.on("turn_end", async (event, ctx) => {
+  pi.on("turn_end", async (event, _ctx) => {
     if (!enabled) return;
     if (!(await isGitRepo())) return;
     turnCount++;
@@ -71,10 +76,7 @@ export default function (pi: ExtensionAPI) {
     const ref = stashes.get(entryId);
     if (!ref) return;
 
-    const ok = await ctx.ui.confirm(
-      "📌 Restore code?",
-      `Restore code to the state at this checkpoint (${ref})?`,
-    );
+    const ok = await ctx.ui.confirm("📌 Restore code?", `Restore code to the state at this checkpoint (${ref})?`);
     if (ok) {
       try {
         await pi.exec("git", ["stash", "apply", ref], {});
@@ -87,22 +89,36 @@ export default function (pi: ExtensionAPI) {
 
   pi.registerCommand("git-cp", {
     description: "Manage git checkpoints",
-    getArgumentCompletions: (prefix: string) => [
-      { value: "on", label: "on — Enable auto-checkpoints" },
-      { value: "off", label: "off — Disable auto-checkpoints" },
-      { value: "save", label: "save — Manual checkpoint now" },
-      { value: "status", label: "status — Show checkpoint info" },
-    ].filter((i) => i.value.startsWith(prefix)),
+    getArgumentCompletions: (prefix: string) =>
+      [
+        { value: "on", label: "on — Enable auto-checkpoints" },
+        { value: "off", label: "off — Disable auto-checkpoints" },
+        { value: "save", label: "save — Manual checkpoint now" },
+        { value: "status", label: "status — Show checkpoint info" },
+      ].filter((i) => i.value.startsWith(prefix)),
     handler: async (args, ctx) => {
       const cmd = args?.trim() ?? "status";
-      if (cmd === "on") { enabled = true; ctx.ui.setStatus("git-cp", "📌 Git checkpoints on"); ctx.ui.notify("Git checkpoints enabled.", "success"); return; }
-      if (cmd === "off") { enabled = false; ctx.ui.setStatus("git-cp", ""); ctx.ui.notify("Git checkpoints disabled.", "info"); return; }
+      if (cmd === "on") {
+        enabled = true;
+        ctx.ui.setStatus("git-cp", "📌 Git checkpoints on");
+        ctx.ui.notify("Git checkpoints enabled.", "success");
+        return;
+      }
+      if (cmd === "off") {
+        enabled = false;
+        ctx.ui.setStatus("git-cp", "");
+        ctx.ui.notify("Git checkpoints disabled.", "info");
+        return;
+      }
       if (cmd === "save") {
         const ref = await stash(`manual-turn${turnCount}`);
         ctx.ui.notify(ref ? `📌 Saved: ${ref}` : "Nothing to stash.", ref ? "success" : "info");
         return;
       }
-      ctx.ui.notify(`📌 Git Checkpoints:\n  Enabled: ${enabled}\n  Turns: ${turnCount}\n  Stashes: ${stashes.size}`, "info");
+      ctx.ui.notify(
+        `📌 Git Checkpoints:\n  Enabled: ${enabled}\n  Turns: ${turnCount}\n  Stashes: ${stashes.size}`,
+        "info",
+      );
     },
   });
 }

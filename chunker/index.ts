@@ -1,6 +1,6 @@
+import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
 
 // ─── Chunker Extension ────────────────────────────────────────────
 // Break complex tasks into manageable steps with tracked progress.
@@ -63,7 +63,8 @@ export default function (pi: ExtensionAPI) {
     const progress = progressBar();
 
     return {
-      systemPrompt: (event as any).systemPrompt +
+      systemPrompt:
+        (event as any).systemPrompt +
         `\n\n---\n\n` +
         `📦 CHUNKING MODE — ${progress}\n` +
         `Focus ONLY on step ${idx + 1}: ${step.text}\n` +
@@ -120,8 +121,7 @@ export default function (pi: ExtensionAPI) {
           return `  ${icon} ${i + 1}. ${s.text}`;
         });
         ctx.ui.notify(
-          `📦 Steps ${progressBar()}:\n\n${lines.join("\n")}\n\n` +
-            `Active: ${active ? "yes" : "no"}`,
+          `📦 Steps ${progressBar()}:\n\n${lines.join("\n")}\n\n` + `Active: ${active ? "yes" : "no"}`,
           "info",
         );
         return;
@@ -157,10 +157,7 @@ export default function (pi: ExtensionAPI) {
         currentStep = idx;
         saveState();
         ctx.ui.notify(`👉 Focus on step ${idx + 1}: ${steps[idx].text}`, "info");
-        pi.sendUserMessage(
-          `Please work on step ${idx + 1}: ${steps[idx].text}`,
-          { deliverAs: "followUp" },
-        );
+        pi.sendUserMessage(`Please work on step ${idx + 1}: ${steps[idx].text}`, { deliverAs: "followUp" });
         return;
       }
 
@@ -219,22 +216,33 @@ export default function (pi: ExtensionAPI) {
         saveState();
         ctx.ui.setStatus("chunker", `📦 ${progressBar()}`);
         const list = steps.map((s, i) => `  ${i + 1}. ${s.text}`).join("\n");
-        return { content: [{ type: "text", text: `📦 Created ${steps.length} steps:\n${list}\n\nFocus on step 1: ${steps[0].text}` }], details: { steps } };
+        return {
+          content: [
+            { type: "text", text: `📦 Created ${steps.length} steps:\n${list}\n\nFocus on step 1: ${steps[0].text}` },
+          ],
+          details: { steps },
+        };
       }
       if (params.action === "done") {
-        const n = params.step_number ?? (findNextUndone() + 1);
+        const n = params.step_number ?? findNextUndone() + 1;
         if (n < 1 || n > steps.length) throw new Error(`Invalid step: ${n}`);
         steps[n - 1].done = true;
         saveState();
         ctx.ui.setStatus("chunker", `📦 ${progressBar()}`);
         const next = findNextUndone();
-        const msg = next === -1 ? `✅ All ${steps.length} steps complete!` : `✅ Step ${n} done. Next: step ${next + 1} — ${steps[next].text}`;
+        const msg =
+          next === -1
+            ? `✅ All ${steps.length} steps complete!`
+            : `✅ Step ${n} done. Next: step ${next + 1} — ${steps[next].text}`;
         return { content: [{ type: "text", text: msg }], details: { progress: progressBar() } };
       }
       if (params.action === "next") {
         const idx = findNextUndone();
         if (idx === -1) return { content: [{ type: "text", text: "All steps complete!" }], details: {} };
-        return { content: [{ type: "text", text: `👉 Step ${idx + 1}: ${steps[idx].text}` }], details: { step: idx + 1 } };
+        return {
+          content: [{ type: "text", text: `👉 Step ${idx + 1}: ${steps[idx].text}` }],
+          details: { step: idx + 1 },
+        };
       }
       // list
       if (steps.length === 0) return { content: [{ type: "text", text: "No steps defined." }], details: {} };

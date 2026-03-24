@@ -8,9 +8,7 @@
   "@graph": [
     {
       "@id": "urn:uuid:c267adfd-d753-46db-a927-d72d483e1a35",
-      "@type": [
-        "ev:ToolExecutionUpdate"
-      ],
+      "@type": ["ev:ToolExecutionUpdate"],
       "ev:eventName": [
         {
           "@value": "tool_execution_update"
@@ -78,9 +76,7 @@
     },
     {
       "@id": "_:env_c267adfd-d753-46db-a927-d72d483e1a35",
-      "@type": [
-        "schema:SoftwareApplication"
-      ],
+      "@type": ["schema:SoftwareApplication"],
       "schema:name": [
         {
           "@value": "pi.dev"

@@ -1,12 +1,12 @@
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface HabitThresholds {
-  commitReminderEdits: number;    // default 5
-  testReminderEdits: number;      // default 5
-  errorStreakCount: number;        // default 3
-  freshStartBytes: number;         // default 150_000
-  scopeCreepFiles: number;         // default 8
+  commitReminderEdits: number; // default 5
+  testReminderEdits: number; // default 5
+  errorStreakCount: number; // default 3
+  freshStartBytes: number; // default 150_000
+  scopeCreepFiles: number; // default 8
 }
 
 const DEFAULTS: HabitThresholds = {

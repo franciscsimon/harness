@@ -1,9 +1,9 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { ids } from "../lib/jsonld/ids.ts";
 import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
-import { resolveProject, projectId } from "./identity.ts";
+import { ids } from "../lib/jsonld/ids.ts";
+import { projectId, resolveProject } from "./identity.ts";
 import { buildProjectJsonLd, buildSessionProjectJsonLd } from "./rdf.ts";
-import type { ProjectRecord, SessionProjectRecord, CurrentProject, ExecFn } from "./types.ts";
+import type { CurrentProject, ExecFn, ProjectRecord, SessionProjectRecord } from "./types.ts";
 
 function makeExecFn(pi: ExtensionAPI): ExecFn {
   return async (cmd, args, opts) => {
@@ -12,7 +12,11 @@ function makeExecFn(pi: ExtensionAPI): ExecFn {
   };
 }
 
-async function upsertProject(sql: Sql, identity: ReturnType<typeof resolveProject> extends Promise<infer T> ? T : never, now: number): Promise<{ record: ProjectRecord; isFirstSession: boolean }> {
+async function upsertProject(
+  sql: Sql,
+  identity: ReturnType<typeof resolveProject> extends Promise<infer T> ? T : never,
+  now: number,
+): Promise<{ record: ProjectRecord; isFirstSession: boolean }> {
   const projId = projectId(identity.canonicalId);
   const t = (v: string | null) => sql.typed(v as any, 25);
   const n = (v: number | null) => sql.typed(v as any, 20);
@@ -21,7 +25,9 @@ async function upsertProject(sql: Sql, identity: ReturnType<typeof resolveProjec
   try {
     const rows = await sql`SELECT * FROM projects WHERE _id = ${t(projId)}`;
     existing = rows[0] ?? null;
-  } catch { /* table may not exist yet */ }
+  } catch {
+    /* table may not exist yet */
+  }
 
   const isFirstSession = existing === null;
   const record: ProjectRecord = {
@@ -55,7 +61,15 @@ async function upsertProject(sql: Sql, identity: ReturnType<typeof resolveProjec
   return { record, isFirstSession };
 }
 
-async function insertSessionLink(sql: Sql, sessionId: string, projId: string, identity: ReturnType<typeof resolveProject> extends Promise<infer T> ? T : never, cwd: string, now: number, isFirstSession: boolean): Promise<void> {
+async function insertSessionLink(
+  sql: Sql,
+  sessionId: string,
+  projId: string,
+  identity: ReturnType<typeof resolveProject> extends Promise<infer T> ? T : never,
+  cwd: string,
+  now: number,
+  isFirstSession: boolean,
+): Promise<void> {
   const t = (v: string | null) => sql.typed(v as any, 25);
   const b = (v: boolean | null) => sql.typed(v as any, 16);
   const n = (v: number | null) => sql.typed(v as any, 20);
@@ -100,9 +114,8 @@ export default function (pi: ExtensionAPI) {
         sql = connectXtdb();
         const ok = await ensureConnected(sql);
         if (!ok) throw new Error("connection check failed");
-      } catch (err) {
+      } catch (_err) {
         sql = null;
-        console.error(`[project-registry] XTDB connection failed: ${err}`);
         return;
       }
     }
@@ -110,8 +123,7 @@ export default function (pi: ExtensionAPI) {
     let identity;
     try {
       identity = await resolveProject(cwd, makeExecFn(pi));
-    } catch (err) {
-      console.error(`[project-registry] Identity resolution failed: ${err}`);
+    } catch (_err) {
       return;
     }
 
@@ -128,14 +140,16 @@ export default function (pi: ExtensionAPI) {
       };
       (globalThis as any).__piCurrentProject = current;
       ctx.ui.setStatus("project", `📁 ${identity.name}`);
-    } catch (err) {
-      console.error(`[project-registry] XTDB write failed: ${err}`);
-    }
+    } catch (_err) {}
   });
 
   pi.on("session_shutdown", async () => {
     if (sql) {
-      try { await sql.end(); } catch { /* cleanup — safe to ignore */ }
+      try {
+        await sql.end();
+      } catch {
+        /* cleanup — safe to ignore */
+      }
       sql = null;
     }
   });

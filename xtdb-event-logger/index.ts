@@ -1,13 +1,13 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { Endpoint, EventMeta, NormalizedEvent } from "./types.ts";
 import { loadConfig } from "./config.ts";
-import { routeEvent, ALL_EVENT_NAMES } from "./router.ts";
-import { eventToTriples } from "./rdf/triples.ts";
-import { triplesToJsonLd } from "./rdf/serialize.ts";
-import { setSamplingInterval, shouldCapture, flushSampler } from "./sampling.ts";
-import { XtdbEndpoint } from "./endpoints/xtdb.ts";
-import { JsonlEndpoint } from "./endpoints/jsonl.ts";
 import { ConsoleEndpoint } from "./endpoints/console.ts";
+import { JsonlEndpoint } from "./endpoints/jsonl.ts";
+import { XtdbEndpoint } from "./endpoints/xtdb.ts";
+import { triplesToJsonLd } from "./rdf/serialize.ts";
+import { eventToTriples } from "./rdf/triples.ts";
+import { ALL_EVENT_NAMES, routeEvent } from "./router.ts";
+import { flushSampler, setSamplingInterval, shouldCapture } from "./sampling.ts";
+import type { Endpoint, EventMeta, NormalizedEvent } from "./types.ts";
 
 // ─── Constants ─────────────────────────────────────────────────────
 
@@ -66,7 +66,12 @@ export default function (pi: ExtensionAPI) {
     if (!normalized) return;
 
     // Publish real ID for other extensions (event-projector) running in same process
-    (globalThis as any).__piLastEvent = { _id: normalized.id, seq: normalized.seq, eventName, sessionId: normalized.sessionId };
+    (globalThis as any).__piLastEvent = {
+      _id: normalized.id,
+      seq: normalized.seq,
+      eventName,
+      sessionId: normalized.sessionId,
+    };
 
     let jsonld: string;
     try {
@@ -102,9 +107,7 @@ export default function (pi: ExtensionAPI) {
       try {
         await ep.init(config);
         liveEndpoints.push(ep);
-      } catch (err) {
-        console.error(`[xtdb-logger] ${ep.name} eager init failed: ${err}`);
-      }
+      } catch (_err) {}
     }
     if (liveEndpoints.length > 0) {
       ready = true;
@@ -128,9 +131,7 @@ export default function (pi: ExtensionAPI) {
             try {
               await ep.init(config);
               liveEndpoints.push(ep);
-            } catch (err) {
-              console.error(`[xtdb-logger] ${ep.name} init failed: ${err}`);
-            }
+            } catch (_err) {}
           }
 
           if (liveEndpoints.length === 0) {
@@ -168,7 +169,9 @@ export default function (pi: ExtensionAPI) {
           } catch {}
           try {
             await ep.close();
-          } catch { /* cleanup — safe to ignore */ }
+          } catch {
+            /* cleanup — safe to ignore */
+          }
         }
       });
       continue;
@@ -187,14 +190,8 @@ export default function (pi: ExtensionAPI) {
     if (SAMPLED.has(eventName)) {
       pi.on(eventName as any, (event: unknown, ctx: any) => {
         const e = event as any;
-        const deltaLen =
-          eventName === "message_update"
-            ? (e?.assistantMessageEvent?.delta?.length ?? 0)
-            : 0;
-        const key =
-          eventName === "message_update"
-            ? "msg_update"
-            : `tool_update_${e?.toolCallId ?? "?"}`;
+        const deltaLen = eventName === "message_update" ? (e?.assistantMessageEvent?.delta?.length ?? 0) : 0;
+        const key = eventName === "message_update" ? "msg_update" : `tool_update_${e?.toolCallId ?? "?"}`;
 
         const { capture: shouldWrite } = shouldCapture(key, deltaLen, event);
         if (shouldWrite) {

@@ -4,7 +4,9 @@
   "version": "1.0.0",
   "description": "Composable workflow templates using Schema.org Action types + PROV-O in JSON-LD",
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "dependencies": {
     "@rdfjs/types": "^2.0.1",

@@ -1,7 +1,7 @@
 // ─── Live Event Stream Page (Hybrid: live + paginated history) ──
 import { layout } from "../components/layout.ts";
-import { fetchStats, fetchSessionList } from "../lib/api.ts";
-import { escapeHtml, CATEGORY_COLORS } from "../lib/format.ts";
+import { fetchSessionList, fetchStats } from "../lib/api.ts";
+import { CATEGORY_COLORS, escapeHtml } from "../lib/format.ts";
 
 const CATEGORIES = ["session", "compaction", "agent", "message", "tool", "input", "model", "resource"];
 
@@ -23,11 +23,13 @@ export async function renderStream(projectId?: string): Promise<string> {
     </button>`;
   }).join("\n");
 
-  const sessionOpts = (sessions ?? []).map((s: any) => {
-    const id = s.sessionId ?? s;
-    const label = String(id).split("/").pop() ?? id;
-    return `<option value="${escapeHtml(String(id))}">${escapeHtml(String(label))}</option>`;
-  }).join("\n");
+  const sessionOpts = (sessions ?? [])
+    .map((s: any) => {
+      const id = s.sessionId ?? s;
+      const label = String(id).split("/").pop() ?? id;
+      return `<option value="${escapeHtml(String(id))}">${escapeHtml(String(label))}</option>`;
+    })
+    .join("\n");
 
   const content = `
     <div class="page-header">

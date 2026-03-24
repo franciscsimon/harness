@@ -1,6 +1,6 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { basename, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { join, basename } from "node:path";
 
 // ─── Role Loader + Agent Launcher Extension ───────────────────────
 // Loads focused agent roles via /role <name> command.
@@ -20,29 +20,29 @@ interface RoleInfo {
 
 const ROLE_META: Record<string, { emoji: string; description: string }> = {
   // ── Core agents ──
-  worker:             { emoji: "🛠️", description: "Implement features, fix bugs, write working code" },
-  tester:             { emoji: "🧪", description: "Write tests for existing code, cover edge cases" },
-  reviewer:           { emoji: "🔍", description: "Review code, flag issues, never modify files" },
-  committer:          { emoji: "✅", description: "Review staged changes and write commit messages" },
-  debugger:           { emoji: "🔬", description: "Debug with log-first approach" },
-  refactorer:         { emoji: "🌀", description: "Refactor existing code, never add features" },
+  worker: { emoji: "🛠️", description: "Implement features, fix bugs, write working code" },
+  tester: { emoji: "🧪", description: "Write tests for existing code, cover edge cases" },
+  reviewer: { emoji: "🔍", description: "Review code, flag issues, never modify files" },
+  committer: { emoji: "✅", description: "Review staged changes and write commit messages" },
+  debugger: { emoji: "🔬", description: "Debug with log-first approach" },
+  refactorer: { emoji: "🌀", description: "Refactor existing code, never add features" },
   // ── Planning & design ──
-  planner:            { emoji: "📋", description: "Plan only, never implement" },
-  architect:          { emoji: "🏗️", description: "Design system architecture, components, boundaries" },
-  researcher:         { emoji: "🔎", description: "Investigate solutions, compare options, report findings" },
-  "interface-first":  { emoji: "🔌", description: "Define contracts before implementing" },
+  planner: { emoji: "📋", description: "Plan only, never implement" },
+  architect: { emoji: "🏗️", description: "Design system architecture, components, boundaries" },
+  researcher: { emoji: "🔎", description: "Investigate solutions, compare options, report findings" },
+  "interface-first": { emoji: "🔌", description: "Define contracts before implementing" },
   // ── Quality & maintenance ──
   "security-auditor": { emoji: "🔒", description: "Audit code for vulnerabilities, OWASP Top 10" },
-  optimizer:          { emoji: "⚡", description: "Find and fix performance bottlenecks with measurements" },
-  janitor:            { emoji: "🧹", description: "Remove dead code, reduce tech debt, tidy up" },
-  migrator:           { emoji: "🔀", description: "Upgrade dependencies, migrate APIs, modernize code" },
+  optimizer: { emoji: "⚡", description: "Find and fix performance bottlenecks with measurements" },
+  janitor: { emoji: "🧹", description: "Remove dead code, reduce tech debt, tidy up" },
+  migrator: { emoji: "🔀", description: "Upgrade dependencies, migrate APIs, modernize code" },
   // ── Workflow specialists ──
-  refiner:            { emoji: "🔄", description: "Iterate output step by step with user review" },
-  "fixture-tester":   { emoji: "🧪", description: "Verify output against known-good fixtures" },
-  documenter:         { emoji: "📝", description: "Document processes for future agents" },
-  borrower:           { emoji: "🔄", description: "Grab and adapt patterns from other sources" },
-  "softest-prototype":{ emoji: "🧊", description: "Discover needs by building simplest version" },
-  explorer:           { emoji: "🔮", description: "Generate multiple alternatives, pick the best" },
+  refiner: { emoji: "🔄", description: "Iterate output step by step with user review" },
+  "fixture-tester": { emoji: "🧪", description: "Verify output against known-good fixtures" },
+  documenter: { emoji: "📝", description: "Document processes for future agents" },
+  borrower: { emoji: "🔄", description: "Grab and adapt patterns from other sources" },
+  "softest-prototype": { emoji: "🧊", description: "Discover needs by building simplest version" },
+  explorer: { emoji: "🔮", description: "Generate multiple alternatives, pick the best" },
 };
 
 export default function (pi: ExtensionAPI) {
@@ -80,7 +80,15 @@ export default function (pi: ExtensionAPI) {
   });
 
   // ── Restrict tools for read-only agents ──
-  const READ_ONLY_ROLES = new Set(["reviewer", "planner", "architect", "researcher", "security-auditor", "documenter", "committer"]);
+  const READ_ONLY_ROLES = new Set([
+    "reviewer",
+    "planner",
+    "architect",
+    "researcher",
+    "security-auditor",
+    "documenter",
+    "committer",
+  ]);
   const READ_ONLY_TOOLS = ["read", "bash", "grep", "find", "ls"];
 
   // ── Inject active role into system prompt ──
@@ -95,7 +103,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     return {
-      systemPrompt: event.systemPrompt + "\n\n---\n\n" + role.content,
+      systemPrompt: `${event.systemPrompt}\n\n---\n\n${role.content}`,
     };
   });
 
@@ -116,16 +124,25 @@ export default function (pi: ExtensionAPI) {
 
       if (arg === "list") {
         const roles = discoverRoles();
-        if (roles.length === 0) { ctx.ui.notify(`No roles found in ${DISCOVERY_HINT}`, "warn"); return; }
+        if (roles.length === 0) {
+          ctx.ui.notify(`No roles found in ${DISCOVERY_HINT}`, "warn");
+          return;
+        }
         const lines = roles.map((r) => `  ${r.emoji} ${r.name.padEnd(18)} — ${r.description}`);
-        ctx.ui.notify(`Available roles:\n${lines.join("\n")}\n\nActive: ${activeRole ? `${ROLE_META[activeRole]?.emoji ?? ""} ${activeRole}` : "none"}`, "info");
+        ctx.ui.notify(
+          `Available roles:\n${lines.join("\n")}\n\nActive: ${activeRole ? `${ROLE_META[activeRole]?.emoji ?? ""} ${activeRole}` : "none"}`,
+          "info",
+        );
         return;
       }
 
       // No args → interactive picker
       if (arg === "") {
         const roles = discoverRoles();
-        if (roles.length === 0) { ctx.ui.notify(`No roles found in ${DISCOVERY_HINT}`, "warn"); return; }
+        if (roles.length === 0) {
+          ctx.ui.notify(`No roles found in ${DISCOVERY_HINT}`, "warn");
+          return;
+        }
         const choice = await ctx.ui.select(
           "Select a role:",
           roles.map((r) => `${r.emoji} ${r.name} — ${r.description}`),
@@ -185,10 +202,7 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         const lines = roles.map((r) => `  ${r.emoji} ${r.name.padEnd(18)} — ${r.description}`);
-        ctx.ui.notify(
-          `Available agents:\n${lines.join("\n")}\n\nLaunch: /agent <name> [task description]`,
-          "info",
-        );
+        ctx.ui.notify(`Available agents:\n${lines.join("\n")}\n\nLaunch: /agent <name> [task description]`, "info");
         return;
       }
 
