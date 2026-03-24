@@ -8,6 +8,24 @@
   "code:steps": [
     {
       "@type": "code:PipelineStep",
+      "schema:name": "lint",
+      "code:image": "node:22-slim",
+      "code:commands": [
+        "npm install --ignore-scripts 2>/dev/null || true",
+        "npx biome ci --no-errors-on-unmatched ."
+      ]
+    },
+    {
+      "@type": "code:PipelineStep",
+      "schema:name": "typecheck",
+      "code:image": "node:22-slim",
+      "code:commands": [
+        "npm install --ignore-scripts 2>/dev/null || true",
+        "npx tsc --noEmit || echo '⚠️ Typecheck has warnings (non-blocking until type errors reach 0)'"
+      ]
+    },
+    {
+      "@type": "code:PipelineStep",
       "schema:name": "test",
       "code:image": "node:22-slim",
       "code:commands": [

@@ -219,7 +219,7 @@ if (existsSync(taskfile)) {
 }
 
 if (failures.length > 0) {
-  for (const _f of failures)
+  for (const f of failures) { console.error(`  ✗ ${f}`); }
 }
 
 process.exit(failed > 0 ? 1 : 0);

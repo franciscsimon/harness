@@ -482,7 +482,7 @@ async function main() {
   await testProjectSchema();
   await cleanup();
   if (failures.length > 0) {
-    for (const _f of failures)
+    for (const f of failures) { console.error(`  ✗ ${f}`); }
   }
 
   await sql.end();
