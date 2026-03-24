@@ -7,6 +7,7 @@ import { streamSSE } from "hono/streaming";
 import { createLogger } from "../lib/logger.ts";
 import { requestLogger } from "../lib/request-logger.ts";
 import { apiMetrics } from "../lib/api-metrics.ts";
+import { rateLimiter } from "../lib/rate-limiter.ts";
 import { getMetricsSummary } from "../lib/api-metrics.ts";
 import { validateBody } from "../lib/validate.ts";
 import * as v from "valibot";
@@ -28,6 +29,7 @@ const app = new Hono();
 app.use("/*", cors({ origin: "*" }));
 app.use("*", requestLogger(log));
 app.use("*", apiMetrics(log));
+app.use("*", rateLimiter());
 app.use("/*", authMiddleware());
 
 // ── Health ────────────────────────────────────────────────────────

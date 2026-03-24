@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import { trackQuery } from "./query-timer.ts";
 
 const XTDB_HOST = process.env.XTDB_EVENT_HOST ?? "localhost";
 const XTDB_PORT = Number(process.env.XTDB_EVENT_PORT ?? "5433");

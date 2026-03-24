@@ -6,6 +6,7 @@
 import { runComplexityCheck } from "./checks/complexity.ts";
 import { runDepsCheck } from "./checks/deps.ts";
 import { runLintCheck } from "./checks/lint.ts";
+import { runSecurityCheck } from "./checks/security.ts";
 import { runSizeCheck } from "./checks/size.ts";
 import { runTypecheckCheck } from "./checks/typecheck.ts";
 import { evaluateGate, printReport } from "./gate.ts";
@@ -24,6 +25,7 @@ async function main(): Promise<void> {
   checks.push(runComplexityCheck(repoDir));
   checks.push(runSizeCheck(repoDir));
   checks.push(runDepsCheck(repoDir, branch));
+  checks.push(runSecurityCheck(repoDir));
 
   const report = evaluateGate(checks, { repo, commitHash, branch });
   printReport(report);
