@@ -1,0 +1,8 @@
+{
+  "name": "session-status",
+  "version": "1.0.0",
+  "description": "Pi extension — display infrastructure & service availability on session start",
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}
