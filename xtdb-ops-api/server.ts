@@ -4,6 +4,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
+import { connectXtdb } from "../lib/db.ts";
 import { createLogger } from "../lib/logger.ts";
 import { requestLogger } from "../lib/request-logger.ts";
 import { apiMetrics } from "../lib/api-metrics.ts";
@@ -70,24 +71,11 @@ app.get("/api/health/redpanda", async (c) => {
 
 app.get("/api/replication", async (c) => {
   try {
-    const { default: postgres } = await import("postgres");
-    const primaryDb = postgres({
-      host: process.env.XTDB_EVENT_HOST ?? "localhost",
-      port: Number(process.env.XTDB_EVENT_PORT ?? "5433"),
-      database: "xtdb",
-      user: process.env.XTDB_USER ?? "xtdb",
-      password: process.env.XTDB_PASSWORD ?? "xtdb",
+    const primaryDb = connectXtdb({ max: 1 });
+    const replicaDb = connectXtdb({
       max: 1,
-      idle_timeout: 5,
-    });
-    const replicaDb = postgres({
-      host: process.env.XTDB_REPLICA_HOST ?? process.env.XTDB_EVENT_HOST ?? "localhost",
+      host: process.env.XTDB_REPLICA_HOST ?? undefined,
       port: Number(process.env.XTDB_REPLICA_PORT ?? "5434"),
-      database: "xtdb",
-      user: process.env.XTDB_USER ?? "xtdb",
-      password: process.env.XTDB_PASSWORD ?? "xtdb",
-      max: 1,
-      idle_timeout: 5,
     });
     const [primaryRows, replicaRows] = await Promise.all([
       primaryDb`SELECT COUNT(*) AS cnt FROM events`,
@@ -281,16 +269,7 @@ app.get("/api/scheduler/status", (c) => c.json(schedulerStatus()));
 
 app.get("/api/lifecycle/stream", async (c) => {
   return streamSSE(c, async (stream) => {
-    const { default: postgres } = await import("postgres");
-    const db = postgres({
-      host: process.env.XTDB_EVENT_HOST ?? "localhost",
-      port: Number(process.env.XTDB_EVENT_PORT ?? "5433"),
-      database: "xtdb",
-      user: process.env.XTDB_USER ?? "xtdb",
-      password: process.env.XTDB_PASSWORD ?? "xtdb",
-      max: 1,
-      idle_timeout: 30,
-    });
+    const db = connectXtdb({ max: 1 });
     let lastTs = Date.now();
     while (true) {
       try {
@@ -333,17 +312,7 @@ app.post("/api/ci/events", async (c) => {
 app.get("/api/lifecycle/events", async (c) => {
   try {
     const limit = Number(c.req.query("limit") ?? "50");
-    const { default: postgres } = await import("postgres");
-    const db = postgres({
-      host: process.env.XTDB_EVENT_HOST ?? "localhost",
-      port: Number(process.env.XTDB_EVENT_PORT ?? "5433"),
-      database: "xtdb",
-      user: process.env.XTDB_USER ?? "xtdb",
-      password: process.env.XTDB_PASSWORD ?? "xtdb",
-      max: 1,
-      idle_timeout: 10,
-      connect_timeout: 5,
-    });
+    const db = connectXtdb({ max: 1 });
     const rows = await db`SELECT * FROM lifecycle_events ORDER BY ts DESC LIMIT ${limit}`;
     await db.end();
     return c.json(rows);
