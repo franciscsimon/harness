@@ -64,6 +64,18 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["test/**", "scripts/**", "*.test.ts", "*.spec.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
+    }
+  ],
   "assist": {
     "enabled": true,
     "actions": {

@@ -635,6 +635,107 @@ to XTDB would also fail. The JSONL file on local disk is the safety net that nev
 
 ---
 
+## Ticket Management Tables
+
+### `tickets`
+Project tickets / work items.
+
+**Source:** `ticket-manager/queries.ts`, `scripts/seed-tickets.ts`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `_id` | text | Ticket ID (e.g. "tkt:harness:42") |
+| `project_id` | text | Project ID |
+| `title` | text | Ticket title |
+| `description` | text | Detailed description |
+| `status` | text | "backlog", "ready", "in_progress", "review", "done", "cancelled" |
+| `priority` | text | "critical", "high", "medium", "low" |
+| `kind` | text | "bug", "feature", "debt", "security", "task" |
+| `assignee` | text | Assigned agent or person |
+| `labels` | text | Comma-separated labels |
+| `source` | text | Origin: "manual", "auto:error", "auto:quality", "auto:ci", "auto:security" |
+| `parent_ticket_id` | text | Parent ticket ID (for sub-tasks) |
+| `blocked_by` | text | Blocking ticket IDs (comma-separated) |
+| `created_by` | text | Creator (e.g. "pi-agent", "ci-runner") |
+| `session_id` | text | Session that created the ticket |
+| `estimate_hours` | bigint | Estimated hours |
+| `actual_hours` | bigint | Actual hours spent |
+| `due_ts` | bigint | Due date timestamp |
+| `started_ts` | bigint | When work started |
+| `completed_ts` | bigint | When work completed |
+| `ts` | bigint | Created timestamp |
+| `jsonld` | text | JSON-LD provenance document |
+
+### `ticket_links`
+Links between tickets and other entities (decisions, artifacts, errors, CI runs).
+
+**Source:** `ticket-manager/queries.ts`, `scripts/seed-tickets.ts`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `_id` | text | Link ID |
+| `ticket_id` | text | Ticket ID |
+| `entity_type` | text | Linked entity type ("decision", "artifact", "error", "test_run", etc.) |
+| `entity_id` | text | Linked entity ID |
+| `relation` | text | Relation type ("blocks", "caused_by", "implements", "tests") |
+| `ts` | bigint | Timestamp |
+
+### `ticket_events`
+Ticket activity log (status changes, comments, reassignments).
+
+**Source:** `ticket-manager/transitions.ts`, `scripts/seed-tickets.ts`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `_id` | text | Event ID |
+| `ticket_id` | text | Ticket ID |
+| `event_type` | text | "status_change", "comment", "reassign", "priority_change", "link_added" |
+| `old_value` | text | Previous value |
+| `new_value` | text | New value |
+| `comment` | text | Comment text |
+| `actor` | text | Who performed the action |
+| `ts` | bigint | Timestamp |
+
+---
+
+## Knowledge Graph Tables
+
+### `graph_edges`
+Materialized edges between entities. Rebuilt by scanning FK columns across all entity tables.
+
+**Source:** `knowledge-graph/materialized-edges.ts`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `_id` | text | Edge ID (hash of source + target + relation) |
+| `source_id` | text | Source entity ID |
+| `source_type` | text | Source entity type (table name) |
+| `target_id` | text | Target entity ID |
+| `target_type` | text | Target entity type (table name) |
+| `relation` | text | Edge relation (e.g. "session_id", "project_id", "release_id") |
+| `ts` | bigint | When the edge was materialized |
+
+---
+
+## Quality Tracking Tables
+
+### `complexity_scores`
+Per-function cyclomatic complexity scores, stored on every CI run.
+
+**Source:** `review-gate/checks/complexity-tracker.ts`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `_id` | text | Score ID (e.g. "cx-module-funcName-ts") |
+| `module` | text | Module/file path |
+| `function_name` | text | Function name |
+| `complexity` | bigint | Cyclomatic complexity score |
+| `commit_hash` | text | Git commit SHA |
+| `repo` | text | Repository name |
+| `ts` | bigint | Timestamp |
+
+---
+
 ## Table Count Summary
 
 | Category | Tables | Count |
@@ -646,4 +747,7 @@ to XTDB would also fail. The JSONL file on local disk is the safety net that nev
 | Workflows & Requirements | workflow_runs, workflow_step_runs, requirements, requirement_links | 4 |
 | CI/CD | releases, deployments, test_runs, environments | 4 |
 | Operations | backup_records, incidents, lifecycle_events, errors | 4 |
-| **Total** | | **27** |
+| Tickets | tickets, ticket_links, ticket_events | 3 |
+| Knowledge Graph | graph_edges | 1 |
+| Quality | complexity_scores | 1 |
+| **Total** | | **32** |

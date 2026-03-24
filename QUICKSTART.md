@@ -9,7 +9,7 @@ task hooks:install
 # Or manually: git config core.hooksPath .githooks
 ```
 
-This enables the pre-commit quality gate that blocks commits with lint/type/format issues. It runs automatically via `task setup:all`.
+> **⚠️ Hooks are mandatory.** The pre-commit hook runs Biome lint + format checks and blocks commits with violations. It is installed automatically by `task setup` and `task setup:all`. If you clone fresh, run `task hooks:install` before your first commit. Commits without hooks will be caught by CI anyway, but fixing locally is faster.
 
 ## 1. Start Infrastructure
 
@@ -156,6 +156,31 @@ SELECT component, severity, error_message FROM errors ORDER BY ts DESC LIMIT 10;
 SELECT tool_name, COUNT(*) AS cnt FROM events
 WHERE event_name = 'tool_call' GROUP BY tool_name ORDER BY cnt DESC;
 ```
+
+## Secrets Management (Infisical)
+
+The harness uses environment variables for all credentials. A `.env.example` file lists every required variable with placeholder values.
+
+### Quick Start (env vars only)
+
+```bash
+# Copy the example and fill in real values
+cp .env.example .env
+
+# Docker Compose reads .env automatically
+docker compose up -d
+```
+
+### Production Setup (Infisical)
+
+For production, we recommend [Infisical](https://infisical.com/) for centralized secret management:
+
+1. **Deploy Infisical** — add `infisical`, `infisical-db`, `infisical-redis` to docker-compose.yml (see PROGRESS-DEFERRED.md Phase A)
+2. **Bootstrap** — run `scripts/infisical-bootstrap.sh` to create the project, environments, and seed secrets
+3. **Inject** — wrap service commands with `infisical run --projectId=<id> --env=dev -- node server.js`
+4. **Local dev** — `brew install infisical/get-cli/infisical && infisical login && infisical run --env=dev -- npm run dev`
+
+See `PROGRESS-DEFERRED.md` Phase A for the full 35-item implementation checklist.
 
 ## Troubleshooting
 
