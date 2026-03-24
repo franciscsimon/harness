@@ -73,7 +73,7 @@ async function main() {
   const postgres = (await import("postgres")).default;
 
   try {
-    const sql = postgres({ host: "localhost", port: 5433, user: "xtdb", database: "xtdb", connect_timeout: 5 });
+    const sql = postgres({ host: "localhost", port: 5433, user: process.env.XTDB_USER ?? "xtdb", database: "xtdb", connect_timeout: 5 });
     const [row] = await sql`SELECT 1 AS ok`;
     row?.ok !== undefined ? pass("Primary accepts SQL queries") : fail("Primary SQL", `got: ${JSON.stringify(row)}`);
     await sql.end();
@@ -82,7 +82,7 @@ async function main() {
   }
 
   try {
-    const sql = postgres({ host: "localhost", port: 5434, user: "xtdb", database: "xtdb", connect_timeout: 5 });
+    const sql = postgres({ host: "localhost", port: 5434, user: process.env.XTDB_USER ?? "xtdb", database: "xtdb", connect_timeout: 5 });
     const [row] = await sql`SELECT 1 AS ok`;
     row?.ok !== undefined ? pass("Replica accepts SQL queries") : fail("Replica SQL", `got: ${JSON.stringify(row)}`);
     await sql.end();
@@ -90,8 +90,8 @@ async function main() {
     fail("Replica accepts SQL queries", err.message);
   }
   try {
-    const primary = postgres({ host: "localhost", port: 5433, user: "xtdb", database: "xtdb" });
-    const replica = postgres({ host: "localhost", port: 5434, user: "xtdb", database: "xtdb" });
+    const primary = postgres({ host: "localhost", port: 5433, user: process.env.XTDB_USER ?? "xtdb", database: "xtdb" });
+    const replica = postgres({ host: "localhost", port: 5434, user: process.env.XTDB_USER ?? "xtdb", database: "xtdb" });
     const t = (v: string) => primary.typed(v as any, 25);
     const testId = `__infra_test_${Date.now()}`;
 

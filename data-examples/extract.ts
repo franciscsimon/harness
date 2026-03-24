@@ -16,8 +16,8 @@ async function main() {
     host: "localhost",
     port: 5433,
     database: "xtdb",
-    user: "xtdb",
-    password: "xtdb",
+    user: process.env.XTDB_USER ?? "xtdb",
+    password: process.env.XTDB_PASSWORD ?? "xtdb",
   });
 
   mkdirSync(OUT_DIR, { recursive: true });

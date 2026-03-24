@@ -10,7 +10,7 @@ async function main() {
   const { eventToTriples } = await import(`${LIVE}/rdf/triples.ts`);
   const { triplesToJsonLd } = await import(`${LIVE}/rdf/serialize.ts`);
 
-  const sql = postgres({ host: "localhost", port: 5433, database: "xtdb", user: "xtdb", password: "xtdb" });
+  const sql = postgres({ host: "localhost", port: 5433, database: "xtdb", user: process.env.XTDB_USER ?? "xtdb", password: process.env.XTDB_PASSWORD ?? "xtdb" });
   const t = (v: string | null) => sql.typed(v as any, 25);
   const b = (v: boolean | null) => sql.typed(v as any, 16);
   const n = (v: number | null) => sql.typed(v as any, 20);

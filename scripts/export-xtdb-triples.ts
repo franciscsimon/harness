@@ -193,7 +193,7 @@ async function main() {
     port: 5434, // replica (read-only)
     database: "xtdb",
     username: "xtdb",
-    password: "xtdb",
+    password: process.env.XTDB_PASSWORD ?? "xtdb",
     idle_timeout: 5,
     max: 2,
   });

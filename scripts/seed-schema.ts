@@ -571,7 +571,7 @@ async function seed() {
   const sql = postgres({
     host: XTDB_HOST,
     port: XTDB_PORT,
-    user: "xtdb",
+    user: process.env.XTDB_USER ?? "xtdb",
     database: "xtdb",
     onnotice: () => {}, // suppress XTDB warnings during seeding
   });

@@ -8,7 +8,7 @@
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 
-const sql = postgres({ host: "localhost", port: 5433, database: "xtdb", user: "xtdb", password: "xtdb" });
+const sql = postgres({ host: "localhost", port: 5433, database: "xtdb", user: process.env.XTDB_USER ?? "xtdb", password: process.env.XTDB_PASSWORD ?? "xtdb" });
 const t = (v: string | null) => sql.typed(v as any, 25);
 const n = (v: number | null) => sql.typed(v as any, 20);
 const UI = "http://localhost:3333";

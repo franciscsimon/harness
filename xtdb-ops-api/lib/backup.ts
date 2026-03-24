@@ -11,8 +11,8 @@ function db() {
       host: "localhost",
       port: 5433,
       database: "xtdb",
-      user: "xtdb",
-      password: "xtdb",
+      user: process.env.XTDB_USER ?? "xtdb",
+      password: process.env.XTDB_PASSWORD ?? "xtdb",
       max: 1,
       idle_timeout: 30,
     });
