@@ -2,6 +2,15 @@
 
 Get the harness running and build a service using harness tools and agents.
 
+## 0. Install Git Hooks (mandatory)
+
+```bash
+task hooks:install
+# Or manually: git config core.hooksPath .githooks
+```
+
+This enables the pre-commit quality gate that blocks commits with lint/type/format issues. It runs automatically via `task setup:all`.
+
 ## 1. Start Infrastructure
 
 ```bash
@@ -13,7 +22,7 @@ docker compose up -d
 # Wait for XTDB to be ready (~10s)
 until curl -sf http://localhost:8083/status > /dev/null 2>&1; do sleep 1; done
 
-# Seed the schema (registers all 27 tables in XTDB)
+# Seed the schema (registers all 30 tables in XTDB)
 NODE_PATH=xtdb-event-logger/node_modules npx jiti scripts/seed-schema.ts
 ```
 

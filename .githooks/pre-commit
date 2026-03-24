@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ─── Pre-commit quality gate ──────────────────────────────────────
 # Runs the appropriate quality tool for each changed file's language.
-# This hook WARNS but does NOT block commits (exit 0 always).
-# To make it blocking, change the final exit to: exit $exitcode
+# This hook BLOCKS commits with quality issues (exit $exitcode).
+# To make non-blocking, change the final exit to: exit 0
 #
 # Setup: git config core.hooksPath .githooks
 # ──────────────────────────────────────────────────────────────────
@@ -121,6 +121,6 @@ if [ $exitcode -ne 0 ]; then
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 fi
 
-# Non-blocking: always allow the commit.
-# To make blocking: change to `exit $exitcode`
-exit 0
+# Blocking: reject commits with quality issues.
+# To make non-blocking: change to `exit 0`
+exit $exitcode

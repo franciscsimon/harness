@@ -24,6 +24,7 @@ tasks:
   'setup:all':
     desc: Full local setup (XTDB + all pi resources in this repo + UI deps)
     deps:
+      - 'hooks:install'
       - 'xtdb:up'
       - 'resources:deploy:all'
       - 'ui:install'
