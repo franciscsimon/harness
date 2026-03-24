@@ -9,31 +9,38 @@
     {
       "@type": "code:PipelineStep",
       "schema:name": "lint",
-      "code:image": "node:22-slim",
-      "code:commands": [
-        "npm install --ignore-scripts 2>/dev/null || true",
-        "npx biome ci --no-errors-on-unmatched ."
-      ]
+      "code:image": "oven/bun:latest",
+      "code:commands": ["bun install --frozen-lockfile", "npx biome ci ."]
     },
     {
       "@type": "code:PipelineStep",
       "schema:name": "typecheck",
-      "code:image": "node:22-slim",
-      "code:commands": [
-        "npm install --ignore-scripts 2>/dev/null || true",
-        "npx tsc --noEmit || echo '⚠️ Typecheck has warnings (non-blocking until type errors reach 0)'"
-      ]
+      "code:image": "oven/bun:latest",
+      "code:commands": ["bun install --frozen-lockfile", "npx tsc --noEmit"]
     },
     {
       "@type": "code:PipelineStep",
       "schema:name": "test",
-      "code:image": "node:22-slim",
-      "code:commands": [
-        "npm install --ignore-scripts 2>/dev/null || true",
-        "(cd lib && npm install --ignore-scripts 2>/dev/null || true)",
-        "(cd xtdb-event-logger && npm install --ignore-scripts 2>/dev/null || true)",
-        "NODE_PATH=xtdb-event-logger/node_modules npx jiti test/pure-functions.ts"
-      ]
+      "code:image": "oven/bun:latest",
+      "code:commands": ["bun install --frozen-lockfile", "bun test"]
+    },
+    {
+      "@type": "code:PipelineStep",
+      "schema:name": "security",
+      "code:image": "zricethezav/gitleaks:latest",
+      "code:commands": ["gitleaks detect --source=. --config=.gitleaks.toml --baseline-path=.gitleaks-baseline.json -v"]
+    },
+    {
+      "@type": "code:PipelineStep",
+      "schema:name": "audit",
+      "code:image": "oven/bun:latest",
+      "code:commands": ["npm audit --audit-level=high || true"]
+    },
+    {
+      "@type": "code:PipelineStep",
+      "schema:name": "review-gate",
+      "code:image": "oven/bun:latest",
+      "code:commands": ["bun install --frozen-lockfile", "npx jiti review-gate/index.ts ."]
     }
   ]
 }

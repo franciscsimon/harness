@@ -14,6 +14,7 @@ tasks:
   setup:
     desc: Minimal local setup for XTDB event capture (XTDB + deployed logger + UI deps)
     deps:
+      - 'hooks:install'
       - 'xtdb:up'
       - 'ext:deploy:xtdb-logger'
       - 'ui:install'

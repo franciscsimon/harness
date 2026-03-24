@@ -30,37 +30,37 @@
         "noUnusedImports": "error",
         "noUnusedVariables": "error",
         "noUnreachable": "error",
-        "noUnresolvedImports": "warn"
+        "noUnresolvedImports": "error"
       },
 
       "suspicious": {
-        "noExplicitAny": "warn",
+        "noExplicitAny": "error",
         "noDebugger": "error",
-        "noConsole": "warn",
+        "noConsole": "error",
         "noDoubleEquals": "error",
         "noDuplicateObjectKeys": "error",
-        "noEmptyBlockStatements": "warn",
+        "noEmptyBlockStatements": "error",
         "noImportCycles": "error"
       },
 
       "style": {
-        "noNonNullAssertion": "warn",
+        "noNonNullAssertion": "error",
         "useImportType": "error",
         "useConst": "error"
       },
 
       "complexity": {
         "noForEach": "off",
-        "useSimplifiedLogicExpression": "warn"
+        "useSimplifiedLogicExpression": "error"
       },
 
       "performance": {
-        "noAccumulatingSpread": "warn"
+        "noAccumulatingSpread": "error"
       },
 
       "nursery": {
-        "noFloatingPromises": "warn",
-        "noMisusedPromises": "warn"
+        "noFloatingPromises": "error",
+        "noMisusedPromises": "error"
       }
     }
   },
