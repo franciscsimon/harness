@@ -8,12 +8,12 @@ export type Sql = ReturnType<typeof postgres>;
 
 let _shared: Sql | null = null;
 
-export function connectXtdb(opts?: { max?: number; shared?: boolean }): Sql {
+export function connectXtdb(opts?: { max?: number; shared?: boolean; host?: string; port?: number }): Sql {
   if (opts?.shared && _shared) return _shared;
 
   const sql = postgres({
-    host: XTDB_HOST,
-    port: XTDB_PORT,
+    host: opts?.host ?? XTDB_HOST,
+    port: opts?.port ?? XTDB_PORT,
     database: "xtdb",
     user: process.env.XTDB_USER ?? "xtdb",
     password: process.env.XTDB_PASSWORD ?? "xtdb",
