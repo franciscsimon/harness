@@ -11,6 +11,7 @@ import { apiMetrics } from "../lib/api-metrics.ts";
 import { getMetricsSummary } from "../lib/api-metrics.ts";
 import { getAlertStats } from "./alerting.ts";
 import { getCollectorStats, startCollector, stopCollector } from "./collector.ts";
+import { getLatestStats, startStatsPoller } from "./stats-poller.ts";
 import { getWriterStats, startWriter, stopWriter } from "./writer.ts";
 
 const PORT = Number(process.env.COLLECTOR_PORT ?? "3338");
@@ -37,8 +38,11 @@ app.get("/api/health", (c) => {
     alerts,
   });
 });
+app.get("/api/stats/containers", (c) => c.json(getLatestStats()));
+
 startWriter();
 startCollector();
+startStatsPoller();
 
 app.get("/api/metrics", (c) => c.json(getMetricsSummary()));
 serve({ fetch: app.fetch, port: PORT }, () => {

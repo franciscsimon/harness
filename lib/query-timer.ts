@@ -1,0 +1,48 @@
+// ─── Query Timer ─────────────────────────────────────────────
+// Wraps postgres queries to track execution time.
+// Logs slow queries and exposes stats for monitoring.
+
+import type { Logger } from "./logger.ts";
+
+const SLOW_THRESHOLD_MS = Number(process.env.SLOW_QUERY_MS ?? "500");
+const BUFFER_SIZE = 200;
+
+export interface QueryMetric {
+  query: string;
+  ms: number;
+  timestamp: number;
+}
+
+const slowQueries: QueryMetric[] = [];
+let totalQueries = 0;
+let totalMs = 0;
+
+export function getQueryStats(): {
+  totalQueries: number;
+  avgMs: number;
+  slowQueries: QueryMetric[];
+  p95Ms: number;
+} {
+  const recent = slowQueries.slice(-50);
+  const sorted = recent.map((q) => q.ms).sort((a, b) => a - b);
+  return {
+    totalQueries,
+    avgMs: totalQueries > 0 ? Math.round(totalMs / totalQueries) : 0,
+    slowQueries: recent,
+    p95Ms: sorted[Math.floor(sorted.length * 0.95)] ?? 0,
+  };
+}
+
+/** Track a query execution. Call this after executing a query. */
+export function trackQuery(query: string, ms: number, log?: Logger): void {
+  totalQueries++;
+  totalMs += ms;
+
+  if (ms > SLOW_THRESHOLD_MS) {
+    if (slowQueries.length >= BUFFER_SIZE) slowQueries.shift();
+    slowQueries.push({ query: query.slice(0, 200), ms, timestamp: Date.now() });
+    if (log) {
+      log.warn({ query: query.slice(0, 100), ms }, `Slow query: ${ms}ms`);
+    }
+  }
+}
