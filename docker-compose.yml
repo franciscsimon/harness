@@ -54,7 +54,13 @@ services:
     volumes:
       - garage-data:/var/lib/garage
       - ./garage.toml:/etc/garage.toml:ro
-    # Note: scratch image has no shell — healthcheck via garage-init wait loop instead
+      - ./garage.toml.tmpl:/etc/garage.toml.tmpl:ro
+      - ./scripts/garage-entrypoint.sh:/garage-entrypoint.sh:ro
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-admin-secret}
+    # Note: scratch image has no shell — uses garage.toml directly for now
+    # When migrating to templates: entrypoint: ["/bin/sh", "/garage-entrypoint.sh"]
 
   # ── Bootstrap Garage: layout + bucket + API key ────────────────
   garage-init:
@@ -77,6 +83,8 @@ services:
     volumes:
       - xtdb-primary-data:/var/lib/xtdb
       - ./xtdb-primary.yaml:/usr/local/lib/xtdb/xtdb-primary.yaml:ro
+      - ./xtdb-primary.yaml.tmpl:/etc/xtdb/node.yaml.tmpl:ro
+      - ./scripts/xtdb-entrypoint.sh:/xtdb-entrypoint.sh:ro
     environment:
       JDK_JAVA_OPTIONS: >-
         -Xms2g
@@ -107,6 +115,8 @@ services:
     volumes:
       - xtdb-replica-data:/var/lib/xtdb
       - ./xtdb-replica.yaml:/usr/local/lib/xtdb/xtdb-replica.yaml:ro
+      - ./xtdb-replica.yaml.tmpl:/etc/xtdb/node.yaml.tmpl:ro
+      - ./scripts/xtdb-entrypoint.sh:/xtdb-entrypoint.sh:ro
     environment:
       JDK_JAVA_OPTIONS: >-
         -Xms2g
