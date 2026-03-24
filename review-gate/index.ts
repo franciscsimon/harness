@@ -4,10 +4,12 @@
 // Usage: npx jiti review-gate/index.ts [repo-dir] [commit-hash] [branch]
 
 import { runComplexityCheck } from "./checks/complexity.ts";
+import { storeComplexityScores } from "./checks/complexity-tracker.ts";
 import { runDepsCheck } from "./checks/deps.ts";
 import { runLintCheck } from "./checks/lint.ts";
 import { runSecurityCheck } from "./checks/security.ts";
 import { runSizeCheck } from "./checks/size.ts";
+import { runStyleCheck } from "./checks/style.ts";
 import { runTypecheckCheck } from "./checks/typecheck.ts";
 import { evaluateGate, printReport } from "./gate.ts";
 import type { CheckResult } from "./types.ts";
@@ -26,9 +28,16 @@ async function main(): Promise<void> {
   checks.push(runSizeCheck(repoDir));
   checks.push(runDepsCheck(repoDir, branch));
   checks.push(runSecurityCheck(repoDir));
+  checks.push(runStyleCheck(repoDir));
 
   const report = evaluateGate(checks, { repo, commitHash, branch });
   printReport(report);
+
+  // Store complexity scores for trend tracking (Phase 2.2)
+  const complexityCheck = checks.find((c) => c.name === "complexity");
+  if (complexityCheck) {
+    await storeComplexityScores(complexityCheck, { repo, commitHash });
+  }
 
   // Output JSON for CI integration
   console.log(JSON.stringify(report));
