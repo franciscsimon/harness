@@ -1,0 +1,32 @@
+logClusters:
+  kafkaCluster: !Kafka
+    bootstrapServers: "redpanda:9092"
+    propertiesMap:
+      max.request.size: "10485760"
+
+log: !Kafka
+  cluster: kafkaCluster
+  topic: "xtdb-log"
+  autoCreateTopic: true
+  epoch: 3
+
+storage: !Remote
+  objectStore: !S3
+    bucket: "xtdb"
+    endpoint: "http://garage:3900"
+    pathStyleAccessEnabled: true
+    region: "garage"
+    credentials:
+      accessKey: "${GARAGE_ACCESS_KEY}"
+      secretKey: "${GARAGE_SECRET_KEY}"
+
+diskCache:
+  path: "/var/lib/xtdb/buffers"
+
+server:
+  host: '*'
+  port: 5432
+
+healthz:
+  host: '*'
+  port: 8080
