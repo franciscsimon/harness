@@ -1,7 +1,117 @@
 # Harness Quality & Continuous Improvement — Progress Tracker
 
-**Last updated:** March 24, 2026 (added Phase 1.6: Secrets Management with Infisical)
+**Last updated:** March 24, 2026 (cross-validated against Gemini/GPT reviews; corrected factual errors; added new findings)
 **Scope:** Quality audits, prevention plan, and continuous process design for the harness monorepo (pi.dev environment)
+
+---
+
+## Cross-Validation Report (March 24, 2026)
+
+Independent reviews by Gemini (`PROGRESS.GEMINI.md`) and GPT (`PROGRESS.GPT.md`) were compared against the actual codebase. Below is what holds up, what doesn't, and what both missed.
+
+### Corrections Applied to This Document
+
+| # | Issue | Source | Fix |
+|---|-------|--------|-----|
+| 1 | **Table count was 27, actual is 30** | GPT | Schema baseline updated throughout. `seed-schema.ts` defines 30 tables: the original 27 + `ci_runs`, `builds`, `docker_events`. Phase 7 grows 30→33, Phase 8 grows 33→34. |
+| 2 | **Section 1.4 says "5 services" but lists 6** | GPT | The parenthetical listed event-api, ops-api, harness-ui, ci-runner, docker-event-collector, build-service — that's 6, not 5. Corrected to "6 services". |
+| 3 | **Section 1.5 says "5 API services" — actual Hono servers: 7** | GPT | There are 7 Hono server entrypoints: `harness-ui`, `web-chat`, `xtdb-event-logger-ui`, `build-service`, `docker-event-collector`, `xtdb-ops-api`, `ci-runner`. Corrected scope. |
+| 4 | **Phase 1 "NOT STARTED" is too absolute** | GPT | Existing groundwork acknowledged: `lib/errors.ts`, `ci-runner/pipeline.ts` auto-detects biome/tsc, `harness-ui` already has monitoring pages, 17 test files exist, `scripts/parse-call-graph.ts` + `data/call-graph.jsonld` + `/graph` UI page exist. Status changed to "NOT STARTED (groundwork exists)". |
+
+### What Both Reviews Confirmed (Verified Against Codebase)
+
+All of the following were independently confirmed by reading actual files:
+
+- ✅ `.githooks/pre-commit` ends with `exit 0` — non-blocking
+- ✅ `biome.json` has `noExplicitAny`, `noConsole`, `noEmptyBlockStatements`, `noFloatingPromises`, `noMisusedPromises`, `noAccumulatingSpread` at `warn` not `error`
+- ✅ `.ci.jsonld` has one step: runs only `test/pure-functions.ts`
+- ✅ 23 occurrences of `password: "xtdb"` across 20 files — exact inventory matches
+- ✅ 440 `console.*` calls across the codebase
+- ✅ No `pino`, no `valibot`/`zod`, no root `tsconfig.json`
+- ✅ `hooks:install` not wired into `setup` or `setup:all`
+- ✅ All planned extension directories absent: `review-gate/`, `health-prober/`, `log-scanner/`, `secrets-manager/`, `ticket-manager/`, `progress-sync/`, `knowledge-graph/`
+- ✅ Phase 0 deliverables all exist on disk
+
+### Where GPT Was More Accurate Than Gemini
+
+GPT caught several things Gemini missed:
+
+1. **Table count mismatch** — Gemini said "matches" without checking; GPT found the 27→30 discrepancy
+2. **Existing groundwork understatement** — GPT identified that `ci-runner/pipeline.ts` already auto-detects `npx biome ci .` and `npx tsc --noEmit`, `lib/errors.ts` already exists, `harness-ui` already has ops/docker-events/errors/ci-runs/builds/deploys/graph pages, and 17 test files exist
+3. **Service count inconsistencies** — GPT caught both the 5-vs-6 and 5-vs-7 mismatches
+4. **Duplicate file pairs** — GPT noted existing groundwork more precisely
+
+### Where Gemini Was Fine But Shallow
+
+Gemini's report is factually correct at the phase-completion level — it confirmed Phase 0 done, Phase 1+ not started, and all planned directories absent. But it didn't dig into numeric claims or existing partial work, so it missed corrections 1–4 above.
+
+### Issues Both Gemini and GPT Missed
+
+These were found by deeper codebase inspection:
+
+#### 1. Empty Catch Blocks in Production Code (34 instances)
+
+Neither report flagged the scale of empty catches outside test files. Found **34 empty catch blocks** in production code:
+
+| File | Count | Risk |
+|------|-------|------|
+| `harness-ui/lib/api.ts` | 6 | All API calls silently swallow errors — UI shows nothing on failure |
+| `harness-ui/pages/ops.ts` | 4 | Ops page actions fail silently |
+| `harness-ui/server.ts` | 5 | Server-side route handlers swallow errors |
+| `xtdb-event-logger-ui/lib/db.ts` | 11 | DB query failures invisible — data just disappears |
+| `web-chat/lib/session-pool.ts` | 1 | Session cleanup errors lost |
+| `web-chat/lib/ws-protocol.ts` | 1 | WebSocket message parse errors lost |
+| `harness-ui/pages/flow.ts` | 1 | Flow page errors swallowed |
+| `harness-ui/pages/event-detail.ts` | 1 | Event detail errors swallowed |
+| `xtdb-event-logger-ui/server.ts` | 1 | Server route error swallowed |
+| `artifact-tracker/db.ts` | 1 | Artifact query errors lost |
+| `scripts/deploy.ts` | 1 | Deploy errors swallowed |
+
+This is a data-loss risk: queries fail, errors vanish, UI shows stale/empty data with no indication of failure. Should be a **Phase 1 priority**.
+
+#### 2. Missing Graceful Shutdown (5 of 8 services)
+
+Only 3 services handle `SIGTERM`/`SIGINT`: `ci-runner`, `docker-event-collector`, `build-service`.
+
+These 5 services have **no graceful shutdown** — DB connections, open sockets, and in-flight requests are abandoned on container stop:
+
+- `xtdb-event-logger/index.ts`
+- `xtdb-ops-api/server.ts`
+- `harness-ui/server.ts`
+- `web-chat/server.ts`
+- `xtdb-event-logger-ui/server.ts`
+
+Risk: data corruption on deploys, connection pool exhaustion after restarts, lost WebSocket sessions.
+
+#### 3. DB Connection Sprawl (22 separate `postgres()` calls)
+
+There are **22 separate `postgres({...})` instantiations** across the codebase (excluding tests). While `lib/db.ts` exports a shared `connectXtdb()`, most services create their own connections with duplicated config. This is:
+- A duplication problem (each copies host/port/password)
+- A secrets problem (password hardcoded 23 times instead of 1)
+- A connection pool problem (no coordination of `max` settings across services)
+
+#### 4. Docker Healthchecks Missing on Most Services
+
+Only **6 of ~15 services** have Docker healthchecks: `caddy`, `redpanda`, `xtdb-primary`, `xtdb-replica`, `keycloak`, `qlever`.
+
+Missing healthchecks: `garage`, `soft-serve`, `zot`, `event-api`, `chat-ws`, `ops-api`, `harness-ui`, `ci-runner`, `docker-event-collector`, `build-service`.
+
+Without healthchecks, `depends_on` with `condition: service_healthy` can't work, and Docker can't auto-restart truly-broken services.
+
+#### 5. Byte-for-Byte Duplicate Files Still Present
+
+Confirmed two pairs of identical files (md5 verified):
+
+| Pair | Files | MD5 |
+|------|-------|-----|
+| 1 | `test/mock-pi.ts` ↔ `quality-hooks/mock-pi.ts` | `5cfa2e924f379cdd0bd9cf892474739d` |
+| 2 | `harness-ui/lib/health.ts` ↔ `xtdb-event-logger-ui/lib/health.ts` | `ce6c3d1a92fdd87a35ba02e573d14c70` |
+
+`xtdb-ops-api/lib/health.ts` is a different variant (`bc94871cf7284669f10241e115dcd79f`).
+
+#### 6. `as any` Casts: 219 in Production Code
+
+The audit reports cited "235+ `as any` casts" — the actual count in non-test code is **219**. Still severe for type safety but the number was slightly overstated.
 
 ---
 
@@ -32,7 +142,7 @@ Everything in this phase is done. These deliverables informed the prevention pla
 
 ---
 
-## Phase 1: Foundation Hardening (NOT STARTED)
+## Phase 1: Foundation Hardening (NOT STARTED — groundwork exists)
 
 These are prerequisite changes that make the continuous processes possible. Without them, the processes would be monitoring broken baselines.
 
@@ -68,7 +178,7 @@ These are prerequisite changes that make the continuous processes possible. With
 
 - [ ] Add Pino as a dependency
 - [ ] Create `lib/logger.ts` — a shared logger factory that outputs JSON with component, level, timestamp, and request context
-- [ ] Migrate the 5 services (event-api, ops-api, harness-ui, ci-runner, docker-event-collector, build-service) from `console.*` to the structured logger
+- [ ] Migrate the 6 services (event-api, ops-api, harness-ui, ci-runner, docker-event-collector, build-service) from `console.*` to the structured logger
 - [ ] Configure log aggregation (services write to stdout, Docker captures via `json-file` driver, a new `log-aggregator` service tails all containers)
 
 **Why:** Every continuous monitoring process needs parseable logs. Raw `console.log` is invisible to automated analysis.
@@ -76,7 +186,7 @@ These are prerequisite changes that make the continuous processes possible. With
 ### 1.5 Add Input Validation
 
 - [ ] Add Valibot (or Zod) as a dependency
-- [ ] Create validation schemas for all Hono route handlers across the 5 API services
+- [ ] Create validation schemas for all Hono route handlers across the 7 API services (harness-ui, web-chat, xtdb-event-logger-ui, build-service, docker-event-collector, xtdb-ops-api, ci-runner)
 - [ ] Add a quality-hooks check that flags Hono route handlers without schema validation
 
 ### 1.6 Secrets Management with Infisical (NEW)
@@ -1406,7 +1516,7 @@ The ticket system itself is built in phases, tracked by... tickets (once bootstr
 
 ## Updated Table Counts
 
-With the ticket system, the XTDB schema grows from 27 to 30 tables:
+With the ticket system, the XTDB schema grows from 30 to 33 tables (baseline is 30: the original 27 + `ci_runs`, `builds`, `docker_events` already in `seed-schema.ts`):
 
 | Category | Tables | Count |
 |---|---|---|
@@ -2039,7 +2149,7 @@ Without Phase 8, these entities exist in silos. With Phase 8, any entity is a st
 
 ### 8.12 Updated Table Counts
 
-With the knowledge graph, the XTDB schema grows from 30 to 31 tables:
+With the knowledge graph, the XTDB schema grows from 33 to 34 tables:
 
 | Category | Tables | Count |
 |---|---|---|
