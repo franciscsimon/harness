@@ -23,4 +23,8 @@ export const ids = {
   projectDependency: () => `pdep:${randomUUID()}`,
   projectTag: () => `ptag:${randomUUID()}`,
   lifecycleEvent: () => `lev:${randomUUID()}`,
+  ticket: () => `tkt:${randomUUID()}`,
+  ticketLink: () => `tktlink:${randomUUID()}`,
+  ticketEvent: () => `tktev:${randomUUID()}`,
+  graphEdge: () => `gedge:${randomUUID()}`,
 } as const;
