@@ -22,7 +22,7 @@
  *   startErrorCollector(sql);
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { JSONLD_CONTEXT, piId, softwareAgent, xsdLong } from "./jsonld/context.ts";
@@ -48,6 +48,10 @@ export interface CaptureErrorOptions {
   projectId?: string | null;
   inputSummary?: string; // truncated summary of input data
   context?: Record<string, unknown>; // additional context (table, endpoint, etc.)
+  // Request context (populated by middleware)
+  endpoint?: string; // e.g. "/api/events"
+  method?: string; // e.g. "POST"
+  requestId?: string; // unique request ID for tracing
 }
 
 export interface ErrorRecord {
@@ -121,6 +125,20 @@ export function captureError(opts: CaptureErrorOptions): void {
     const now = Date.now();
     const id = `err:${opts.component}:${now}:${randomUUID().slice(0, 8)}`;
 
+    // Stable fingerprint for dedup (same component + operation + error type + top stack frames)
+    const stackFrames = stack.split("\n").slice(1, 4).map((l) => l.trim()).join("|");
+    const fingerprint = createHash("sha256")
+      .update(`${opts.component}:${opts.operation}:${type}:${stackFrames}`)
+      .digest("hex")
+      .slice(0, 16);
+
+    const contextWithRequest = {
+      ...(opts.context ?? {}),
+      ...(opts.endpoint ? { endpoint: opts.endpoint } : {}),
+      ...(opts.method ? { method: opts.method } : {}),
+      ...(opts.requestId ? { requestId: opts.requestId } : {}),
+    };
+
     const record: ErrorRecord = {
       _id: id,
       component: opts.component,
@@ -132,7 +150,7 @@ export function captureError(opts: CaptureErrorOptions): void {
       session_id: opts.sessionId ?? "",
       project_id: opts.projectId ?? "",
       input_summary: (opts.inputSummary ?? "").slice(0, MAX_INPUT_LEN),
-      context_json: JSON.stringify(opts.context ?? {}),
+      context_json: JSON.stringify({ ...contextWithRequest, fingerprint }),
       ts: now,
       flushed: false,
       jsonld: "", // built during flush to keep disk write fast
