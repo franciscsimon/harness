@@ -1,4 +1,7 @@
 import postgres from "postgres";
+import { createLogger } from "../../lib/logger.ts";
+
+const log = createLogger("xtdb-event-logger-ui:db");
 
 // ─── Config ────────────────────────────────────────────────────────
 
@@ -629,7 +632,7 @@ export async function getSessionKnowledge(sessionId: string): Promise<SessionKno
           const p = typeof ev.tool_args === "string" ? JSON.parse(ev.tool_args) : ev.tool_args;
           if (p?.path) files.add(p.path);
         }
-      } catch (e) { console.error(e); }
+      } catch (e) { log.error({ err: e }, "Query error"); }
     }
   }
 
