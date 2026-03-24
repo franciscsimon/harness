@@ -629,7 +629,7 @@ export async function getSessionKnowledge(sessionId: string): Promise<SessionKno
           const p = typeof ev.tool_args === "string" ? JSON.parse(ev.tool_args) : ev.tool_args;
           if (p?.path) files.add(p.path);
         }
-      } catch {}
+      } catch (e) { console.error(e); }
     }
   }
 

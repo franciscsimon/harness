@@ -73,7 +73,7 @@ app.get("/api/events/stream", async (c) => {
       }
       const stats = await getStats();
       await stream.writeSSE({ event: "stats", data: JSON.stringify(stats) });
-    } catch (_err) {}
+    } catch (_err) { console.error(_err); }
 
     while (true) {
       await stream.sleep(POLL_MS);
@@ -89,7 +89,7 @@ app.get("/api/events/stream", async (c) => {
           const stats = await getStats();
           await stream.writeSSE({ event: "stats", data: JSON.stringify(stats) });
         }
-      } catch (_err) {}
+      } catch (_err) { console.error(_err); }
     }
   });
 });
