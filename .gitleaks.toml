@@ -1,0 +1,46 @@
+title = "Harness Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "xtdb-password"
+description = "Hardcoded XTDB database password"
+regex = '''password:\s*["'](?!process\.env)[^"']{3,}["']'''
+tags = ["database", "password"]
+
+[[rules]]
+id = "garage-access-key"
+description = "Garage/S3 access key"
+regex = '''GK[0-9a-f]{24}'''
+tags = ["s3", "key"]
+
+[[rules]]
+id = "garage-secret-key"
+description = "Garage/S3 secret key (64-char hex)"
+regex = '''[0-9a-f]{64}'''
+tags = ["s3", "secret"]
+[rules.allowlist]
+regexes = ['''rpc_secret|sha256|sha512|checksum''']
+
+[[rules]]
+id = "admin-token-literal"
+description = "Hardcoded admin token"
+regex = '''admin.?token\s*[=:]\s*["'](?!(\$\{|\{\{))[^"']{3,}["']'''
+tags = ["token"]
+
+[[rules]]
+id = "jwt-secret"
+description = "JWT secret or signing key"
+regex = '''(?i)(jwt|signing).?(secret|key)\s*[=:]\s*["'][^"']{8,}["']'''
+tags = ["jwt", "secret"]
+
+[allowlist]
+paths = [
+  ".gitleaks.toml",
+  ".gitleaks-baseline.json",
+  ".env.example",
+  "PROGRESS.md",
+  "PROGRESS.GEMINI.md",
+  "PROGRESS.GPT.md",
+]
