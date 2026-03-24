@@ -6,6 +6,8 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { createLogger } from "../lib/logger.ts";
 import { requestLogger } from "../lib/request-logger.ts";
+import { validateBody } from "../lib/validate.ts";
+import * as v from "valibot";
 import { renderArtifacts, renderArtifactVersions } from "./pages/artifacts.ts";
 import { renderAuth } from "./pages/auth.ts";
 import { renderBuildDetail, renderBuilds } from "./pages/builds.ts";
@@ -251,12 +253,22 @@ app.get("/api/sessions/:path{.+}", async (c) => {
 });
 
 // CI job enqueue — receives POST from Soft Serve hook, writes job file for runner
+const CIEnqueueSchema = v.object({
+  repo: v.string(),
+  ref: v.optional(v.string(), "refs/heads/main"),
+  commit: v.optional(v.string()),
+  commitHash: v.optional(v.string()),
+  commitMessage: v.optional(v.string(), ""),
+  pusher: v.optional(v.string(), "unknown"),
+});
+
 app.post("/api/ci/enqueue", async (c) => {
   try {
-    const body = await c.req.json();
-    const { repo, ref, commit, commitHash, commitMessage, pusher } = body;
+    const parsed = await validateBody(c, CIEnqueueSchema);
+    if (parsed.error) return parsed.response;
+    const { repo, ref, commit, commitHash, commitMessage, pusher } = parsed.data;
     const hash = commitHash ?? commit;
-    if (!(repo && hash)) return c.json({ error: "Missing repo or commitHash" }, 400);
+    if (!hash) return c.json({ error: "Missing commitHash or commit" }, 400);
 
     const { randomUUID } = await import("node:crypto");
     const { mkdirSync, writeFileSync } = await import("node:fs");
@@ -326,10 +338,14 @@ app.get("/api/git/backups", async (c) => {
   }
 });
 
+const GitRestoreSchema = v.object({ filename: v.string() });
+
 app.post("/api/git/restore", async (c) => {
   try {
-    const { filename } = await c.req.json();
-    if (!filename || filename.includes("..")) return c.json({ error: "Invalid filename" }, 400);
+    const parsed = await validateBody(c, GitRestoreSchema);
+    if (parsed.error) return parsed.response;
+    const { filename } = parsed.data;
+    if (filename.includes("..")) return c.json({ error: "Invalid filename" }, 400);
     const { execSync } = await import("node:child_process");
     const { join: pathJoin } = await import("node:path");
     const { existsSync } = await import("node:fs");
@@ -400,10 +416,17 @@ app.get("/api/pc/logs/:name", async (c) => {
 });
 
 // Deploy API — trigger rolling container deploy
+const DeploySchema = v.object({
+  commitHash: v.optional(v.string()),
+  service: v.optional(v.string()),
+  trigger: v.optional(v.string(), "manual"),
+});
+
 app.post("/api/deploy", async (c) => {
   try {
-    const body = await c.req.json().catch(() => ({}));
-    const { commitHash, service, trigger = "manual" } = body as any;
+    const parsed = await validateBody(c, DeploySchema);
+    if (parsed.error) return parsed.response;
+    const { commitHash, service, trigger } = parsed.data;
 
     // Read service definitions from embedded config
     const services = service ? [service] : ["event-api", "chat-ws", "ops-api", "harness-ui", "ci-runner"];
@@ -516,18 +539,16 @@ app.get("/api/auth/status", async (c) => {
   }
 });
 
+const AuthUploadSchema = v.object({
+  auth: v.pipe(v.record(v.string(), v.unknown()), v.check((o) => Object.keys(o).length > 0, "Empty auth object")),
+});
+
 app.post("/api/auth/upload", async (c) => {
   try {
-    const body = await c.req.json();
-    const authJson = body.auth;
-    if (!authJson || typeof authJson !== "object") {
-      return c.json({ error: "Missing 'auth' object in request body" }, 400);
-    }
-    // Validate it looks like auth.json (has provider entries)
+    const parsed = await validateBody(c, AuthUploadSchema);
+    if (parsed.error) return parsed.response;
+    const authJson = parsed.data.auth;
     const keys = Object.keys(authJson);
-    if (keys.length === 0) {
-      return c.json({ error: "Empty auth object" }, 400);
-    }
     const { mkdirSync, writeFileSync, chmodSync } = await import("node:fs");
     mkdirSync(CHAT_AUTH_DIR, { recursive: true });
     const authPath = join(CHAT_AUTH_DIR, "auth.json");
