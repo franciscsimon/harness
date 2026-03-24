@@ -6,6 +6,8 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { createLogger } from "../lib/logger.ts";
 import { requestLogger } from "../lib/request-logger.ts";
+import { validateBody } from "../lib/validate.ts";
+import * as v from "valibot";
 import { authMiddleware } from "./lib/auth.ts";
 import { getJob, restoreFromArchive, startCsvBackup, startSnapshotBackup, startSnapshotRestore } from "./lib/backup.ts";
 import { type CIEvent, processCIEvent, verifySignature } from "./lib/ci-webhook.ts";
@@ -186,14 +188,16 @@ app.delete("/api/backups/:filename", async (c) => {
 
 // ── Restore ───────────────────────────────────────────────────────
 
-app.post("/api/restore", async (c) => {
-  const body = await c.req.json<{ archive: string }>();
-  if (!body.archive) return c.json({ error: "Missing archive" }, 400);
+const ArchiveSchema = v.object({ archive: v.string() });
 
-  const path = getBackupPath(body.archive);
+app.post("/api/restore", async (c) => {
+  const parsed = await validateBody(c, ArchiveSchema);
+  if (parsed.error) return parsed.response;
+
+  const path = getBackupPath(parsed.data.archive);
   if (!path) return c.json({ error: "Invalid archive name" }, 400);
 
-  const isSnapshot = body.archive.startsWith("snapshot-");
+  const isSnapshot = parsed.data.archive.startsWith("snapshot-");
 
   if (isSnapshot) {
     // Snapshot restore is long-running — return a job ID like backup does
@@ -256,9 +260,12 @@ app.get("/api/topics/:name", async (c) => {
 
 // ── Backup Scheduler ──────────────────────────────────────────────
 
+const SchedulerStartSchema = v.object({ intervalHours: v.optional(v.number()) });
+
 app.post("/api/scheduler/start", async (c) => {
-  const body = await c.req.json<{ intervalHours?: number }>().catch(() => ({}));
-  return c.json(startScheduler(body.intervalHours));
+  const parsed = await validateBody(c, SchedulerStartSchema);
+  if (parsed.error) return parsed.response;
+  return c.json(startScheduler(parsed.data.intervalHours));
 });
 
 app.post("/api/scheduler/stop", (c) => c.json(stopScheduler()));
@@ -344,10 +351,10 @@ app.get("/api/lifecycle/events", async (c) => {
 
 app.post("/api/backup/verify", async (c) => {
   try {
-    const body = await c.req.json<{ archive: string }>();
-    if (!body.archive) return c.json({ error: "Missing archive" }, 400);
+    const parsed = await validateBody(c, ArchiveSchema);
+    if (parsed.error) return parsed.response;
 
-    const archivePath = getBackupPath(body.archive);
+    const archivePath = getBackupPath(parsed.data.archive);
     if (!archivePath) return c.json({ error: "Invalid archive name" }, 400);
 
     const result = await verifyBackup(archivePath);
@@ -359,13 +366,18 @@ app.post("/api/backup/verify", async (c) => {
 
 // ── Incidents ─────────────────────────────────────────────────────
 
+const IncidentSchema = v.object({
+  severity: v.string(),
+  title: v.string(),
+  description: v.optional(v.string()),
+  project_id: v.optional(v.string()),
+});
+
 app.post("/api/incidents", async (c) => {
   try {
-    const body = await c.req.json();
-    if (!(body.severity && body.title)) {
-      return c.json({ error: "Missing required fields: severity, title" }, 400);
-    }
-    const incident = await createIncident(body);
+    const parsed = await validateBody(c, IncidentSchema);
+    if (parsed.error) return parsed.response;
+    const incident = await createIncident(parsed.data);
     return c.json(incident, 201);
   } catch (err: unknown) {
     return c.json({ error: String(err) }, 500);
@@ -393,10 +405,19 @@ app.get("/api/incidents/:id", async (c) => {
   }
 });
 
+const IncidentUpdateSchema = v.object({
+  severity: v.optional(v.string()),
+  title: v.optional(v.string()),
+  description: v.optional(v.string()),
+  status: v.optional(v.string()),
+  resolved_at: v.optional(v.string()),
+});
+
 app.patch("/api/incidents/:id", async (c) => {
   try {
-    const body = await c.req.json();
-    const updated = await updateIncident(c.req.param("id"), body);
+    const parsed = await validateBody(c, IncidentUpdateSchema);
+    if (parsed.error) return parsed.response;
+    const updated = await updateIncident(c.req.param("id"), parsed.data);
     if (!updated) return c.json({ error: "Incident not found" }, 404);
     return c.json(updated);
   } catch (err: unknown) {
