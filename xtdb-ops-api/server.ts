@@ -6,6 +6,8 @@ import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
 import { createLogger } from "../lib/logger.ts";
 import { requestLogger } from "../lib/request-logger.ts";
+import { apiMetrics } from "../lib/api-metrics.ts";
+import { getMetricsSummary } from "../lib/api-metrics.ts";
 import { validateBody } from "../lib/validate.ts";
 import * as v from "valibot";
 import { authMiddleware } from "./lib/auth.ts";
@@ -25,6 +27,7 @@ const app = new Hono();
 
 app.use("/*", cors({ origin: "*" }));
 app.use("*", requestLogger(log));
+app.use("*", apiMetrics(log));
 app.use("/*", authMiddleware());
 
 // ── Health ────────────────────────────────────────────────────────
@@ -427,6 +430,7 @@ app.patch("/api/incidents/:id", async (c) => {
 
 // ── Start ─────────────────────────────────────────────────────────
 
+app.get("/api/metrics", (c) => c.json(getMetricsSummary()));
 serve({ fetch: app.fetch, port: OPS_PORT }, () => {
   log.info({ port: OPS_PORT }, "xtdb-ops-api listening");
 });

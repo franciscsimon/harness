@@ -15,6 +15,8 @@ import { Hono } from "hono";
 import postgres from "postgres";
 import { createLogger } from "../lib/logger.ts";
 import { requestLogger } from "../lib/request-logger.ts";
+import { apiMetrics } from "../lib/api-metrics.ts";
+import { getMetricsSummary } from "../lib/api-metrics.ts";
 import { validateBody } from "../lib/validate.ts";
 import * as v from "valibot";
 import { type BuildRequest, getCurrentBuild, runBuild } from "./builder.ts";
@@ -28,6 +30,7 @@ const HARNESS_UI_URL = process.env.HARNESS_UI_URL ?? "http://harness-ui:3336";
 
 const app = new Hono();
 app.use("*", requestLogger(log));
+app.use("*", apiMetrics(log));
 const startedAt = Date.now();
 let totalBuilds = 0;
 let lastBuildId: string | null = null;
@@ -154,6 +157,7 @@ app.get("/api/builds/:id", async (c) => {
 
 // ─── Start ───────────────────────────────────────────────────────
 
+app.get("/api/metrics", (c) => c.json(getMetricsSummary()));
 serve({ fetch: app.fetch, port: PORT }, () => {
   log.info({ port: PORT }, "build-service listening");
 });

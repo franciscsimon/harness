@@ -9,6 +9,8 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { createLogger } from "../lib/logger.ts";
 import { requestLogger } from "../lib/request-logger.ts";
+import { apiMetrics } from "../lib/api-metrics.ts";
+import { getMetricsSummary } from "../lib/api-metrics.ts";
 import { validateBody } from "../lib/validate.ts";
 import * as v from "valibot";
 
@@ -22,6 +24,7 @@ const log = createLogger("ci-runner");
 
 const app = new Hono();
 app.use("*", requestLogger(log));
+app.use("*", apiMetrics(log));
 
 // ── Health / Status ──────────────────────────────────────────────
 
@@ -104,6 +107,7 @@ app.post("/api/enqueue", async (c) => {
 
 // ── Start HTTP server ────────────────────────────────────────────
 
+app.get("/api/metrics", (c) => c.json(getMetricsSummary()));
 serve({ fetch: app.fetch, port: CI_PORT }, () => {
   log.info({ port: CI_PORT }, "ci-runner listening");
 });

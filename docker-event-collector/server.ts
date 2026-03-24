@@ -7,6 +7,8 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { createLogger } from "../lib/logger.ts";
 import { requestLogger } from "../lib/request-logger.ts";
+import { apiMetrics } from "../lib/api-metrics.ts";
+import { getMetricsSummary } from "../lib/api-metrics.ts";
 import { getAlertStats } from "./alerting.ts";
 import { getCollectorStats, startCollector, stopCollector } from "./collector.ts";
 import { getWriterStats, startWriter, stopWriter } from "./writer.ts";
@@ -17,6 +19,7 @@ const started = Date.now();
 
 const app = new Hono();
 app.use("*", requestLogger(log));
+app.use("*", apiMetrics(log));
 
 // ── Health ───────────────────────────────────────────────────────
 
@@ -37,6 +40,7 @@ app.get("/api/health", (c) => {
 startWriter();
 startCollector();
 
+app.get("/api/metrics", (c) => c.json(getMetricsSummary()));
 serve({ fetch: app.fetch, port: PORT }, () => {
   log.info({ port: PORT }, "docker-event-collector listening");
 });
