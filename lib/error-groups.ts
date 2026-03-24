@@ -97,3 +97,31 @@ export function getErrorRate(component: string, windowMinutes = 5): number {
     .filter((g) => g.component === component && g.lastSeen > cutoff)
     .reduce((sum, g) => sum + g.occurrenceCount, 0);
 }
+
+/** Flush in-memory error groups to XTDB for persistence. */
+export async function flushGroupsToXtdb(sql: ReturnType<typeof import("postgres").default>): Promise<number> {
+  const allGroups = getErrorGroups();
+  let stored = 0;
+  for (const g of allGroups) {
+    try {
+      await sql`
+        INSERT INTO error_groups (_id, component, operation, error_type, message, severity, status,
+          first_seen, last_seen, occurrence_count, sample_stack, ticket_id, _valid_from)
+        VALUES (
+          ${`eg:${g.fingerprint}`}, ${g.component}, ${g.operation}, ${g.errorType},
+          ${g.message}, ${g.severity}, ${g.status}, ${g.firstSeen}, ${g.lastSeen},
+          ${g.occurrenceCount}, ${g.sampleStack ?? ""}, ${g.ticketId ?? ""},
+          CURRENT_TIMESTAMP
+        )
+        ON CONFLICT (_id) DO UPDATE SET
+          last_seen = EXCLUDED.last_seen,
+          occurrence_count = EXCLUDED.occurrence_count,
+          status = EXCLUDED.status,
+          severity = EXCLUDED.severity`;
+      stored++;
+    } catch {
+      /* best-effort XTDB persistence */
+    }
+  }
+  return stored;
+}
