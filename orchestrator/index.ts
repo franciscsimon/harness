@@ -1,5 +1,17 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+// ── Temporal client (optional — falls back to local state) ──
+let temporalClient: any = null;
+let activeOrchWorkflowId: string | null = null;
+
+async function connectTemporal(): Promise<void> {
+  try {
+    const { Connection, Client } = await import("@temporalio/client");
+    const connection = await Connection.connect({ address: process.env.TEMPORAL_ADDRESS ?? "localhost:7233" });
+    temporalClient = new Client({ connection });
+  } catch { temporalClient = null; }
+}
+
 // ─── Orchestrator Extension ───────────────────────────────────────
 // Coordinate multiple background agents: monitor, integrate, verify.
 // Pattern: Orchestrator — "Dedicated agent for integration work"
@@ -20,11 +32,20 @@ export default function (pi: ExtensionAPI) {
   let nextId = 1;
   let orchestrating = false;
 
-  pi.on("session_start", async (_event, _ctx) => {
+  pi.on("session_start", async (_event, ctx) => {
     tasks = [];
     nextId = 1;
     orchestrating = false;
+    connectTemporal().catch(() => {});
+    // Restore Temporal workflow ID
+    for (const entry of ctx.sessionManager.getEntries()) {
+      if (entry.type === "custom" && entry.customType === "orchestrator-temporal") {
+        activeOrchWorkflowId = (entry as any).workflowId ?? null;
+      }
+    }
   });
+
+  pi.on("session_shutdown", async () => { temporalClient = null; });
 
   // ── Inject orchestrator prompt when active ──
   pi.on("before_agent_start", async (event) => {

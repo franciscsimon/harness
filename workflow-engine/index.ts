@@ -123,6 +123,7 @@ export default function (pi: ExtensionAPI) {
 
   pi.on("session_start", async (_event, ctx) => {
     await ensureWorkflowsLoaded();
+    connectTemporal().catch(() => {});
 
     // Restore state from appendEntry
     state = emptyState();
@@ -133,10 +134,17 @@ export default function (pi: ExtensionAPI) {
           state = { ...emptyState(), ...data };
         }
       }
+      if (entry.type === "custom" && entry.customType === "workflow-temporal") {
+        temporalWorkflowId = (entry as any).workflowId ?? null;
+      }
     }
     if (state.active) {
       ctx.ui.setStatus("workflow", JSON.stringify(statusPayload()));
     }
+  });
+
+  pi.on("session_shutdown", async () => {
+    temporalClient = null;
   });
 
   // ─── Inject agent role prompt on each turn ──────────────────────
@@ -525,9 +533,22 @@ export default function (pi: ExtensionAPI) {
 
   // ─── Auto-advance on agent_end if transition is "auto" ──────────
 
-  pi.on("agent_end", async (_event, ctx) => {
+  pi.on("agent_end", async (event, ctx) => {
     if (!state.active) return;
     const step = currentStepDef();
+
+    // Signal Temporal workflow that step completed
+    if (temporalClient && temporalWorkflowId && step) {
+      try {
+        const handle = temporalClient.workflow.getHandle(temporalWorkflowId);
+        const lastMessage = (event as any).messages?.findLast?.((m: any) => m.role === "assistant");
+        await handle.signal("stepCompleted", {
+          stepPosition: step.position,
+          output: lastMessage?.content?.slice?.(0, 5000) ?? "",
+        });
+      } catch { /* Temporal signal is best-effort */ }
+    }
+
     if (step?.transitionMode === "auto") {
       const _msg = await advanceStep(ctx);
     }
