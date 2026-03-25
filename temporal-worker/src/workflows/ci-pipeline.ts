@@ -160,7 +160,7 @@ export async function ciPipeline(input: CIPipelineInput): Promise<CIPipelineResu
     repoPath,
     commitSha,
     branch,
-    status: pipelineStatus === "cancelled" ? "failed" : pipelineStatus,
+    status: (pipelineStatus as string) === "cancelled" ? "failed" : pipelineStatus,
     steps: stepResults,
     totalDurationMs,
   };

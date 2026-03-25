@@ -54,7 +54,7 @@ export async function recordToXtdb(record: XtdbRecord): Promise<{ inserted: bool
 
       await sql.unsafe(
         `INSERT INTO ${table} (${colList}) VALUES (${placeholders})`,
-        values,
+        values as any[],
       );
 
       return { inserted: true };

@@ -19,23 +19,20 @@ const traceExporter = new OTLPTraceExporter({
   url: config.otel.endpoint,
 });
 
-const metricExporter = new OTLPMetricExporter({
-  url: config.otel.endpoint,
+const metricReader = new PeriodicExportingMetricReader({
+  exporter: new OTLPMetricExporter({ url: config.otel.endpoint }),
+  exportIntervalMillis: 10_000,
 });
 
 export const sdk = new NodeSDK({
   resource,
   traceExporter,
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: metricExporter,
-    exportIntervalMillis: 10_000,
-  }),
+  metricReader: metricReader as any,
 });
 
 sdk.start();
 console.log(`[otel] SDK initialized → ${config.otel.endpoint}`);
 
-// Graceful shutdown
 process.on("SIGTERM", () => {
   sdk.shutdown().catch(console.error);
 });

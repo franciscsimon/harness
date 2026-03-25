@@ -7,9 +7,6 @@
  */
 import "./instrumentation.js"; // OTEL SDK — must be first import
 import { NativeConnection, Worker } from "@temporalio/worker";
-import {
-  OpenTelemetryActivityInboundInterceptor,
-} from "@temporalio/interceptors-opentelemetry";
 import { config } from "./shared/config.js";
 import * as activities from "./activities/index.js";
 
@@ -22,23 +19,12 @@ async function main(): Promise<void> {
 
   console.log("[temporal-worker] Connected to Temporal Server");
 
-  // Register a worker for each task queue
-  // OTEL interceptors for activity context propagation
-  const activityInterceptors = {
-    activity: [
-      (ctx: Parameters<typeof OpenTelemetryActivityInboundInterceptor>[0]) => ({
-        inbound: new OpenTelemetryActivityInboundInterceptor(ctx),
-      }),
-    ],
-  };
-
   const agentWorker = await Worker.create({
     connection,
     namespace: config.temporal.namespace,
     taskQueue: config.temporal.taskQueues.agentExecution,
     workflowsPath: new URL("./workflows/index.js", import.meta.url).pathname,
     activities,
-    interceptors: activityInterceptors,
   });
 
   const ciWorker = await Worker.create({
@@ -47,7 +33,6 @@ async function main(): Promise<void> {
     taskQueue: config.temporal.taskQueues.ciPipeline,
     workflowsPath: new URL("./workflows/index.js", import.meta.url).pathname,
     activities,
-    interceptors: activityInterceptors,
   });
 
   console.log("[temporal-worker] Workers created, starting poll loops...");

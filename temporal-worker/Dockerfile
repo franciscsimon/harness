@@ -1,9 +1,9 @@
-FROM node:22-alpine
+FROM node:22-slim
 
 WORKDIR /app
 
 # Install Docker CLI for CI pipeline activities
-RUN apk add --no-cache docker-cli
+RUN apt-get update && apt-get install -y --no-install-recommends docker.io && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json* ./
 RUN npm install --production=false
