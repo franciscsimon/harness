@@ -500,11 +500,15 @@ services:
       - TEMPORAL_ADDRESS=temporal:7233
       - XTDB_HOST=xtdb-primary
       - XTDB_PORT=5433
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_SERVICE_NAME=harness-temporal-worker
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ci-work:/work
     depends_on:
       temporal:
+        condition: service_healthy
+      otel-collector:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('net').connect(7233,'temporal').on('connect',()=>{process.exit(0)}).on('error',()=>{process.exit(1)})\""]

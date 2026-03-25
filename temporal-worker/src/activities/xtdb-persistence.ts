@@ -3,8 +3,11 @@
  * Wraps postgres INSERT with Temporal's retry policy.
  */
 import postgres from "postgres";
+import { trace, SpanStatusCode } from "@opentelemetry/api";
 import { config } from "../shared/config.js";
 import type { XtdbRecord } from "../shared/types.js";
+
+const tracer = trace.getTracer("harness-xtdb");
 
 let _sql: ReturnType<typeof postgres> | null = null;
 
@@ -24,36 +27,45 @@ function getSql(): ReturnType<typeof postgres> {
 }
 
 export async function recordToXtdb(record: XtdbRecord): Promise<{ inserted: boolean }> {
-  const sql = getSql();
-  const { table, data } = record;
+  return tracer.startActiveSpan(`xtdb.insert.${record.table}`, async (span) => {
+    const sql = getSql();
+    const { table, data } = record;
+    span.setAttributes({ "xtdb.table": table, "xtdb.columns": Object.keys(data).length });
 
-  // Build column list and values
-  const columns = Object.keys(data);
-  const values = Object.values(data);
+    try {
+      const columns = Object.keys(data);
+      const values = Object.values(data);
 
-  // Ensure _id and _valid_from exist
-  if (!data._id) {
-    columns.push("_id");
-    values.push(`${table}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-  }
-  if (!data._valid_from) {
-    columns.push("_valid_from");
-    values.push(new Date().toISOString());
-  }
-  if (!data.ts) {
-    columns.push("ts");
-    values.push(Date.now());
-  }
+      if (!data._id) {
+        columns.push("_id");
+        values.push(`${table}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+      }
+      if (!data._valid_from) {
+        columns.push("_valid_from");
+        values.push(new Date().toISOString());
+      }
+      if (!data.ts) {
+        columns.push("ts");
+        values.push(Date.now());
+      }
 
-  const placeholders = values.map((_, i) => `$${i + 1}`).join(", ");
-  const colList = columns.map((c) => `"${c}"`).join(", ");
+      const placeholders = values.map((_, i) => `$${i + 1}`).join(", ");
+      const colList = columns.map((c) => `"${c}"`).join(", ");
 
-  await sql.unsafe(
-    `INSERT INTO ${table} (${colList}) VALUES (${placeholders})`,
-    values,
-  );
+      await sql.unsafe(
+        `INSERT INTO ${table} (${colList}) VALUES (${placeholders})`,
+        values,
+      );
 
-  return { inserted: true };
+      return { inserted: true };
+    } catch (err) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
+      span.recordException(err as Error);
+      throw err;
+    } finally {
+      span.end();
+    }
+  });
 }
 
 /** Record a CI run with all step results. */
@@ -67,21 +79,40 @@ export async function recordCIRunToXtdb(input: {
   pipelineJsonLd?: Record<string, unknown>;
   temporalWorkflowId?: string;
 }): Promise<{ runId: string }> {
-  const sql = getSql();
-  const runId = `ci-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const now = Date.now();
+  return tracer.startActiveSpan("xtdb.insert.ci_runs", async (span) => {
+    const sql = getSql();
+    const runId = `ci-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const now = Date.now();
 
-  await sql`INSERT INTO ci_runs (
-    _id, repo, commit_hash, ref, status,
-    steps_json, duration_ms, pipeline_jsonld, temporal_workflow_id,
-    ts, _valid_from
-  ) VALUES (
-    ${runId}, ${input.repo}, ${input.commitSha}, ${input.branch}, ${input.status},
-    ${JSON.stringify(input.steps)}, ${input.totalDurationMs},
-    ${input.pipelineJsonLd ? JSON.stringify(input.pipelineJsonLd) : null},
-    ${input.temporalWorkflowId ?? null},
-    ${now}, ${new Date().toISOString()}
-  )`;
+    span.setAttributes({
+      "ci.repo": input.repo,
+      "ci.commit": input.commitSha,
+      "ci.status": input.status,
+      "ci.steps": input.steps.length,
+      "ci.duration_ms": input.totalDurationMs,
+    });
 
-  return { runId };
+    try {
+      await sql`INSERT INTO ci_runs (
+        _id, repo, commit_hash, ref, status,
+        steps_json, duration_ms, pipeline_jsonld, temporal_workflow_id,
+        ts, _valid_from
+      ) VALUES (
+        ${runId}, ${input.repo}, ${input.commitSha}, ${input.branch}, ${input.status},
+        ${JSON.stringify(input.steps)}, ${input.totalDurationMs},
+        ${input.pipelineJsonLd ? JSON.stringify(input.pipelineJsonLd) : null},
+        ${input.temporalWorkflowId ?? null},
+        ${now}, ${new Date().toISOString()}
+      )`;
+
+      span.setAttribute("ci.run_id", runId);
+      return { runId };
+    } catch (err) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
+      span.recordException(err as Error);
+      throw err;
+    } finally {
+      span.end();
+    }
+  });
 }
