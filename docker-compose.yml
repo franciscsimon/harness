@@ -1,3 +1,11 @@
+# ── Default logging for all services ────────────────────────────
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+    tag: "{{.Name}}"
+
 services:
   # ── Reverse Proxy (ONLY service with exposed ports) ────────────
   caddy:
@@ -419,6 +427,94 @@ services:
       infisical-redis:
         condition: service_healthy
 
+  # ════════════════════════════════════════════════════════════════
+  # Temporal Server — durable workflow orchestration
+  # ════════════════════════════════════════════════════════════════
+  temporal:
+    image: temporalio/auto-setup:1.25
+    container_name: temporal
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD:-temporal}
+      - POSTGRES_SEEDS=temporal-db
+    depends_on:
+      temporal-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "temporal:7233", "cluster", "health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+    logging:
+      <<: *default-logging
+
+  temporal-db:
+    image: postgres:16-alpine
+    container_name: temporal-db
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: ${TEMPORAL_DB_PASSWORD:-temporal}
+      POSTGRES_DB: temporal
+    volumes:
+      - temporal-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    logging:
+      <<: *default-logging
+
+  temporal-ui:
+    image: temporalio/ui:2.31
+    container_name: temporal-ui
+    ports:
+      - "8233:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3336
+    depends_on:
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      <<: *default-logging
+
+  temporal-worker:
+    build:
+      context: ./temporal-worker
+      dockerfile: Dockerfile
+    container_name: temporal-worker
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - XTDB_HOST=xtdb-primary
+      - XTDB_PORT=5433
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ci-work:/work
+    depends_on:
+      temporal:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('net').connect(7233,'temporal').on('connect',()=>{process.exit(0)}).on('error',()=>{process.exit(1)})\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      <<: *default-logging
+
 volumes:
   redpanda-data:
   xtdb-primary-data:
@@ -434,11 +530,4 @@ volumes:
   infisical-redis-data:
   caddy-data:
   caddy-config:
-
-# ── Default logging for all services ────────────────────────────
-x-logging: &default-logging
-  driver: json-file
-  options:
-    max-size: "10m"
-    max-file: "3"
-    tag: "{{.Name}}"
+  temporal-db-data:

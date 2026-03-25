@@ -1067,3 +1067,1411 @@ This means:
 | Graceful degradation | None (hard Temporal dependency) | Dual-mode with local fallback |
 | JSON-LD parsing | Moved to Temporal | Stays in pi extension (file read) |
 | XTDB event logging | Replaced | Unchanged (30 handlers + router) |
+
+---
+
+## Observability: OpenTelemetry Integration
+
+Reliability without transparency is useless — if an agent workflow fails on retry 2 of 3 at
+step 4, you need to see *why*. OTEL is not an afterthought; it's the reason Temporal is worth
+adopting. The entire point is to make the agentic system legible.
+
+### Three Telemetry Layers
+
+The harness currently has one observability layer (XTDB events). With Temporal + OTEL we get
+three complementary layers:
+
+```
+Layer 1: XTDB Event Store (existing — unchanged)
+├── What the agent DID: tool calls, reasoning traces, mutations, results
+├── 30 event types via xtdb-event-logger
+├── Projections via xtdb-projector (Task → Reasoning → Result)
+└── Bitemporal: query as-of any point in time
+
+Layer 2: Temporal Workflow History (new — built into Temporal)
+├── What the ORCHESTRATION did: workflow starts, signals, queries, completions
+├── Activity attempts, retries, timeouts, heartbeats
+├── Child workflow hierarchies (orchestrator → step workflow → agent delegation)
+└── Queryable via Temporal Web UI and gRPC API
+
+Layer 3: OpenTelemetry Distributed Traces (new — connects everything)
+├── End-to-end latency: /workflow start → agent spawn → agent completion → XTDB write
+├── Cross-process correlation: pi extension → Temporal server → worker → pi subprocess
+├── Metrics: workflow duration, activity failure rate, retry counts, queue latency
+└── Exported to Grafana/Jaeger/Prometheus for dashboards and alerting
+```
+
+### How OTEL Traces Flow Through the System
+
+```
+pi extension                    Temporal Server              Temporal Worker
+─────────────                   ───────────────              ───────────────
+
+client.workflow.start()         ┌─────────────┐
+  │                             │ WorkflowTask │
+  │  trace context propagated ──▶  dispatched  │
+  │  via Temporal headers       └──────┬──────┘
+  │                                    │
+  │                                    ▼
+  │                             ┌─────────────┐    ┌────────────────────┐
+  │                             │ ActivityTask │───▶│ spawnPiAgent()     │
+  │                             │  dispatched  │    │                    │
+  │                             └─────────────┘    │ pi --mode json     │
+  │                                                │   ├─ heartbeat #1  │
+  │                                                │   ├─ heartbeat #2  │
+  │                                                │   └─ exit(0)       │
+  │                                                │                    │
+  │                                                │ recordToXtdb()     │
+  │                                                │   └─ INSERT INTO   │
+  │                                                └────────────────────┘
+  │                                                         │
+  │                    trace context returned                │
+  ◀─────────────────────────────────────────────────────────┘
+
+Result: ONE trace spanning all three processes, with spans for:
+  • workflow.start (pi extension)
+  • WorkflowTaskScheduled → WorkflowTaskCompleted (Temporal server)
+  • ActivityTaskScheduled → ActivityTaskStarted → ActivityTaskCompleted
+  • spawnPiAgent (worker — custom span)
+  • pi.subprocess.stdout.heartbeat (worker — custom span)
+  • xtdb.insert.delegations (worker — custom span)
+```
+
+### Temporal Worker OTEL Setup
+
+```typescript
+// temporal-worker/src/instrumentation.ts
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-grpc";
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-grpc";
+import { PeriodicExportingMetricReader } from "@opentelemetry/sdk-metrics";
+import { Resource } from "@opentelemetry/resources";
+import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+
+const resource = new Resource({
+  [ATTR_SERVICE_NAME]: "harness-temporal-worker",
+  "harness.component": "temporal-worker",
+});
+
+const traceExporter = new OTLPTraceExporter({
+  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://otel-collector:4317",
+});
+
+const metricExporter = new OTLPMetricExporter({
+  url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://otel-collector:4317",
+});
+
+const sdk = new NodeSDK({
+  resource,
+  traceExporter,
+  metricReader: new PeriodicExportingMetricReader({
+    exporter: metricExporter,
+    exportIntervalMillis: 10_000,
+  }),
+});
+
+sdk.start();
+export { sdk };
+```
+
+```typescript
+// temporal-worker/src/worker.ts
+import "./instrumentation"; // must be first import
+import { NativeConnection, Worker, Runtime } from "@temporalio/worker";
+import {
+  makeWorkflowExporter,
+  OpenTelemetryActivityInboundInterceptor,
+} from "@temporalio/interceptors-opentelemetry";
+import { trace } from "@opentelemetry/api";
+import * as activities from "./activities";
+
+const tracer = trace.getTracer("harness-temporal-worker");
+
+async function main() {
+  // Configure Temporal runtime with OTEL metrics
+  Runtime.install({
+    telemetryOptions: {
+      metrics: {
+        otel: {
+          url: process.env.OTEL_EXPORTER_OTLP_ENDPOINT || "http://otel-collector:4317",
+          metricsExportInterval: 10_000,
+        },
+      },
+    },
+  });
+
+  const connection = await NativeConnection.connect({
+    address: process.env.TEMPORAL_ADDRESS || "temporal:7233",
+  });
+
+  const worker = await Worker.create({
+    connection,
+    namespace: "default",
+    taskQueue: "agent-execution",
+    workflowsPath: require.resolve("./workflows"),
+    activities,
+    interceptors: {
+      // Propagate OTEL context into workflows
+      workflowModules: [require.resolve("./workflows/otel-interceptors")],
+      // Propagate OTEL context into activities
+      activity: [
+        (ctx) => ({
+          inbound: new OpenTelemetryActivityInboundInterceptor(ctx),
+        }),
+      ],
+    },
+  });
+
+  await worker.run();
+}
+
+main().catch(console.error);
+```
+
+```typescript
+// temporal-worker/src/workflows/otel-interceptors.ts
+import { makeWorkflowExporter } from "@temporalio/interceptors-opentelemetry/workflow";
+
+// This module runs in the Workflow sandbox — it exports the OTEL interceptors
+// that create spans for workflow task execution
+export const interceptors = makeWorkflowExporter();
+```
+
+### Custom Spans in Activities
+
+The Temporal OTEL interceptors handle workflow-level and activity-level spans automatically.
+For finer-grained visibility into *what's happening inside* each activity, add custom spans:
+
+```typescript
+// temporal-worker/src/activities/spawn-agent.ts
+import { trace, SpanStatusCode } from "@opentelemetry/api";
+import { Context as TemporalContext } from "@temporalio/activity";
+
+const tracer = trace.getTracer("harness-agent-spawner");
+
+export async function spawnPiAgent(input: {
+  agentRole: string;
+  task: string;
+  cwd: string;
+  parentSessionId: string;
+}) {
+  return tracer.startActiveSpan(`agent.spawn.${input.agentRole}`, async (span) => {
+    span.setAttributes({
+      "agent.role": input.agentRole,
+      "agent.task": input.task.slice(0, 200),
+      "agent.cwd": input.cwd,
+      "agent.parent_session": input.parentSessionId,
+    });
+
+    try {
+      const proc = spawn("pi", ["--mode", "json", "-p", input.task, ...], { cwd: input.cwd });
+
+      let stdout = "";
+      let heartbeatCount = 0;
+
+      proc.stdout.on("data", (chunk) => {
+        stdout += chunk.toString();
+        heartbeatCount++;
+
+        // Heartbeat Temporal
+        TemporalContext.current().heartbeat({ bytes: stdout.length, heartbeatCount });
+
+        // Add span event for each significant output chunk
+        if (heartbeatCount % 10 === 0) {
+          span.addEvent("agent.heartbeat", {
+            "heartbeat.count": heartbeatCount,
+            "output.bytes": stdout.length,
+          });
+        }
+      });
+
+      const result = await waitForExit(proc);
+
+      span.setAttributes({
+        "agent.exit_code": result.exitCode,
+        "agent.output_bytes": result.output.length,
+        "agent.session_id": result.sessionId,
+        "agent.heartbeat_count": heartbeatCount,
+      });
+
+      if (result.exitCode !== 0) {
+        span.setStatus({ code: SpanStatusCode.ERROR, message: `Exit code ${result.exitCode}` });
+      }
+
+      return result;
+
+    } catch (err) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: String(err) });
+      span.recordException(err as Error);
+      throw err;
+    } finally {
+      span.end();
+    }
+  });
+}
+```
+
+### Pi Extension OTEL Spans (Optional, Phase 5)
+
+The pi extensions can also emit OTEL spans to bridge the gap between "pi sent a gRPC call
+to Temporal" and "Temporal dispatched the workflow." This is optional but gives you the full
+picture:
+
+```typescript
+// In any pi extension that uses Temporal
+import { trace, context, propagation } from "@opentelemetry/api";
+
+const tracer = trace.getTracer("harness-pi-extension");
+
+// When starting a workflow from the extension:
+const span = tracer.startSpan("orchestrate.plan", {
+  attributes: {
+    "pi.session": ctx.sessionManager.getSessionFile(),
+    "workflow.tasks": tasks.length,
+  },
+});
+
+try {
+  // Propagate trace context to Temporal
+  await temporalClient.workflow.start("orchestrationWorkflow", {
+    workflowId,
+    taskQueue: "agent-execution",
+    args: [{ tasks, cwd, sessionId }],
+  });
+  span.setStatus({ code: SpanStatusCode.OK });
+} catch (err) {
+  span.setStatus({ code: SpanStatusCode.ERROR });
+  span.recordException(err);
+  throw err;
+} finally {
+  span.end();
+}
+```
+
+**Note:** Adding OTEL to pi extensions requires `@opentelemetry/api` and
+`@opentelemetry/sdk-node` as dependencies in the harness package.json. The pi runtime
+doesn't restrict this — extensions have full Node.js network access.
+
+### Metrics Worth Tracking
+
+| Metric | Source | What it tells you |
+|--------|--------|------------------|
+| `temporal_workflow_task_schedule_to_start_latency` | Temporal SDK (auto) | How long workflows wait in the task queue |
+| `temporal_activity_schedule_to_start_latency` | Temporal SDK (auto) | How long activities wait for a worker |
+| `temporal_activity_execution_latency` | Temporal SDK (auto) | How long each activity takes |
+| `agent.spawn.duration` | Custom span | Time from pi spawn to exit |
+| `agent.spawn.exit_code` | Custom attribute | Success/failure rate per agent role |
+| `agent.spawn.heartbeat_count` | Custom attribute | How active the agent was |
+| `agent.spawn.output_bytes` | Custom attribute | Output volume per agent |
+| `workflow.step.duration` | Custom span | Time per workflow step |
+| `workflow.step.retries` | Temporal SDK (auto) | How often steps need retrying |
+| `xtdb.insert.duration` | Custom span | XTDB write latency |
+| `delegate.e2e.duration` | Custom span (pi ext) | Full round-trip: pi → Temporal → worker → pi subprocess → XTDB |
+
+### OTEL ↔ XTDB Correlation
+
+The key to making all three layers work together is a shared correlation ID. Every XTDB
+event already carries a `session_id`. Every Temporal workflow has a `workflowId`. Bridge them:
+
+```typescript
+// When starting a Temporal workflow from pi extension:
+const workflowId = `wf-${name}-${Date.now()}`;
+const sessionId = ctx.sessionManager.getSessionFile();
+
+// Store both IDs in Temporal workflow input
+await temporalClient.workflow.start("agentWorkflow", {
+  workflowId,
+  args: [{ ..., sessionId }],
+});
+
+// In the Temporal activity, pass sessionId into XTDB records:
+await recordToXtdb({
+  table: "delegations",
+  data: {
+    temporal_workflow_id: workflowId,  // ← NEW: links XTDB row to Temporal
+    parent_session_id: sessionId,
+    // ... existing fields
+  },
+});
+
+// In OTEL spans, set both as attributes:
+span.setAttributes({
+  "temporal.workflow_id": workflowId,
+  "pi.session_id": sessionId,
+});
+```
+
+Now you can:
+1. See a failed workflow step in Temporal Web UI → get `workflowId`
+2. Query XTDB: `SELECT * FROM delegations WHERE temporal_workflow_id = ?`
+3. See the agent's tool calls, reasoning traces, and mutations in XTDB
+4. Cross-reference with the OTEL trace in Grafana/Jaeger for timing and retry info
+
+---
+
+## Observability Infrastructure (Docker Compose)
+
+Replace the previous Docker Compose section with this expanded version that includes the
+full OTEL stack:
+
+```yaml
+  # ════════════════════════════════════════════════════════════════
+  # Temporal Server
+  # ════════════════════════════════════════════════════════════════
+  temporal:
+    image: temporalio/auto-setup:1.25
+    container_name: temporal
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=temporal
+      - POSTGRES_PWD=temporal
+      - POSTGRES_SEEDS=temporal-db
+    depends_on:
+      temporal-db:
+        condition: service_healthy
+    networks:
+      - harness
+
+  temporal-db:
+    image: postgres:16-alpine
+    container_name: temporal-db
+    ports:
+      - "5435:5432"
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - temporal-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - harness
+
+  temporal-ui:
+    image: temporalio/ui:2.31
+    container_name: temporal-ui
+    ports:
+      - "8233:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3336
+    depends_on:
+      - temporal
+    networks:
+      - harness
+
+  # ════════════════════════════════════════════════════════════════
+  # Temporal Worker (your harness code)
+  # ════════════════════════════════════════════════════════════════
+  temporal-worker:
+    build:
+      context: ./temporal-worker
+      dockerfile: Dockerfile
+    container_name: temporal-worker
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - XTDB_HOST=xtdb-primary
+      - XTDB_PORT=5433
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_SERVICE_NAME=harness-temporal-worker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - temporal
+      - xtdb-primary
+      - otel-collector
+    networks:
+      - harness
+
+  # ════════════════════════════════════════════════════════════════
+  # OpenTelemetry Collector
+  # Central hub: receives traces + metrics from worker and pi,
+  # exports to Tempo (traces), Prometheus (metrics), Loki (logs)
+  # ════════════════════════════════════════════════════════════════
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.102.0
+    container_name: otel-collector
+    ports:
+      - "4317:4317"     # OTLP gRPC receiver
+      - "4318:4318"     # OTLP HTTP receiver
+      - "8888:8888"     # Collector metrics
+      - "8889:8889"     # Prometheus exporter
+    volumes:
+      - ./observability/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    depends_on:
+      - tempo
+      - prometheus
+    networks:
+      - harness
+
+  # ════════════════════════════════════════════════════════════════
+  # Grafana Tempo — Distributed trace storage
+  # ════════════════════════════════════════════════════════════════
+  tempo:
+    image: grafana/tempo:2.5
+    container_name: tempo
+    ports:
+      - "3200:3200"     # Tempo API
+      - "9095:9095"     # Tempo gRPC
+    volumes:
+      - ./observability/tempo-config.yaml:/etc/tempo/config.yaml
+      - tempo-data:/var/tempo
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    networks:
+      - harness
+
+  # ════════════════════════════════════════════════════════════════
+  # Prometheus — Metrics storage
+  # ════════════════════════════════════════════════════════════════
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yaml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks:
+      - harness
+
+  # ════════════════════════════════════════════════════════════════
+  # Grafana — Unified dashboard for traces, metrics, logs
+  # ════════════════════════════════════════════════════════════════
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    ports:
+      - "3001:3000"     # 3001 to avoid conflict with harness services on 3333-3339
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=harness
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - tempo
+    networks:
+      - harness
+
+volumes:
+  temporal-db-data:
+  tempo-data:
+  prometheus-data:
+  grafana-data:
+```
+
+### OTEL Collector Configuration
+
+```yaml
+# observability/otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: "0.0.0.0:4317"
+      http:
+        endpoint: "0.0.0.0:4318"
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+  # Add harness-specific attributes to all telemetry
+  attributes:
+    actions:
+      - key: "harness.environment"
+        value: "development"
+        action: upsert
+
+exporters:
+  # Traces → Tempo
+  otlp/tempo:
+    endpoint: "tempo:4317"
+    tls:
+      insecure: true
+
+  # Metrics → Prometheus
+  prometheusremotewrite:
+    endpoint: "http://prometheus:9090/api/v1/write"
+    tls:
+      insecure: true
+
+  # Debug: log to stdout (disable in production)
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, attributes]
+      exporters: [otlp/tempo, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheusremotewrite, debug]
+```
+
+### Tempo Configuration
+
+```yaml
+# observability/tempo-config.yaml
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "0.0.0.0:4317"
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+      cluster: harness
+  storage:
+    path: /var/tempo/generator/wal
+```
+
+### Prometheus Configuration
+
+```yaml
+# observability/prometheus.yaml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Scrape OTEL Collector's own metrics
+  - job_name: "otel-collector"
+    static_configs:
+      - targets: ["otel-collector:8888"]
+
+  # Scrape Prometheus exporter from OTEL Collector
+  - job_name: "otel-metrics"
+    static_configs:
+      - targets: ["otel-collector:8889"]
+
+  # Scrape Temporal Server metrics (if exposed)
+  - job_name: "temporal-server"
+    static_configs:
+      - targets: ["temporal:8000"]
+
+# Enable remote write receiver for OTEL Collector
+remote_write: []
+```
+
+### Grafana Datasource Provisioning
+
+```yaml
+# observability/grafana/provisioning/datasources/datasources.yaml
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      tracesToMetrics:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      traceQuery:
+        timeShiftEnabled: true
+        spanStartTimeShift: "1h"
+        spanEndTimeShift: "1h"
+      search:
+        hide: false
+```
+
+---
+
+## Observability Stack Summary
+
+| Service | Port | Purpose | Storage |
+|---------|------|---------|---------|
+| OTEL Collector | 4317 (gRPC), 4318 (HTTP) | Receives all telemetry, routes to backends | None (passthrough) |
+| Tempo | 3200 | Distributed trace storage | Local disk |
+| Prometheus | 9090 | Metrics storage and querying | Local disk |
+| Grafana | 3001 | Unified dashboards | Local disk |
+| Temporal UI | 8233 | Workflow-specific visibility | Temporal DB |
+
+**Total additional RAM:** ~800MB (OTEL Collector ~100MB, Tempo ~200MB, Prometheus ~200MB,
+Grafana ~150MB, plus Temporal infra from before ~400MB). Total new infrastructure: ~1.2GB RAM.
+
+### What You Can See in Grafana
+
+1. **Trace view:** Click any workflow execution → see the full span tree from pi extension
+   → Temporal server → worker → pi subprocess → XTDB write. See exactly where time was spent
+   and where failures occurred.
+
+2. **Agent dashboard:** Success/failure rate by agent role. Average execution time. Retry
+   frequency. Heartbeat patterns. Output volume trends.
+
+3. **Workflow dashboard:** Step completion rates. Human-in-the-loop wait times. Parallel
+   fan-out visualization. End-to-end workflow duration.
+
+4. **Infrastructure dashboard:** Temporal task queue depth. Worker utilization. XTDB write
+   latency. OTEL Collector throughput.
+
+---
+
+## Revised Migration Path (with OTEL)
+
+### Phase 1: Infrastructure (~1 week)
+- Add Temporal + OTEL stack to docker-compose.yml
+- Create `observability/` config directory
+- Migrate ci-runner to Temporal worker with OTEL instrumentation
+- Set up basic Grafana dashboards
+- **Validates:** Full stack connectivity, OTEL pipeline, basic traces
+
+### Phase 2: Agent Spawner + Observability (~2 weeks)
+- Modify `agent-spawner/index.ts` to use Temporal client
+- Add custom spans in `spawnPiAgent` activity
+- Create agent performance dashboard in Grafana
+- Add XTDB ↔ Temporal correlation IDs
+- **Validates:** Cross-process traces, retry visibility, heartbeat monitoring
+
+### Phase 3: Workflow Engine + Observability (~2-3 weeks)
+- Modify `workflow-engine/index.ts` to be a Temporal client
+- Add workflow step spans and metrics
+- Create workflow progress dashboard in Grafana
+- Wire OTEL traces to XTDB projection queries
+- **Validates:** End-to-end trace from `/workflow start` to completion
+
+### Phase 4: Orchestrator + Full Dashboard (~1-2 weeks)
+- Modify `orchestrator/index.ts` to start parent workflows
+- Create orchestration overview dashboard
+- Add alerting rules (e.g., >3 retries, workflow stuck >1hr)
+- **Validates:** Full system observability
+
+### Phase 5 (Optional): Pi Extension OTEL Spans (~1 week)
+- Add `@opentelemetry/api` to harness package.json
+- Emit spans from pi extensions for client-side tracing
+- Bridge pi session → Temporal → worker in single trace view
+- **Validates:** True end-to-end distributed tracing
+
+### Total: ~7-9 weeks
+
+---
+
+## Corrections from GPT and Gemini Reviews
+
+Both reviews validated the core architecture (split-brain model, extensions as Temporal
+clients, dual-mode fallback) but identified real gaps. This section addresses every
+legitimate finding. Items are tagged with who found them.
+
+### Correction 1: Observability Baseline Was Understated [GPT]
+
+The proposal claimed "the harness has one observability layer (XTDB events)." That's wrong.
+The harness already has:
+
+- `lib/logger.ts` — Pino structured logging across all services
+- `lib/request-logger.ts` — HTTP request logging middleware
+- `lib/api-metrics.ts` — API endpoint timing and counters
+- `lib/rate-limiter.ts` — Request rate limiting
+- `lib/query-timer.ts` — XTDB query performance tracking
+- `lib/error-groups.ts` — Error classification and grouping
+- `health-prober/` — Service health monitoring
+- XTDB schema with 42 tables (not 27), including `service_health_checks`,
+  `container_metrics`, `slow_queries`, `api_metrics`, `error_groups`,
+  `review_reports`, `complexity_scores`, `graph_edges`
+
+**Correction:** OTEL doesn't replace this existing observability — it adds distributed
+tracing *across* process boundaries (pi → Temporal → worker → pi subprocess). The existing
+Pino logging, API metrics, and health checks remain. OTEL complements them with cross-process
+span correlation that the existing per-service logging can't provide.
+
+---
+
+### Correction 2: Payload Encryption Is Not Optional [Gemini, GPT]
+
+Temporal stores all workflow/activity inputs and outputs in its PostgreSQL database as
+plaintext. This means task prompts, agent code output, reasoning traces, and potentially
+sensitive code snippets are readable via Temporal UI and API.
+
+**Solution: Temporal Payload Codec (Data Converter)**
+
+```typescript
+// temporal-worker/src/encryption/codec.ts
+import { PayloadCodec } from "@temporalio/common";
+import { METADATA_ENCODING_KEY } from "@temporalio/common/lib/encoding";
+import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+
+const ENCRYPTION_KEY = Buffer.from(
+  process.env.TEMPORAL_ENCRYPTION_KEY || "",
+  "base64"
+);
+
+export class EncryptionCodec implements PayloadCodec {
+  async encode(payloads: Payload[]): Promise<Payload[]> {
+    return payloads.map((payload) => {
+      const iv = randomBytes(16);
+      const cipher = createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
+      const encrypted = Buffer.concat([
+        cipher.update(payload.data!),
+        cipher.final(),
+      ]);
+      const authTag = cipher.getAuthTag();
+
+      return {
+        metadata: {
+          [METADATA_ENCODING_KEY]: Buffer.from("binary/encrypted"),
+          "encryption-iv": iv,
+          "encryption-auth-tag": authTag,
+        },
+        data: encrypted,
+      };
+    });
+  }
+
+  async decode(payloads: Payload[]): Promise<Payload[]> {
+    return payloads.map((payload) => {
+      if (
+        Buffer.from(payload.metadata![METADATA_ENCODING_KEY]).toString() !==
+        "binary/encrypted"
+      ) {
+        return payload; // not encrypted, pass through
+      }
+
+      const iv = Buffer.from(payload.metadata!["encryption-iv"]);
+      const authTag = Buffer.from(payload.metadata!["encryption-auth-tag"]);
+      const decipher = createDecipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
+      decipher.setAuthTag(authTag);
+
+      const decrypted = Buffer.concat([
+        decipher.update(payload.data!),
+        decipher.final(),
+      ]);
+
+      return { metadata: payload.metadata, data: decrypted };
+    });
+  }
+}
+```
+
+**Apply to both client (in pi extensions) and worker:**
+
+```typescript
+// In pi extension Temporal client setup:
+import { EncryptionCodec } from "../shared/encryption/codec";
+
+const client = new Client({
+  connection,
+  dataConverter: {
+    payloadCodecs: [new EncryptionCodec()],
+  },
+});
+
+// In temporal-worker/src/worker.ts:
+const worker = await Worker.create({
+  // ... existing config
+  dataConverter: {
+    payloadCodecs: [new EncryptionCodec()],
+  },
+});
+```
+
+**For Temporal UI visibility:** Deploy the Temporal Codec Server — a small HTTP service
+that decrypts payloads on-the-fly for authorized users viewing the Temporal UI. Without it,
+the UI shows encrypted blobs. With it, authorized viewers see plaintext. Add to docker-compose:
+
+```yaml
+  temporal-codec-server:
+    build:
+      context: ./temporal-worker
+      dockerfile: Dockerfile.codec-server
+    container_name: temporal-codec-server
+    ports:
+      - "8888:8888"
+    environment:
+      - TEMPORAL_ENCRYPTION_KEY=${TEMPORAL_ENCRYPTION_KEY}
+    networks:
+      - harness
+```
+
+---
+
+### Correction 3: Worker Concurrency Limits [Gemini, GPT]
+
+A single temporal-worker container with no concurrency limits could spawn 50+ pi
+subprocesses simultaneously during a fan-out orchestration, exhausting CPU and RAM.
+
+**Solution: Explicit concurrency caps per task queue**
+
+```typescript
+// temporal-worker/src/worker.ts
+
+// Agent execution worker — limit concurrent pi subprocesses
+const agentWorker = await Worker.create({
+  connection,
+  taskQueue: "agent-execution",
+  workflowsPath: require.resolve("./workflows"),
+  activities: agentActivities,
+  maxConcurrentActivityTaskExecutions: 4,    // max 4 pi subprocesses at once
+  maxConcurrentWorkflowTaskExecutions: 10,   // max 10 workflow tasks at once
+  maxTaskQueueActivitiesPerSecond: 2,        // rate limit: 2 new agents/sec
+  interceptors: { /* otel interceptors */ },
+});
+
+// CI pipeline worker — separate limits for Docker steps
+const ciWorker = await Worker.create({
+  connection,
+  taskQueue: "ci-pipeline",
+  activities: ciActivities,
+  maxConcurrentActivityTaskExecutions: 2,    // max 2 Docker builds at once
+  maxTaskQueueActivitiesPerSecond: 1,
+});
+
+// XTDB persistence worker — high throughput, low resource
+const xtdbWorker = await Worker.create({
+  connection,
+  taskQueue: "xtdb-persistence",
+  activities: xtdbActivities,
+  maxConcurrentActivityTaskExecutions: 20,   // DB writes are cheap
+  maxTaskQueueActivitiesPerSecond: 50,
+});
+
+// Run all three workers in parallel
+await Promise.all([
+  agentWorker.run(),
+  ciWorker.run(),
+  xtdbWorker.run(),
+]);
+```
+
+**Scaling beyond a single machine:** When 4 concurrent agents isn't enough, add replicas:
+
+```yaml
+  temporal-worker:
+    # ...existing config...
+    deploy:
+      replicas: 3    # 3 containers × 4 concurrent = 12 max parallel agents
+```
+
+Each replica polls the same task queue. Temporal distributes work across all replicas
+automatically. No code changes needed — just scaling.
+
+---
+
+### Correction 4: Hot Path Query Timeout in `before_agent_start` [GPT]
+
+The `before_agent_start` hook runs synchronously before every agent turn. If Temporal is
+slow to respond to a query, agent startup blocks. This is unacceptable.
+
+**Solution: Fail-open with timeout and cached fallback**
+
+```typescript
+// In workflow-engine/index.ts before_agent_start hook:
+
+pi.on("before_agent_start", async (event, ctx) => {
+  if (!activeWorkflowId) return;
+
+  let stepInfo = currentStepInfo; // use cache first
+
+  if (temporalClient) {
+    try {
+      // Hard timeout: 2 seconds. If Temporal can't answer in 2s, use cache.
+      const handle = temporalClient.workflow.getHandle(activeWorkflowId);
+      stepInfo = await Promise.race([
+        handle.query("currentStep"),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("query_timeout")), 2000)
+        ),
+      ]);
+      currentStepInfo = stepInfo; // update cache on success
+    } catch (e) {
+      // FAIL-OPEN: use last known step info, don't block the agent
+      // Log the failure for observability but don't halt
+      console.warn(`Temporal query failed (${e.message}), using cached step info`);
+    }
+  }
+
+  if (!stepInfo) return; // no cached info either — don't inject anything
+
+  // ... rest of prompt injection logic unchanged
+});
+```
+
+**Policy: fail-open, not fail-closed.** A missing or stale workflow status injection is
+better than blocking the agent entirely. The agent can still work; it just might not have
+the latest step context injected into its system prompt.
+
+---
+
+### Correction 5: Child Process Trace Correlation [Gemini, GPT]
+
+When the Temporal worker spawns `pi --mode json`, the child process doesn't know the
+`workflowId` or the OTEL trace context. Its XTDB events are orphaned.
+
+**Solution: Pass correlation context via environment variables**
+
+```typescript
+// temporal-worker/src/activities/spawn-agent.ts
+
+export async function spawnPiAgent(input: SpawnInput) {
+  return tracer.startActiveSpan(`agent.spawn.${input.agentRole}`, async (span) => {
+    // Extract OTEL trace context for propagation
+    const traceContext: Record<string, string> = {};
+    propagation.inject(context.active(), traceContext);
+
+    const proc = spawn("pi", ["--mode", "json", "-p", input.task, ...], {
+      cwd: input.cwd,
+      env: {
+        ...process.env,
+        // Pass correlation IDs to child process
+        TEMPORAL_WORKFLOW_ID: input.workflowId,
+        TEMPORAL_RUN_ID: input.runId,
+        PARENT_SESSION_ID: input.parentSessionId,
+        // Pass OTEL trace context (W3C Trace Context format)
+        TRACEPARENT: traceContext.traceparent || "",
+        TRACESTATE: traceContext.tracestate || "",
+      },
+    });
+    // ... rest of spawn logic
+  });
+}
+```
+
+**On the pi side:** The `xtdb-event-logger` extension can read these env vars and attach
+them to every XTDB event record:
+
+```typescript
+// In xtdb-event-logger, when building NormalizedEvent:
+const temporalWorkflowId = process.env.TEMPORAL_WORKFLOW_ID;
+const parentSessionId = process.env.PARENT_SESSION_ID;
+
+// Attach to every event if present
+if (temporalWorkflowId) {
+  event["temporal_workflow_id"] = temporalWorkflowId;
+  event["parent_session_id"] = parentSessionId;
+}
+```
+
+This closes the correlation gap: every XTDB event from a child agent session now links back
+to the Temporal workflow that spawned it.
+
+---
+
+### Correction 6: Dangling Workflow References [Gemini]
+
+If Temporal's DB is wiped or a workflow hits its retention limit, the pi session still has a
+`workflowId` in `appendEntry` pointing to nothing. Querying it would throw `NotFoundError`.
+
+**Solution: Defensive restoration on `session_start`**
+
+```typescript
+pi.on("session_start", async (_event, ctx) => {
+  // ... connect to Temporal ...
+
+  for (const entry of ctx.sessionManager.getEntries()) {
+    if (entry.type === "custom" && entry.customType === "workflow-temporal") {
+      const storedId = (entry as any).workflowId;
+
+      if (temporalClient) {
+        try {
+          const handle = temporalClient.workflow.getHandle(storedId);
+          const desc = await handle.describe();
+
+          if (desc.status.name === "COMPLETED" || desc.status.name === "TERMINATED") {
+            // Workflow finished or was terminated — clear reference
+            activeWorkflowId = null;
+            ctx.ui.notify(`Previous workflow ${storedId} is ${desc.status.name}`, "info");
+          } else {
+            // Workflow still running — restore
+            activeWorkflowId = storedId;
+            currentStepInfo = await handle.query("currentStep");
+          }
+        } catch (e) {
+          if (e.name === "WorkflowNotFoundError" || e.message?.includes("not found")) {
+            // Workflow no longer exists in Temporal
+            activeWorkflowId = null;
+            ctx.ui.notify(
+              `Previous workflow ${storedId} no longer exists in Temporal. ` +
+              `It may have been cleaned up by retention policy.`,
+              "warning"
+            );
+          } else {
+            // Some other error — fail open, clear reference
+            activeWorkflowId = null;
+          }
+        }
+      }
+    }
+  }
+});
+```
+
+---
+
+### Correction 7: Process Group Termination [Gemini]
+
+When Temporal cancels an activity, the current proposal sends `SIGTERM` to the pi child
+process. But pi may have spawned its own subprocesses (compilers, Docker containers, test
+runners). A single `SIGTERM` to the parent leaves children orphaned.
+
+**Solution: Kill the entire process group**
+
+```typescript
+// temporal-worker/src/activities/spawn-agent.ts
+
+const proc = spawn("pi", [...], {
+  cwd: input.cwd,
+  env: { ...process.env, ...correlationEnv },
+  detached: true,  // Create new process group (proc.pid is the group leader)
+});
+
+// On cancellation, kill the entire group
+TemporalContext.current().cancelled.catch(() => {
+  try {
+    // Negative PID kills the entire process group
+    process.kill(-proc.pid!, "SIGTERM");
+
+    // Grace period, then force kill
+    setTimeout(() => {
+      try { process.kill(-proc.pid!, "SIGKILL"); } catch {}
+    }, 5000);
+  } catch {}
+});
+```
+
+---
+
+### Correction 8: Fallback Reconciliation Policy [GPT, Gemini]
+
+The dual-mode design doesn't specify what happens when a workflow is *already running* in
+Temporal and then the server goes offline. Can the local session continue? How does state
+reconcile when the server comes back?
+
+**Policy decision: Fallback is for NEW work only.**
+
+- If a Temporal workflow is already in flight and the server becomes unreachable:
+  - The pi extension *keeps the workflowId reference* but marks it as `stale`
+  - `before_agent_start` uses the last cached `currentStepInfo` (fail-open, Correction 4)
+  - `/orchestrate` and `/workflow` commands that need to signal Temporal fail with a
+    user-visible error: "Temporal unavailable — workflow is paused"
+  - The agent can still work (it has cached prompt context), but workflow progression
+    (step advancement, task completion signaling) is blocked
+  - When Temporal comes back online, the extension reconnects and resumes signaling
+  - No local execution of new orchestration work during outage — only the Temporal-free
+    fallback mode for entirely new, unmanaged task runs
+
+- The alternative (allowing local execution to continue and then reconciling) was considered
+  and rejected because:
+  - Temporal's event-sourced state is authoritative — allowing divergent local state creates
+    split-brain problems that are harder to solve than the original orchestration problem
+  - The whole point of adopting Temporal is that *it* owns the state, not the extensions
+
+---
+
+### Correction 9: Dependency Placement Per Package [GPT]
+
+The proposal said "add `@temporalio/client` to harness package.json" but the repo is
+multi-package — each extension and service has its own `package.json`.
+
+**Correct placement:**
+
+| Package | Dependency | Why |
+|---------|-----------|-----|
+| `orchestrator/package.json` | `@temporalio/client` | Starts/signals/queries workflows |
+| `agent-spawner/package.json` | `@temporalio/client` | Starts delegation workflows from `delegate` tool |
+| `workflow-engine/package.json` | `@temporalio/client` | Starts/signals/queries step workflows |
+| `temporal-worker/package.json` | `@temporalio/worker`, `@temporalio/workflow`, `@temporalio/activity`, `@temporalio/interceptors-opentelemetry`, `@opentelemetry/*` | Worker process |
+| `ci-runner/package.json` | (none — ci-runner is *replaced* by temporal-worker) | — |
+
+The `@temporalio/client` package is ~2MB and has minimal transitive dependencies. It's
+safe to add per-extension without bloating the pi process.
+
+**Shared types** (WorkflowStep, StepResult, etc.) should go in a shared package:
+
+```
+lib/temporal-types/
+├── package.json       # { "name": "@harness/temporal-types" }
+├── workflows.ts       # Workflow input/output types
+├── activities.ts      # Activity input/output types
+└── signals.ts         # Signal/query type definitions
+```
+
+Both pi extensions and the temporal-worker import from `@harness/temporal-types`.
+
+---
+
+### Correction 10: XTDB Schema Migration [GPT]
+
+Adding `temporal_workflow_id` to existing XTDB tables requires a migration.
+
+XTDB v2 uses schema-on-write — no ALTER TABLE needed. Simply start writing the new field
+and it becomes available. Existing rows will have `NULL` for `temporal_workflow_id`.
+
+However, for queries that join on this field, add an index:
+
+```sql
+-- Run via psql against XTDB primary (port 5433)
+-- XTDB v2 indexes are created implicitly on schema registration
+-- Just ensure the field is declared in the schema seed:
+
+-- In scripts/seed-schema.ts, add to relevant table definitions:
+ALTER TABLE delegations ADD COLUMN temporal_workflow_id TEXT;
+ALTER TABLE workflow_runs ADD COLUMN temporal_workflow_id TEXT;
+ALTER TABLE workflow_step_runs ADD COLUMN temporal_workflow_id TEXT;
+ALTER TABLE ci_runs ADD COLUMN temporal_workflow_id TEXT;
+```
+
+---
+
+### Correction 11: CI Hook Environment [GPT]
+
+The current Soft Serve post-receive hook is a bash script using `wget`. The proposal assumed
+Node.js is available in the hook environment, which isn't guaranteed.
+
+**Solution: Keep the hook as bash, just change the target**
+
+Instead of writing a JSON file to the queue directory, the bash hook POSTs to a new HTTP
+endpoint on the temporal-worker (or a lightweight trigger service):
+
+```bash
+#!/bin/bash
+# hooks/post-receive — still bash, no Node.js needed
+
+while read oldrev newrev refname; do
+  branch=$(echo "$refname" | sed 's|refs/heads/||')
+  repo=$(basename "$PWD" .git)
+
+  # POST to Temporal trigger endpoint instead of writing queue file
+  curl -s -X POST "http://temporal-trigger:3340/ci/start" \
+    -H "Content-Type: application/json" \
+    -d "{\"repo\": \"$repo\", \"commitSha\": \"$newrev\", \"branch\": \"$branch\"}"
+done
+```
+
+The trigger endpoint is a tiny Hono server in the temporal-worker that starts the Temporal
+workflow:
+
+```typescript
+// temporal-worker/src/trigger-server.ts
+import { Hono } from "hono";
+import { Client } from "@temporalio/client";
+
+const app = new Hono();
+const client = new Client({ /* connection */ });
+
+app.post("/ci/start", async (c) => {
+  const { repo, commitSha, branch } = await c.req.json();
+  await client.workflow.start("ciPipeline", {
+    workflowId: `ci-${repo}-${commitSha.slice(0, 8)}`,
+    taskQueue: "ci-pipeline",
+    args: [{ repoPath: `/repos/${repo}`, commitSha, branch }],
+  });
+  return c.json({ status: "started" });
+});
+
+export { app };
+```
+
+---
+
+### Correction 12: OTEL Bootstrap in Pi Process [GPT]
+
+Multiple extensions (orchestrator, agent-spawner, workflow-engine) run in the *same* pi
+process. If each initializes its own OTEL SDK, you get duplicate exporters and corrupted
+traces.
+
+**Solution: Single OTEL bootstrap as a dedicated extension**
+
+Create a new extension that initializes OTEL once for the entire pi process:
+
+```typescript
+// otel-bootstrap/index.ts — loads FIRST (alphabetical ordering: "aa-otel-bootstrap")
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { NodeSDK } from "@opentelemetry/sdk-node";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-grpc";
+import { Resource } from "@opentelemetry/resources";
+
+let sdk: NodeSDK | null = null;
+
+export default function (pi: ExtensionAPI) {
+  pi.on("session_start", async () => {
+    if (sdk) return; // already initialized
+
+    const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+    if (!endpoint) return; // OTEL not configured, skip
+
+    sdk = new NodeSDK({
+      resource: new Resource({
+        "service.name": "harness-pi-extension",
+        "pi.session": "unknown", // updated below
+      }),
+      traceExporter: new OTLPTraceExporter({ url: endpoint }),
+    });
+
+    sdk.start();
+  });
+
+  pi.on("session_shutdown", async () => {
+    if (sdk) {
+      await sdk.shutdown();
+      sdk = null;
+    }
+  });
+}
+```
+
+All other extensions use `@opentelemetry/api` (which is stateless — it reads from the
+global tracer provider that the bootstrap extension registered). They don't need their own
+SDK initialization.
+
+---
+
+### Correction 13: Docker Compose Is Additive, Not Replacement [GPT]
+
+The proposal's docker-compose snippet appeared to *replace* the existing file. It should be
+additive. The existing services (xtdb-primary, xtdb-replica, redpanda, garage, keycloak,
+caddy, soft-serve, qlever, harness-ui, etc.) all stay. The new services get added.
+
+**Recommendation:** Use a `docker-compose.override.yml` or a separate
+`docker-compose.temporal.yml` that extends the base:
+
+```bash
+# Start everything:
+docker compose -f docker-compose.yml -f docker-compose.temporal.yml up -d
+```
+
+Or add the Temporal + OTEL services directly to the existing `docker-compose.yml` under a
+clear section comment. Either way, no existing services are removed or modified.
+
+**Caddy routing addition** (for Temporal UI and Grafana):
+
+```
+# In Caddyfile, add:
+:8233 {
+    reverse_proxy temporal-ui:8080
+}
+
+:3001 {
+    reverse_proxy grafana:3000
+}
+```
+
+---
+
+### Correction 14: Testing Strategy [GPT]
+
+The original proposal had no testing strategy.
+
+**Temporal-specific testing approach:**
+
+1. **Temporal Test Server** — The `@temporalio/testing` package provides an in-process
+   Temporal server for unit tests. No Docker needed:
+
+```typescript
+// temporal-worker/test/workflows/agent-delegation.test.ts
+import { TestWorkflowEnvironment } from "@temporalio/testing";
+import { agentDelegation } from "../../src/workflows/agent-delegation";
+
+describe("agentDelegation workflow", () => {
+  let env: TestWorkflowEnvironment;
+
+  beforeAll(async () => {
+    env = await TestWorkflowEnvironment.createLocal();
+  });
+
+  afterAll(async () => {
+    await env.teardown();
+  });
+
+  it("retries on agent failure", async () => {
+    let attempts = 0;
+    const worker = await env.createWorker({
+      taskQueue: "test-queue",
+      activities: {
+        spawnPiAgent: async () => {
+          attempts++;
+          if (attempts < 3) throw new Error("Agent crashed");
+          return { output: "done", exitCode: 0, sessionId: "test-sess" };
+        },
+        recordToXtdb: async () => {},
+      },
+    });
+
+    const result = await worker.execute(agentDelegation, {
+      args: [{ agentRole: "worker", task: "test", cwd: "/tmp", parentSessionId: "p1" }],
+    });
+
+    expect(attempts).toBe(3);
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("times out activity with no heartbeat", async () => {
+    // Use env.time.skipTime() to fast-forward through timeouts
+    // without actually waiting
+  });
+});
+```
+
+2. **Activity unit tests** — Test `spawnPiAgent` independently with a mock pi subprocess.
+
+3. **Integration tests** — Use `docker compose -f docker-compose.temporal.yml up` to start
+   Temporal and run end-to-end workflow tests against it. These go in the existing
+   `scripts/test-contracts.sh` framework.
+
+4. **Extension tests** — Existing handler-tests.ts pattern: mock the Temporal client and
+   verify that extensions call the right methods (start, signal, query) at the right hooks.
+
+---
+
+## Summary: What GPT and Gemini Found That We Missed
+
+| Gap | Who Found | Severity | Status |
+|-----|-----------|----------|--------|
+| Observability baseline understated (42 tables, Pino, etc.) | GPT | Medium | Corrected (Correction 1) |
+| Payload encryption missing | Both | Critical | Corrected (Correction 2) |
+| Worker concurrency limits missing | Both | Critical | Corrected (Correction 3) |
+| Hot path query timeout in before_agent_start | GPT | High | Corrected (Correction 4) |
+| Child process trace correlation broken | Both | High | Corrected (Correction 5) |
+| Dangling workflow references | Gemini | Medium | Corrected (Correction 6) |
+| Process group termination for zombie prevention | Gemini | Medium | Corrected (Correction 7) |
+| Fallback reconciliation undefined | Both | High | Corrected (Correction 8) |
+| Dependency placement too coarse | GPT | Medium | Corrected (Correction 9) |
+| XTDB schema migration unspecified | GPT | Medium | Corrected (Correction 10) |
+| CI hook assumes Node.js environment | GPT | Medium | Corrected (Correction 11) |
+| OTEL bootstrap duplication in shared process | GPT | Medium | Corrected (Correction 12) |
+| Docker compose replacement vs additive | GPT | Medium | Corrected (Correction 13) |
+| No testing strategy | GPT | High | Corrected (Correction 14) |
+
+**What neither review challenged:**
+- The split-brain architecture itself (extensions as clients, not replacements)
+- The dual-mode fallback design
+- The fresh-session retry semantics
+- The JSON-LD workflow loading staying in pi
+- The three-layer observability model (XTDB + Temporal + OTEL)
+- The phased migration approach
+
+These are sound and validated by both external reviews.
