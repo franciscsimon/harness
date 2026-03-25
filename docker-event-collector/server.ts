@@ -14,6 +14,9 @@ import { getAlertStats } from "./alerting.ts";
 import { getCollectorStats, startCollector, stopCollector } from "./collector.ts";
 import { getLatestStats, startStatsPoller } from "./stats-poller.ts";
 import { getWriterStats, startWriter, stopWriter } from "./writer.ts";
+import { connectXtdb } from "../lib/db.ts";
+import { initMetricsDb } from "./stats-poller.ts";
+try { const _sql = connectXtdb({ max: 1 }); initMetricsDb(_sql); } catch {}
 import { captureError } from "../lib/error-groups.ts";
 
 const PORT = Number(process.env.COLLECTOR_PORT ?? "3338");

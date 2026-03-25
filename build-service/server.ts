@@ -42,6 +42,12 @@ let lastBuildId: string | null = null;
 
 // Read-only connection for queries
 const sql = connectXtdb({ max: 2 });
+import { initEnrichment } from "../lib/enrich.ts";
+import { initApiMetricsDb } from "../lib/api-metrics.ts";
+import { initSlowQueryDb } from "../lib/query-timer.ts";
+initEnrichment(sql);
+initApiMetricsDb(sql);
+initSlowQueryDb(sql);
 
 // ─── Health ──────────────────────────────────────────────────────
 

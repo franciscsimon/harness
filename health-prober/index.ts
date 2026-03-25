@@ -104,6 +104,8 @@ async function main(): Promise<void> {
   let sql: ReturnType<typeof connectXtdb> | null = null;
   try {
     sql = connectXtdb({ max: 2 });
+    const { initEnrichment } = await import("../lib/enrich.ts");
+    initEnrichment(sql);
   } catch (e: any) {
     log.warn({ err: e.message }, "XTDB not available, will log results only");
   }

@@ -78,3 +78,6 @@ export function registerGraphTools(ctx: HookContext) {
     },
   };
 }
+
+// Auto-register on import
+registerGraphTools();

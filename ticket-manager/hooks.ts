@@ -79,3 +79,6 @@ export function registerTicketTools(ctx: HookContext) {
     },
   };
 }
+
+// Auto-register on import
+registerTicketTools();

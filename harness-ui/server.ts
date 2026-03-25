@@ -44,6 +44,16 @@ import { captureError } from "../lib/error-groups.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 
+import { connectXtdb } from "../lib/db.ts";
+import { initEnrichment } from "../lib/enrich.ts";
+import { initApiMetricsDb, persistApiMetric } from "../lib/api-metrics.ts";
+import { initRateLimitDb, recordRateLimitEvent } from "../lib/rate-limiter.ts";
+import { initSlowQueryDb } from "../lib/query-timer.ts";
+const sql = connectXtdb({ max: 3 });
+initEnrichment(sql);
+initApiMetricsDb(sql);
+initRateLimitDb(sql);
+initSlowQueryDb(sql);
 const UI_PORT = Number(process.env.UI_PORT ?? "3336");
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const log = createLogger("harness-ui");

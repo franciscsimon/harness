@@ -66,7 +66,13 @@ export function scanImage(image: string): ScanResult {
       log.info({ image, high: counts.high, medium: counts.medium }, "Image scan passed");
     }
 
-    return { image, vulnerabilities, ...counts, passed, scanMs: Date.now() - start };
+    const scanResult = { image, vulnerabilities, ...counts, passed, scanMs: Date.now() - start };
+    // Persist to XTDB
+    import("../lib/db.ts").then(({ connectXtdb }) => {
+      const dbSql = connectXtdb({ max: 1 });
+      persistScanResult(dbSql, image, { critical: counts.criticalCount, high: counts.highCount, medium: counts.mediumCount, low: counts.lowCount }).then(() => dbSql.end()).catch(() => {});
+    }).catch(() => {});
+    return scanResult;
   } catch (e: any) {
     if (e.message?.includes("not found") || e.message?.includes("command not found")) {
       log.warn({ image }, "Trivy not available — skipping scan");

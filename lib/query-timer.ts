@@ -49,6 +49,12 @@ export function trackQuery(query: string, ms: number, log?: Logger): void {
 
 // §2 — Persist slow queries to XTDB
 let _slowSql: any = null;
+// Auto-persist slow queries when threshold exceeded
+const SLOW_THRESHOLD_MS = 500;
+function _maybeRecordSlow(query: string, durationMs: number, source: string): void {
+  if (durationMs >= SLOW_THRESHOLD_MS) recordSlowQuery(query, durationMs, source).catch(() => {});
+}
+
 export function initSlowQueryDb(sql: any): void { _slowSql = sql; }
 
 export async function recordSlowQuery(

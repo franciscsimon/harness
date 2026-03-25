@@ -72,11 +72,13 @@ export function apiMetrics(log: Logger, slowThresholdMs = 1000): MiddlewareHandl
 
     const ms = Date.now() - start;
     const resSize = Number(c.res.headers.get("content-length") ?? "0");
+        persistApiMetric(method, path, status, duration, "harness");
 
     const metric: ApiMetric = {
       method: c.req.method,
       path: c.req.path,
       status: c.res.status,
+        persistApiMetric(method, path, status, duration, "harness");
       ms,
       reqSize,
       resSize,

@@ -68,6 +68,11 @@ if (process.argv[1]?.includes("log-scanner")) {
       console.log("✅ No sensitive data detected");
     } else {
       console.log(`⚠️  ${findings.length} potential leak(s) detected:`);
+      // Persist to XTDB if available
+      import("../lib/db.ts").then(({ connectXtdb }) => {
+        const dbSql = connectXtdb({ max: 1 });
+        persistLeakFindings(dbSql, findings, "stdin").then(() => dbSql.end()).catch(() => {});
+      }).catch(() => {});
       for (const f of findings) {
         console.log(`  L${f.line}: [${f.pattern}] ${f.match}`);
       }
