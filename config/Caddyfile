@@ -30,7 +30,6 @@
 
   # ── Temporal UI ───────────────────────────────────────────────
   handle /temporal/* {
-    uri strip_prefix /temporal
     reverse_proxy temporal-ui:8080
   }
 
