@@ -93,16 +93,17 @@ export async function recordCIRunToXtdb(input: {
     });
 
     try {
+      // XTDB pgwire requires explicit types — use sql.typed() helpers
+      const t = (v: string | null) => sql.typed(v as any, 25);  // text OID
+      const n = (v: number | null) => sql.typed(v as any, 20);  // bigint OID
       await sql`INSERT INTO ci_runs (
         _id, repo, commit_hash, ref, status,
-        steps_json, duration_ms, pipeline_jsonld, temporal_workflow_id,
-        ts, _valid_from
+        steps_json, duration_ms, temporal_workflow_id, ts, _valid_from
       ) VALUES (
-        ${runId}, ${input.repo}, ${input.commitSha}, ${input.branch}, ${input.status},
-        ${JSON.stringify(input.steps)}, ${input.totalDurationMs},
-        ${input.pipelineJsonLd ? JSON.stringify(input.pipelineJsonLd) : null},
-        ${input.temporalWorkflowId ?? null},
-        ${now}, ${new Date().toISOString()}
+        ${t(runId)}, ${t(input.repo)}, ${t(input.commitSha)}, ${t(input.branch)}, ${t(input.status)},
+        ${t(JSON.stringify(input.steps))}, ${n(input.totalDurationMs)},
+        ${t(input.temporalWorkflowId ?? null)},
+        ${n(now)}, ${t(new Date().toISOString())}
       )`;
 
       span.setAttribute("ci.run_id", runId);
