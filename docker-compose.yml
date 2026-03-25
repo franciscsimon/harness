@@ -436,7 +436,7 @@ services:
     ports:
       - "7233:7233"
     environment:
-      - DB=postgresql
+      - DB=postgres12_pgx
       - DB_PORT=5432
       - POSTGRES_USER=temporal
       - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD:-temporal}
@@ -473,7 +473,7 @@ services:
       <<: *default-logging
 
   temporal-ui:
-    image: temporalio/ui:2.31
+    image: temporalio/ui:latest
     container_name: temporal-ui
     ports:
       - "8233:8080"
