@@ -33,6 +33,13 @@ import { renderOps } from "./pages/ops.ts";
 import { renderSessionDetail } from "./pages/session-detail.ts";
 import { renderSessions } from "./pages/sessions.ts";
 import { renderStream } from "./pages/stream.ts";
+import {
+  healthPage, errorsPage, metricsPage,
+  scansPage, leaksPage, auditPage,
+  complexityPage, reviewsPage,
+  ticketsPage, ticketDetailPage, ticketListPage, burndownPage,
+  graphExplorePage, graphEntityPage, graphTimelinePage, graphImpactPage,
+} from "./pages/html-pages.ts";
 import { captureError } from "../lib/error-groups.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
@@ -575,6 +582,66 @@ app.post("/api/auth/delete", async (c) => {
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
   }
+});
+
+// ── Cat 3: HTML Page Routes ────────────────────────────────────
+
+// Monitoring
+app.get("/monitoring/health", (c) => healthPage(c));
+app.get("/monitoring/errors", (c) => errorsPage(c));
+app.get("/monitoring/metrics", (c) => metricsPage(c));
+
+// Security
+app.get("/security/scans", (c) => scansPage(c));
+app.get("/security/leaks", (c) => leaksPage(c));
+app.get("/security/audit", (c) => auditPage(c));
+
+// Security APIs (data sources for pages)
+app.get("/api/security/leaks", async (c) => {
+  try {
+    const rows = await sql`SELECT * FROM log_leak_detections ORDER BY ts DESC LIMIT 100`;
+    return c.json(rows);
+  } catch (e) { return c.json({ error: (e as Error).message }, 500); }
+});
+app.get("/api/security/audit", async (c) => {
+  try {
+    const rows = await sql`SELECT * FROM dependency_audits ORDER BY ts DESC LIMIT 100`;
+    return c.json(rows);
+  } catch (e) { return c.json({ error: (e as Error).message }, 500); }
+});
+app.get("/api/security/scans", async (c) => {
+  try {
+    const rows = await sql`SELECT * FROM image_scans ORDER BY ts DESC LIMIT 100`;
+    return c.json(rows);
+  } catch (e) { return c.json({ error: (e as Error).message }, 500); }
+});
+
+// Quality
+app.get("/quality/complexity", (c) => complexityPage(c));
+app.get("/quality/reviews", (c) => reviewsPage(c));
+
+// Tickets
+app.get("/tickets", (c) => ticketsPage(c));
+app.get("/tickets/list", (c) => ticketListPage(c));
+app.get("/tickets/burndown", (c) => burndownPage(c));
+app.get("/tickets/:id", (c) => ticketDetailPage(c));
+
+// Knowledge Graph
+app.get("/graph/explore", (c) => graphExplorePage(c));
+app.get("/graph/timeline", (c) => graphTimelinePage(c));
+app.get("/graph/entity/:id", (c) => graphEntityPage(c));
+app.get("/graph/impact/:id", (c) => graphImpactPage(c));
+
+// Serve static files
+app.get("/static/:file", async (c) => {
+  const file = c.req.param("file");
+  try {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const content = readFileSync(join(import.meta.dirname ?? ".", "static", file), "utf-8");
+    const ct = file.endsWith(".js") ? "application/javascript" : file.endsWith(".css") ? "text/css" : "text/plain";
+    return new Response(content, { headers: { "content-type": ct } });
+  } catch { return c.json({ error: "Not found" }, 404); }
 });
 
 // ── Start ──────────────────────────────────────────────────────────
