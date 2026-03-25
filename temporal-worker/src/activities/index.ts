@@ -8,7 +8,7 @@ export { executeDockerStep } from "./docker-execution.js";
 export { recordToXtdb, recordCIRunToXtdb } from "./xtdb-persistence.js";
 
 // Phase 3A: Agent spawner activities
-// export { spawnPiAgent } from "./spawn-agent.js";
+export { spawnPiAgent } from "./spawn-agent.js";
 
 // Phase 3B: Workflow loader
 // export { loadWorkflowDefinition } from "./workflow-loader.js";

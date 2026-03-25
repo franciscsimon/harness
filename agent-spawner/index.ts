@@ -7,6 +7,22 @@ import { JSONLD_CONTEXT } from "../lib/jsonld/context.ts";
 import { ids } from "../lib/jsonld/ids.ts";
 import { discoverAgents } from "./agents.ts";
 
+// ── Temporal client (optional — falls back to direct spawn) ──
+let temporalClient: any = null;
+
+async function connectTemporal(): Promise<void> {
+  try {
+    const { Connection, Client } = await import("@temporalio/client");
+    const address = process.env.TEMPORAL_ADDRESS ?? "localhost:7233";
+    const connection = await Connection.connect({ address });
+    temporalClient = new Client({ connection });
+    console.log(`[agent-spawner] Temporal connected at ${address}`);
+  } catch {
+    temporalClient = null;
+    // Silent — Temporal is optional, fall back to direct spawn
+  }
+}
+
 // ─── Agent Spawner Extension ──────────────────────────────────────
 // Spawn separate pi sessions for parallel/background work.
 // Pattern: Background Agent — "Spawn agents for parallel tasks"
@@ -84,7 +100,7 @@ export default function (pi: ExtensionAPI) {
     } catch (_err) {}
   }
 
-  // ── Restore state ──
+  // ── Restore state + connect Temporal ──
   pi.on("session_start", async (_event, ctx) => {
     agents = [];
     nextId = 1;
@@ -97,6 +113,13 @@ export default function (pi: ExtensionAPI) {
     if (agents.length > 0) {
       ctx.ui.setStatus("agents", `🔀 ${agents.length} agents`);
     }
+    // Connect Temporal (non-blocking — falls back to direct spawn)
+    connectTemporal().catch(() => {});
+  });
+
+  pi.on("session_shutdown", async () => {
+    // Don't close Temporal client — workflows outlive sessions
+    temporalClient = null;
   });
 
   // ── /spawn command ──
@@ -240,22 +263,56 @@ export default function (pi: ExtensionAPI) {
         agentName = found.name;
       }
 
+      const parentSession = ctx.sessionManager?.getSessionFile?.() ?? "unknown";
+
       onUpdate?.({
-        content: [{ type: "text", text: `🔀 Delegating to ${agentName}...` }],
+        content: [{ type: "text", text: `🔀 Delegating to ${agentName}${temporalClient ? " (Temporal)" : ""}...` }],
         details: { agent: agentName, status: "running" },
       });
 
-      const result = await runSubagent(params.task, agentPrompt);
+      let output: string;
+      let exitCode: number;
+      let childSessionId: string | null = null;
+      let workflowId: string | undefined;
+
+      if (temporalClient) {
+        // ── TEMPORAL PATH: durable execution with retry ──
+        workflowId = `delegate-${agentName}-${Date.now()}`;
+        try {
+          const handle = await temporalClient.workflow.start("agentDelegation", {
+            workflowId,
+            taskQueue: "agent-execution",
+            args: [{
+              agentRole: agentName,
+              task: params.task,
+              cwd: ctx.cwd ?? process.cwd(),
+              parentSessionId: parentSession,
+            }],
+          });
+          const result = await handle.result();
+          output = result.output;
+          exitCode = result.exitCode;
+          childSessionId = result.sessionId;
+        } catch (err: any) {
+          output = `Temporal workflow failed: ${err.message}`;
+          exitCode = 1;
+        }
+      } else {
+        // ── FALLBACK: direct spawn (no Temporal) ──
+        const result = await runSubagent(params.task, agentPrompt);
+        output = result.output;
+        exitCode = result.exitCode;
+        childSessionId = result.childSessionId;
+      }
 
       // Persist delegation lineage to XTDB
-      const parentSession = ctx.sessionManager?.getSessionFile?.() ?? "unknown";
-      const status = result.exitCode === 0 ? "success" : "failure";
-      persistDelegation(parentSession, result.childSessionId, agentName, params.task, status, result.exitCode);
+      const status = exitCode === 0 ? "success" : "failure";
+      persistDelegation(parentSession, childSessionId, agentName, params.task, status, exitCode);
 
-      const icon = result.exitCode === 0 ? "✅" : "⚠️";
+      const icon = exitCode === 0 ? "✅" : "⚠️";
       return {
-        content: [{ type: "text", text: `${icon} ${agentName} (exit ${result.exitCode}):\n\n${result.output}` }],
-        details: { agent: agentName, exitCode: result.exitCode, childSessionId: result.childSessionId },
+        content: [{ type: "text", text: `${icon} ${agentName} (exit ${exitCode}):\n\n${output}` }],
+        details: { agent: agentName, exitCode, childSessionId, workflowId },
       };
     },
     renderCall(args: any, theme: any) {
