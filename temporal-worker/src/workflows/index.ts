@@ -10,7 +10,7 @@ export { ciPipeline } from "./ci-pipeline.js";
 export { agentDelegation } from "./agent-delegation.js";
 
 // Phase 3B: Agent workflow (multi-step)
-// export { agentWorkflow } from "./agent-workflow.js";
+export { agentWorkflow } from "./agent-workflow.js";
 
 // Phase 4: Orchestration workflow
-// export { orchestrationWorkflow } from "./orchestration.js";
+export { orchestrationWorkflow } from "./orchestration.js";
