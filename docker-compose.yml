@@ -67,8 +67,8 @@ services:
     environment:
       GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
       GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:-admin-secret}
-    # Note: scratch image has no shell — uses garage.toml directly for now
-    entrypoint: ["/bin/sh", "/garage-entrypoint.sh"]
+    # Scratch image has no shell — run garage binary directly with config
+    entrypoint: ["/garage", "server"]
 
   # ── Bootstrap Garage: layout + bucket + API key ────────────────
   garage-init:
@@ -492,7 +492,7 @@ services:
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
       - XTDB_HOST=xtdb-primary
-      - XTDB_PORT=5433
+      - XTDB_PORT=5432
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
       - OTEL_SERVICE_NAME=harness-temporal-worker
     volumes:
