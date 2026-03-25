@@ -131,3 +131,38 @@ for (const phase of phases) {
 if (pending.length > 0) {
   console.log(`\n⚠️  ${pending.length} items still pending`);
 }
+
+// §6.3 — Update PROGRESS-GAPS.md checkboxes
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+function updateGapsFile(): void {
+  const gapsPath = join(import.meta.dirname ?? ".", "..", "PROGRESS-GAPS.md");
+  let content: string;
+  try {
+    content = readFileSync(gapsPath, "utf-8");
+  } catch {
+    console.log("PROGRESS-GAPS.md not found, skipping checkbox update");
+    return;
+  }
+
+  let updated = 0;
+  for (const r of results) {
+    if (!r.done) continue;
+    // Try to check off matching lines (fuzzy match on item name)
+    const escapedItem = r.item.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`^- \\[ \\] .*${escapedItem}`, "gim");
+    const newContent = content.replace(pattern, (match) => {
+      updated++;
+      return match.replace("- [ ]", "- [x]");
+    });
+    content = newContent;
+  }
+
+  if (updated > 0) {
+    writeFileSync(gapsPath, content);
+    console.log(`\n✏️  Updated ${updated} checkboxes in PROGRESS-GAPS.md`);
+  }
+}
+
+updateGapsFile();

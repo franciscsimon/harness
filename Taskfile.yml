@@ -598,3 +598,20 @@ tasks:
       - cp ci-runner/hooks/post-receive {{.SS_DATA}}/hooks/post-receive
       - chmod +x {{.SS_DATA}}/hooks/post-receive
       - echo "✅ Soft Serve CI hook installed at {{.SS_DATA}}/hooks/post-receive"
+
+  progress:sync:
+    desc: Reconcile PROGRESS-GAPS.md with codebase state
+    cmds:
+      - npx jiti scripts/progress-sync.ts
+
+  logs:export:
+    desc: Export and rotate Docker logs
+    cmds:
+      - mkdir -p logs/archive
+      - for svc in $(docker compose ps --format '{{.Name}}'); do docker logs "$svc" > "logs/archive/${svc}-$(date +%Y%m%d).log" 2>&1; done
+      - echo "Logs exported to logs/archive/"
+
+  audit:xtdb:
+    desc: Run npm audit and persist to XTDB
+    cmds:
+      - npx jiti scripts/audit-to-xtdb.ts

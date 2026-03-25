@@ -670,6 +670,82 @@ app.get("/api/tickets/stats", async (c) => {
   }
 });
 
+// ── Cat 5: Ticket Metrics APIs ──────────────────────────────────
+
+app.get("/api/tickets/board/:projectId", async (c) => {
+  try {
+    const projectId = c.req.param("projectId");
+    const rows = await sql`SELECT * FROM tickets WHERE project_id = ${projectId} ORDER BY position ASC, ts DESC`;
+    const columns = ["open", "in_progress", "review", "done", "closed"];
+    const board: Record<string, any[]> = {};
+    for (const col of columns) board[col] = [];
+    for (const row of rows) board[row.status]?.push(row) ?? (board.open.push(row));
+    return c.json({ projectId, columns, board });
+  } catch (e) { return c.json({ error: (e as Error).message }, 500); }
+});
+
+app.get("/api/tickets/metrics/throughput", async (c) => {
+  try {
+    const rows = await sql`
+      SELECT date_trunc('week', to_timestamp(ts / 1000)) as week, COUNT(*)::int as count
+      FROM tickets WHERE status IN ('done', 'closed')
+      GROUP BY week ORDER BY week DESC LIMIT 12`;
+    return c.json(rows);
+  } catch (e) { return c.json({ error: (e as Error).message }, 500); }
+});
+
+app.get("/api/tickets/metrics/cycle-time", async (c) => {
+  try {
+    // Cycle time = time between first in_progress event and done event
+    const rows = await sql`
+      SELECT t._id, t.title,
+        (SELECT MIN(te.ts) FROM ticket_events te WHERE te.ticket_id = t._id AND te.event_type = 'status_change' AND te.details_json LIKE '%in_progress%') as started,
+        (SELECT MIN(te.ts) FROM ticket_events te WHERE te.ticket_id = t._id AND te.event_type = 'status_change' AND te.details_json LIKE '%done%') as finished
+      FROM tickets t WHERE t.status IN ('done', 'closed') LIMIT 100`;
+    const cycles = rows.filter((r: any) => r.started && r.finished)
+      .map((r: any) => ({ id: r._id, title: r.title, cycleMs: Number(r.finished) - Number(r.started) }));
+    cycles.sort((a: any, b: any) => a.cycleMs - b.cycleMs);
+    const p50 = cycles[Math.floor(cycles.length * 0.5)]?.cycleMs ?? 0;
+    const p95 = cycles[Math.floor(cycles.length * 0.95)]?.cycleMs ?? 0;
+    return c.json({ count: cycles.length, p50Ms: p50, p95Ms: p95, items: cycles.slice(0, 20) });
+  } catch (e) { return c.json({ error: (e as Error).message }, 500); }
+});
+
+app.get("/api/tickets/metrics/lead-time", async (c) => {
+  try {
+    const rows = await sql`
+      SELECT _id, title, ts as created,
+        (SELECT MIN(te.ts) FROM ticket_events te WHERE te.ticket_id = tickets._id AND te.event_type = 'status_change' AND te.details_json LIKE '%done%') as finished
+      FROM tickets WHERE status IN ('done', 'closed') LIMIT 100`;
+    const leads = rows.filter((r: any) => r.finished)
+      .map((r: any) => ({ id: r._id, title: r.title, leadMs: Number(r.finished) - Number(r.created) }));
+    leads.sort((a: any, b: any) => a.leadMs - b.leadMs);
+    const p50 = leads[Math.floor(leads.length * 0.5)]?.leadMs ?? 0;
+    const p95 = leads[Math.floor(leads.length * 0.95)]?.leadMs ?? 0;
+    return c.json({ count: leads.length, p50Ms: p50, p95Ms: p95, items: leads.slice(0, 20) });
+  } catch (e) { return c.json({ error: (e as Error).message }, 500); }
+});
+
+app.get("/api/tickets/metrics/wip", async (c) => {
+  try {
+    const rows = await sql`SELECT project_id, COUNT(*)::int as count FROM tickets WHERE status = 'in_progress' GROUP BY project_id`;
+    return c.json(rows);
+  } catch (e) { return c.json({ error: (e as Error).message }, 500); }
+});
+
+app.get("/api/tickets/metrics/burndown", async (c) => {
+  try {
+    const projectId = c.req.query("projectId");
+    const where = projectId ? sql`WHERE project_id = ${projectId}` : sql``;
+    const created = await sql`SELECT date_trunc('day', to_timestamp(ts / 1000)) as day, COUNT(*)::int as count FROM tickets ${where} GROUP BY day ORDER BY day`;
+    const closed = await sql`
+      SELECT date_trunc('day', to_timestamp(te.ts / 1000)) as day, COUNT(*)::int as count
+      FROM ticket_events te WHERE te.event_type = 'status_change' AND te.details_json LIKE '%done%'
+      GROUP BY day ORDER BY day`;
+    return c.json({ created, closed });
+  } catch (e) { return c.json({ error: (e as Error).message }, 500); }
+});
+
 // ── Phase D: Knowledge Graph Pages ─────────────────────────────
 
 app.get("/api/graph/entity/:id", async (c) => {

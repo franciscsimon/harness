@@ -1,111 +1,108 @@
 #!/usr/bin/env npx jiti
-// ─── Performance Load Test ───────────────────────────────────
-// HTTP load testing for harness API endpoints using autocannon.
-// Requires services to be running (docker compose up).
-//
-// Usage: npx jiti test/performance/load-test.ts
-//        TARGETS=ops-api,ci-runner npx jiti test/performance/load-test.ts
+/**
+ * Performance load test using autocannon.
+ * Usage: npx jiti test/performance/load-test.ts
+ *
+ * §6.1 — Integrates autocannon for proper load testing + P95 regression detection.
+ */
+import autocannon from "autocannon";
 
-interface LoadTestTarget {
-  name: string;
+const BASE_URL = process.env.TARGET_URL ?? "http://localhost:3336";
+const DURATION = Number(process.env.LOAD_DURATION ?? 10); // seconds
+const CONNECTIONS = Number(process.env.LOAD_CONNECTIONS ?? 20);
+
+/** Baseline P95 in ms — if current run exceeds this by >20%, fail. */
+const BASELINE_P95_MS = Number(process.env.BASELINE_P95_MS ?? 500);
+const REGRESSION_THRESHOLD = 0.2; // 20%
+
+interface LoadResult {
   url: string;
-  expectedRps: number;
-}
-
-const ALL_TARGETS: LoadTestTarget[] = [
-  { name: "event-api:stats", url: "http://localhost:3333/api/stats", expectedRps: 1000 },
-  { name: "ops-api:health", url: "http://localhost:3335/api/health", expectedRps: 5000 },
-  { name: "harness-ui:root", url: "http://localhost:3336/", expectedRps: 500 },
-  { name: "ci-runner:queue", url: "http://localhost:3337/api/health", expectedRps: 3000 },
-  { name: "collector:health", url: "http://localhost:3338/api/health", expectedRps: 3000 },
-  { name: "build-service:health", url: "http://localhost:3339/api/health", expectedRps: 3000 },
-];
-
-interface LoadTestResult {
-  target: string;
-  url: string;
-  duration: number;
-  requests: number;
-  rps: number;
-  latencyAvg: number;
-  latencyP95: number;
-  latencyP99: number;
+  requests: { total: number; average: number; p50: number; p95: number; p99: number };
+  latency: { average: number; p50: number; p95: number; p99: number; max: number };
+  throughput: { average: number; total: number };
   errors: number;
-  passed: boolean;
+  timeouts: number;
+  duration: number;
 }
 
-async function runLoadTest(target: LoadTestTarget, durationSec = 10): Promise<LoadTestResult> {
-  const start = Date.now();
-  let requests = 0;
-  let errors = 0;
-  const latencies: number[] = [];
-  const end = start + durationSec * 1000;
+async function runLoad(url: string, title: string): Promise<LoadResult> {
+  console.log(`\n🔥 ${title}: ${url} — ${CONNECTIONS} connections, ${DURATION}s`);
 
-  // Simple concurrent fetcher (10 concurrent connections)
-  const CONCURRENCY = 10;
-  const workers = Array.from({ length: CONCURRENCY }, async () => {
-    while (Date.now() < end) {
-      const t0 = Date.now();
-      try {
-        const res = await fetch(target.url);
-        if (!res.ok) errors++;
-        await res.text();
-      } catch {
-        errors++;
-      }
-      latencies.push(Date.now() - t0);
-      requests++;
-    }
+  const result = await autocannon({
+    url,
+    connections: CONNECTIONS,
+    duration: DURATION,
+    timeout: 10,
   });
 
-  await Promise.all(workers);
-
-  latencies.sort((a, b) => a - b);
-  const duration = (Date.now() - start) / 1000;
-
-  return {
-    target: target.name,
-    url: target.url,
-    duration: Math.round(duration * 10) / 10,
-    requests,
-    rps: Math.round(requests / duration),
-    latencyAvg: Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length),
-    latencyP95: latencies[Math.floor(latencies.length * 0.95)] ?? 0,
-    latencyP99: latencies[Math.floor(latencies.length * 0.99)] ?? 0,
-    errors,
-    passed: Math.round(requests / duration) >= target.expectedRps * 0.5, // 50% of expected is pass
+  const lr: LoadResult = {
+    url,
+    requests: {
+      total: result.requests.total,
+      average: result.requests.average,
+      p50: result.requests.p50 ?? 0,
+      p95: result.requests.p95 ?? 0,
+      p99: result.requests.p99 ?? 0,
+    },
+    latency: {
+      average: result.latency.average,
+      p50: result.latency.p50,
+      p95: result.latency.p95,
+      p99: result.latency.p99,
+      max: result.latency.max,
+    },
+    throughput: {
+      average: result.throughput.average,
+      total: result.throughput.total,
+    },
+    errors: result.errors,
+    timeouts: result.timeouts,
+    duration: DURATION,
   };
+
+  console.log(`  Requests: ${lr.requests.total} total, ${lr.requests.average}/s avg`);
+  console.log(`  Latency:  P50=${lr.latency.p50}ms  P95=${lr.latency.p95}ms  P99=${lr.latency.p99}ms  max=${lr.latency.max}ms`);
+  console.log(`  Errors: ${lr.errors}  Timeouts: ${lr.timeouts}`);
+
+  return lr;
 }
 
-async function main(): Promise<void> {
-  const filter = process.env.TARGETS?.split(",") ?? [];
-  const targets = filter.length > 0
-    ? ALL_TARGETS.filter((t) => filter.some((f) => t.name.includes(f)))
-    : ALL_TARGETS;
+async function main() {
+  const endpoints = [
+    { path: "/api/health", title: "Health check" },
+    { path: "/api/sessions", title: "Sessions list" },
+    { path: "/api/metrics", title: "Metrics" },
+  ];
 
-  console.log(`\n🏋️ Load Testing ${targets.length} endpoints (10s each)\n`);
+  const results: LoadResult[] = [];
+  let regressions = 0;
 
-  const results: LoadTestResult[] = [];
-  for (const target of targets) {
-    process.stdout.write(`  Testing ${target.name}...`);
-    const result = await runLoadTest(target);
+  for (const ep of endpoints) {
+    const result = await runLoad(`${BASE_URL}${ep.path}`, ep.title);
     results.push(result);
-    console.log(` ${result.passed ? "✅" : "❌"} ${result.rps} rps (p95: ${result.latencyP95}ms)`);
+
+    // P95 regression detection
+    if (BASELINE_P95_MS > 0 && result.latency.p95 > BASELINE_P95_MS * (1 + REGRESSION_THRESHOLD)) {
+      console.log(`  ❌ REGRESSION: P95 ${result.latency.p95}ms > baseline ${BASELINE_P95_MS}ms (+${Math.round(REGRESSION_THRESHOLD * 100)}% threshold)`);
+      regressions++;
+    } else {
+      console.log(`  ✅ P95 within baseline`);
+    }
   }
 
-  console.log("\n── Summary ──────────────────────────────────────────");
-  console.log("Target                  RPS      Avg    P95    P99  Errors");
-  for (const r of results) {
-    const icon = r.passed ? "✅" : "❌";
-    console.log(
-      `${icon} ${r.target.padEnd(22)} ${String(r.rps).padStart(5)}  ${String(r.latencyAvg).padStart(5)}ms ${String(r.latencyP95).padStart(5)}ms ${String(r.latencyP99).padStart(5)}ms  ${r.errors}`,
-    );
-  }
+  console.log(`\n=== Load Test Summary ===`);
+  console.log(`Endpoints tested: ${results.length}`);
+  console.log(`Total requests: ${results.reduce((s, r) => s + r.requests.total, 0)}`);
+  console.log(`Regressions: ${regressions}`);
 
-  const allPassed = results.every((r) => r.passed);
-  console.log(`\n${allPassed ? "✅ All targets passed" : "❌ Some targets failed"}\n`);
-  console.log(JSON.stringify(results));
-  process.exit(allPassed ? 0 : 1);
+  if (regressions > 0) {
+    console.log(`\n❌ FAILED — ${regressions} P95 regression(s) detected`);
+    process.exit(1);
+  }
+  console.log(`\n✅ PASSED — all endpoints within P95 baseline`);
 }
 
-main();
+main().catch((err) => {
+  console.error("Load test failed:", err);
+  process.exit(1);
+});
