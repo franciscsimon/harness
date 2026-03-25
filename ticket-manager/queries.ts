@@ -94,3 +94,69 @@ export async function getTicketStats(sql: Sql, projectId?: string): Promise<{
 
   return { total, byStatus, byPriority };
 }
+
+/** Link a ticket to another entity (project, session, error group, etc). */
+export async function linkTicket(
+  sql: Sql,
+  ticketId: string,
+  targetId: string,
+  targetType: string,
+  relation = "relates_to",
+): Promise<void> {
+  const id = `tl:${ticketId}:${targetId}:${Date.now()}`;
+  await sql`INSERT INTO ticket_links (_id, ticket_id, target_id, target_type, relation, ts, _valid_from)
+    VALUES (${id}, ${ticketId}, ${targetId}, ${targetType}, ${relation}, ${Date.now()}, CURRENT_TIMESTAMP)`;
+}
+
+/** Add an event to a ticket's activity log. */
+export async function addTicketEvent(
+  sql: Sql,
+  ticketId: string,
+  eventType: string,
+  actor: string,
+  details: Record<string, unknown> = {},
+): Promise<void> {
+  const id = `te:${ticketId}:${Date.now()}`;
+  await sql`INSERT INTO ticket_events (_id, ticket_id, event_type, actor, details_json, ts, _valid_from)
+    VALUES (${id}, ${ticketId}, ${eventType}, ${actor}, ${JSON.stringify(details)}, ${Date.now()}, CURRENT_TIMESTAMP)`;
+}
+
+/** Get events for a ticket. */
+export async function getTicketEvents(sql: Sql, ticketId: string, limit = 50): Promise<any[]> {
+  return await sql`SELECT * FROM ticket_events WHERE ticket_id = ${ticketId} ORDER BY ts DESC LIMIT ${limit}`;
+}
+
+/** Get all links for a ticket. */
+export async function getTicketLinks(sql: Sql, ticketId: string): Promise<any[]> {
+  return await sql`SELECT * FROM ticket_links WHERE ticket_id = ${ticketId} ORDER BY ts DESC`;
+}
+
+/** Search tickets by title/description text. */
+export async function searchTickets(sql: Sql, query: string, limit = 20): Promise<TicketRecord[]> {
+  const pattern = `%${query}%`;
+  return await sql<TicketRecord[]>`
+    SELECT * FROM tickets
+    WHERE title LIKE ${pattern} OR description LIKE ${pattern}
+    ORDER BY ts DESC LIMIT ${limit}`;
+}
+
+/** Get tickets assigned to a specific user. */
+export async function getTicketsByAssignee(sql: Sql, assignee: string, limit = 50): Promise<TicketRecord[]> {
+  return await sql<TicketRecord[]>`
+    SELECT * FROM tickets WHERE assignee = ${assignee} ORDER BY ts DESC LIMIT ${limit}`;
+}
+
+/** Bulk update ticket status (e.g., close all tickets for a resolved error group). */
+export async function bulkUpdateStatus(
+  sql: Sql,
+  ticketIds: string[],
+  newStatus: string,
+): Promise<number> {
+  if (ticketIds.length === 0) return 0;
+  let updated = 0;
+  for (const id of ticketIds) {
+    await sql`UPDATE tickets SET status = ${newStatus}, _valid_from = CURRENT_TIMESTAMP WHERE _id = ${id}`;
+    updated++;
+  }
+  return updated;
+}
