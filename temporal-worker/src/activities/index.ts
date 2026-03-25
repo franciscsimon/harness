@@ -11,4 +11,4 @@ export { recordToXtdb, recordCIRunToXtdb } from "./xtdb-persistence.js";
 export { spawnPiAgent } from "./spawn-agent.js";
 
 // Phase 3B: Workflow loader
-// export { loadWorkflowDefinition } from "./workflow-loader.js";
+export { loadWorkflowDefinition } from "./workflow-loader.js";

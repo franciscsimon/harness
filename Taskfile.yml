@@ -615,3 +615,20 @@ tasks:
     desc: Run npm audit and persist to XTDB
     cmds:
       - npx jiti scripts/audit-to-xtdb.ts
+
+  temporal:up:
+    desc: Start Temporal + OTEL observability stack
+    cmds:
+      - docker compose up -d temporal-db temporal temporal-ui temporal-worker otel-collector tempo prometheus grafana
+      - echo "Temporal UI at http://localhost:8233"
+      - echo "Grafana at http://localhost:3001 (admin/harness)"
+
+  temporal:down:
+    desc: Stop Temporal + OTEL stack
+    cmds:
+      - docker compose stop temporal-worker temporal-ui temporal otel-collector tempo prometheus grafana temporal-db
+
+  temporal:logs:
+    desc: Tail Temporal worker logs
+    cmds:
+      - docker compose logs -f temporal-worker

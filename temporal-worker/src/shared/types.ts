@@ -52,13 +52,6 @@ export interface CIPipelineInput {
   branch: string;
 }
 
-export interface CIStepDef {
-  name: string;
-  image: string;
-  commands: string[];
-  timeoutMs?: number;
-}
-
 export interface CIStepResult {
   name: string;
   status: "passed" | "failed" | "skipped";
@@ -77,13 +70,6 @@ export interface CIPipelineResult {
 }
 
 // ── Orchestration ───────────────────────────────────────────────
-
-export interface OrchestrationInput {
-  tasks: string[];
-  cwd: string;
-  sessionId: string;
-  parallel?: boolean;
-}
 
 export interface OrchestrationTaskStatus {
   description: string;

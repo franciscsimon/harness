@@ -1,7 +1,3 @@
-# OpenTelemetry Collector configuration
-# Receives traces + metrics from temporal-worker and pi extensions,
-# exports to Tempo (traces) and Prometheus (metrics).
-
 receivers:
   otlp:
     protocols:
@@ -14,8 +10,6 @@ processors:
   batch:
     timeout: 5s
     send_batch_size: 1024
-
-  # Tag all telemetry with harness metadata
   attributes:
     actions:
       - key: "harness.environment"
@@ -23,23 +17,23 @@ processors:
         action: upsert
 
 exporters:
-  # Traces → Tempo
   otlp/tempo:
     endpoint: "tempo:4317"
     tls:
       insecure: true
-
-  # Metrics → Prometheus (via remote write)
   prometheusremotewrite:
     endpoint: "http://prometheus:9090/api/v1/write"
     tls:
       insecure: true
-
-  # Self-diagnostics
   debug:
     verbosity: basic
 
+extensions:
+  health_check:
+    endpoint: "0.0.0.0:13133"
+
 service:
+  extensions: [health_check]
   pipelines:
     traces:
       receivers: [otlp]

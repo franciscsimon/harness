@@ -191,3 +191,33 @@ See `PROGRESS-DEFERRED.md` Phase A for the full 35-item implementation checklist
 | Harness UI shows no data | Ensure event-logger-ui (:3333) is running — harness-ui fetches from it |
 | Chat "New Session" opens wrong page | Update to latest `harness-ui/static/chat.js` |
 | Contract tests fail | Start all 4 services first, then run `./scripts/test-contracts.sh` |
+
+---
+
+## Temporal + Observability Stack
+
+### Start Temporal
+```bash
+task temporal:up
+```
+
+Services started:
+| Service | URL | Purpose |
+|---------|-----|---------|
+| Temporal Server | `localhost:7233` (gRPC) | Workflow orchestration |
+| Temporal UI | `http://localhost:8233` | Workflow visibility |
+| Grafana | `http://localhost:3001` | Dashboards (admin/harness) |
+| Prometheus | `http://localhost:9090` | Metrics storage |
+| Tempo | `http://localhost:3200` | Distributed traces |
+| OTEL Collector | `localhost:4317` (gRPC) | Telemetry hub |
+
+### How it works
+- Extensions (`agent-spawner`, `workflow-engine`, `orchestrator`) connect to Temporal on `session_start`
+- If Temporal is unavailable, all extensions fall back to their original local behavior
+- CI pipeline runs are Temporal workflows (triggered by Soft Serve post-receive hook)
+- Grafana has two pre-provisioned dashboards: "Temporal Overview" and "Agents & Workflows"
+
+### Stop
+```bash
+task temporal:down
+```

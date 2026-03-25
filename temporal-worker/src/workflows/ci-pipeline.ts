@@ -28,6 +28,13 @@ const { executeDockerStep } = proxyActivities<
   },
 });
 
+const { loadWorkflowDefinition } = proxyActivities<
+  typeof import("../activities/workflow-loader.js")
+>({
+  startToCloseTimeout: "30 seconds",
+  retry: { maximumAttempts: 2 },
+});
+
 const { recordCIRunToXtdb } = proxyActivities<
   typeof import("../activities/xtdb-persistence.js")
 >({
@@ -72,7 +79,14 @@ const DEFAULT_STEPS: PipelineStepDef[] = [
 export async function ciPipeline(input: CIPipelineInput): Promise<CIPipelineResult> {
   const { repoPath, commitSha, branch } = input;
   const jobId = `ci-${commitSha.slice(0, 8)}-${Date.now()}`;
-  const steps = DEFAULT_STEPS; // TODO: resolve from .ci.jsonld via activity
+  // Try loading .ci.jsonld from repo, fall back to defaults
+  let steps: PipelineStepDef[];
+  try {
+    const wfSteps = await loadWorkflowDefinition({ workflowName: "ci", workflowsDir: `/ci-work/ci-${commitSha.slice(0, 8)}-${Date.now()}` });
+    steps = wfSteps.map(s => ({ name: s.name, image: "oven/bun:latest", commands: [s.promptTemplate ?? `echo "Step: ${s.name}"`] }));
+  } catch {
+    steps = DEFAULT_STEPS; // No .ci.jsonld found — use defaults
+  }
 
   let cancelled = false;
   const stepResults: CIStepResult[] = [];

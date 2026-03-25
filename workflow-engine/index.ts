@@ -152,6 +152,18 @@ export default function (pi: ExtensionAPI) {
   pi.on("before_agent_start", async (event) => {
     if (!state.active) return;
 
+    // Query Temporal for current step if available
+    if (temporalClient && temporalWorkflowId) {
+      try {
+        const handle = temporalClient.workflow.getHandle(temporalWorkflowId);
+        const stepInfo = await handle.query("currentStep");
+        if (stepInfo) {
+          // Update local state from Temporal (source of truth)
+          state.currentStep = stepInfo.position;
+        }
+      } catch { /* fall through to local state */ }
+    }
+
     const step = currentStepDef();
     if (!step) return;
 

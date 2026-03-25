@@ -111,7 +111,25 @@ export default function (pi: ExtensionAPI) {
         }
         orchestrating = true;
         ctx.ui.setStatus("orchestrator", `🎭 ${tasks.length} tasks`);
-        ctx.ui.notify(`🎭 Planned ${descriptions.length} tasks. Use /orchestrate status to view.`, "success");
+
+        // Start Temporal orchestration workflow if available
+        if (temporalClient) {
+          try {
+            const workflowId = `orch-${Date.now()}`;
+            await temporalClient.workflow.start("orchestrationWorkflow", {
+              workflowId,
+              taskQueue: "agent-execution",
+              args: [{ tasks: descriptions, cwd: ctx.cwd ?? process.cwd(), sessionId: ctx.sessionManager?.getSessionFile?.() ?? "unknown" }],
+            });
+            activeOrchWorkflowId = workflowId;
+            pi.appendEntry("orchestrator-temporal", { workflowId });
+            ctx.ui.notify(`🎭 Planned ${descriptions.length} tasks via Temporal (${workflowId})`, "success");
+          } catch (err: any) {
+            ctx.ui.notify(`🎭 Planned ${descriptions.length} tasks (Temporal unavailable: ${err.message})`, "success");
+          }
+        } else {
+          ctx.ui.notify(`🎭 Planned ${descriptions.length} tasks. Use /orchestrate status to view.`, "success");
+        }
         return;
       }
 
@@ -142,6 +160,13 @@ export default function (pi: ExtensionAPI) {
           return;
         }
         task.status = cmd === "done" ? "done" : "failed";
+        // Signal Temporal workflow
+        if (temporalClient && activeOrchWorkflowId) {
+          try {
+            const handle = temporalClient.workflow.getHandle(activeOrchWorkflowId);
+            await handle.signal(cmd === "done" ? "taskDone" : "taskFailed", task.id - 1);
+          } catch { /* best-effort */ }
+        }
         const remaining = tasks.filter((t) => t.status === "pending" || t.status === "active").length;
         ctx.ui.setStatus("orchestrator", remaining > 0 ? `🎭 ${remaining} remaining` : "🎭 All done!");
         ctx.ui.notify(
@@ -172,13 +197,32 @@ export default function (pi: ExtensionAPI) {
 
       if (cmd === "stop") {
         orchestrating = false;
+        if (temporalClient && activeOrchWorkflowId) {
+          try {
+            const handle = temporalClient.workflow.getHandle(activeOrchWorkflowId);
+            await handle.signal("abandon");
+          } catch { /* best-effort */ }
+          activeOrchWorkflowId = null;
+        }
         ctx.ui.setStatus("orchestrator", "");
         const done = tasks.filter((t) => t.status === "done").length;
         ctx.ui.notify(`🎭 Orchestration stopped. ${done}/${tasks.length} tasks completed.`, "info");
         return;
       }
 
-      // Default: status
+      // Default: status — query Temporal if available
+      if (temporalClient && activeOrchWorkflowId) {
+        try {
+          const handle = temporalClient.workflow.getHandle(activeOrchWorkflowId);
+          const status = await handle.query("status");
+          const lines = status.tasks.map((t: any, i: number) => {
+            const icon = { pending: "⬜", active: "🔄", done: "✅", failed: "❌" }[t.status] ?? "⬜";
+            return `  ${icon} #${i + 1} [${t.status}] ${t.description}`;
+          });
+          ctx.ui.notify(`🎭 Orchestrator (Temporal ${activeOrchWorkflowId}):\n${lines.join("\n")}`, "info");
+          return;
+        } catch { /* fall through to local */ }
+      }
       if (tasks.length === 0) {
         ctx.ui.notify("No tasks. Use /orchestrate plan or /orchestrate add.", "info");
         return;
