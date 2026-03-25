@@ -515,6 +515,101 @@ services:
     logging:
       <<: *default-logging
 
+  # ════════════════════════════════════════════════════════════════
+  # OpenTelemetry Collector — receives traces + metrics, exports to Tempo/Prometheus
+  # ════════════════════════════════════════════════════════════════
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.102.0
+    container_name: otel-collector
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8888:8888"
+      - "8889:8889"
+    volumes:
+      - ./observability/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    depends_on:
+      - tempo
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:13133/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      <<: *default-logging
+
+  # ════════════════════════════════════════════════════════════════
+  # Grafana Tempo — distributed trace storage
+  # ════════════════════════════════════════════════════════════════
+  tempo:
+    image: grafana/tempo:2.5
+    container_name: tempo
+    ports:
+      - "3200:3200"
+      - "9095:9095"
+    volumes:
+      - ./observability/tempo-config.yaml:/etc/tempo/config.yaml
+      - tempo-data:/var/tempo
+    command: ["-config.file=/etc/tempo/config.yaml"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3200/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      <<: *default-logging
+
+  # ════════════════════════════════════════════════════════════════
+  # Prometheus — metrics storage
+  # ════════════════════════════════════════════════════════════════
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yaml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--web.enable-remote-write-receiver"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      <<: *default-logging
+
+  # ════════════════════════════════════════════════════════════════
+  # Grafana — unified dashboard for traces, metrics, logs
+  # ════════════════════════════════════════════════════════════════
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-harness}
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - tempo
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      <<: *default-logging
+
 volumes:
   redpanda-data:
   xtdb-primary-data:
@@ -530,4 +625,7 @@ volumes:
   infisical-redis-data:
   caddy-data:
   caddy-config:
+  tempo-data:
+  prometheus-data:
+  grafana-data:
   temporal-db-data:
