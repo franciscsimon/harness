@@ -37,7 +37,7 @@ interface SpawnedAgent {
 }
 
 export default function (pi: ExtensionAPI) {
-  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+  const xtdbEnabled = process.env.XTDB_EVENT_LOGGING === "true";
 
   let agents: SpawnedAgent[] = [];
   let nextId = 1;

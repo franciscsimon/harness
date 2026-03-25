@@ -45,7 +45,8 @@ interface WorkflowState {
 }
 
 export default function (pi: ExtensionAPI) {
-  if (process.env.XTDB_EVENT_LOGGING !== "true") return;
+  // Temporal works without XTDB — only guard XTDB-specific code, not the whole extension
+  const xtdbEnabled = process.env.XTDB_EVENT_LOGGING === "true";
 
   const workflows = new Map<string, WorkflowDef>();
   let state: WorkflowState = emptyState();
@@ -270,7 +271,7 @@ export default function (pi: ExtensionAPI) {
     if (temporalClient) {
       try {
         const wfId = `wf-${name}-${Date.now()}`;
-        await temporalClient.workflow.start("agentWorkflow", {
+        await temporalClient.workflow.start("automatedWorkflow", {
           workflowId: wfId,
           taskQueue: "agent-execution",
           args: [{
