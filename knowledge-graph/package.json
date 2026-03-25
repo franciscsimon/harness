@@ -5,5 +5,30 @@
   "type": "module",
   "dependencies": {
     "postgres": "^3.4.5"
+  },
+  "pi": {
+    "extension": true,
+    "tools": [
+      {
+        "name": "graph:search",
+        "description": "Search knowledge graph entities"
+      },
+      {
+        "name": "graph:impact",
+        "description": "Analyze impact of an entity"
+      },
+      {
+        "name": "graph:timeline",
+        "description": "Get entity timeline"
+      },
+      {
+        "name": "graph:traverse",
+        "description": "Traverse graph from entity"
+      },
+      {
+        "name": "graph:resolve",
+        "description": "Resolve entity by name/type"
+      }
+    ]
   }
 }

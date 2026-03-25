@@ -9,6 +9,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { connectXtdb } from "../lib/db.ts";
 import { createLogger } from "../lib/logger.ts";
+import { emitEnrichment } from "../lib/enrich.ts";
+import { captureError } from "../lib/error-groups.ts";
 
 const log = createLogger("health-prober");
 const INTERVAL_MS = Number(process.env.PROBE_INTERVAL_MS ?? "30000");
@@ -114,6 +116,8 @@ async function main(): Promise<void> {
     log.info({ up, down: down.length, total: results.length }, "Probe cycle complete");
     for (const d of down) {
       log.warn({ service: d.service, status: d.status, error: d.error }, "Service unhealthy");
+      emitEnrichment("error_captured", { errorId: `health-${d.service}-${Date.now()}`, component: d.service, fingerprint: `health-${d.service}-${d.status}` });
+      captureError(new Error(`Service unhealthy: ${d.service}`), { component: d.service, status: d.status });
     }
 
     // SSE health alerts — push to harness-ui /api/ci/notify endpoint

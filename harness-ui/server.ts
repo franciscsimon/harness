@@ -33,6 +33,7 @@ import { renderOps } from "./pages/ops.ts";
 import { renderSessionDetail } from "./pages/session-detail.ts";
 import { renderSessions } from "./pages/sessions.ts";
 import { renderStream } from "./pages/stream.ts";
+import { captureError } from "../lib/error-groups.ts";
 
 // ─── Config ────────────────────────────────────────────────────────
 

@@ -18,6 +18,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, watch, wr
 import { join } from "node:path";
 import { resolvePipelineJsonLd, resolveSteps } from "./pipeline.ts";
 import { type CIRunInput, recordCIRun } from "./recorder.ts";
+import { emitEnrichment } from "../lib/enrich.ts";
+import { captureError } from "../lib/error-groups.ts";
 
 // ─── Configuration ───────────────────────────────────────────────
 
@@ -242,6 +244,14 @@ async function runJob(job: CIJob): Promise<void> {
 
     try {
       const runId = await recordCIRun(runInput);
+
+      // §1.1 — enrich knowledge graph
+      emitEnrichment("ci_run_complete", {
+        runId,
+        repo: job.repo,
+        commitHash: job.commitHash,
+        status: failed ? "failed" : "passed",
+      });
 
       // Notify harness-ui via SSE-compatible event (shows in /stream)
       // Notify harness-ui

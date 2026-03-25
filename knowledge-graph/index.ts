@@ -144,3 +144,23 @@ Commands:
 }
 
 main();
+
+// §1.3 — Ensure graph indexes on startup + periodic materialized edge refresh
+import { ensureGraphIndexes } from "./indexes.ts";
+import { refreshMaterializedEdges } from "./materialized-edges.ts";
+
+async function initGraphInfra() {
+  try {
+    const { connectXtdb } = await import("../lib/db.ts");
+    const sql = connectXtdb();
+    const created = await ensureGraphIndexes(sql);
+    if (created.length > 0) console.log(`[knowledge-graph] indexes ensured: ${created.join(", ")}`);
+    // Refresh materialized edges every 5 minutes
+    setInterval(() => {
+      refreshMaterializedEdges(sql).catch(() => {});
+    }, 5 * 60 * 1000);
+  } catch {
+    // Non-critical — graph works without indexes, just slower
+  }
+}
+initGraphInfra();

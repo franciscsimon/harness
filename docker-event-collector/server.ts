@@ -14,6 +14,7 @@ import { getAlertStats } from "./alerting.ts";
 import { getCollectorStats, startCollector, stopCollector } from "./collector.ts";
 import { getLatestStats, startStatsPoller } from "./stats-poller.ts";
 import { getWriterStats, startWriter, stopWriter } from "./writer.ts";
+import { captureError } from "../lib/error-groups.ts";
 
 const PORT = Number(process.env.COLLECTOR_PORT ?? "3338");
 const log = createLogger("docker-event-collector");

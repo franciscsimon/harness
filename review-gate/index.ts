@@ -13,6 +13,8 @@ import { runStyleCheck } from "./checks/style.ts";
 import { runTypecheckCheck } from "./checks/typecheck.ts";
 import { evaluateGate, printReport } from "./gate.ts";
 import type { CheckResult } from "./types.ts";
+import { emitEnrichment } from "../lib/enrich.ts";
+import { recordReviewReport } from "./recorder.ts";
 
 const repoDir = process.argv[2] ?? process.cwd();
 const commitHash = process.argv[3] ?? "unknown";
@@ -42,6 +44,20 @@ async function main(): Promise<void> {
   // Output JSON for CI integration
   console.log(JSON.stringify(report));
 
+  // §1.1+§1.2 — enrich graph + record review report
+  const reviewSql = (await import("../lib/db.ts")).connectXtdb();
+  try {
+    await recordReviewReport(reviewSql, {
+      repo: targetDir,
+      commitHash: process.env.COMMIT_HASH ?? "unknown",
+      securityPassed: results.every(r => r.name !== "security" || r.passed),
+      stylePassed: results.every(r => r.name !== "style" || r.passed),
+      complexityPassed: results.every(r => r.name !== "complexity" || r.passed),
+      overallPassed: allPassed,
+      details: Object.fromEntries(results.map(r => [r.name, { passed: r.passed, issues: r.issues?.length ?? 0 }])),
+    });
+  } catch {}
+  emitEnrichment("review_complete", { reviewId: `review-${Date.now()}`, commitHash: process.env.COMMIT_HASH ?? "unknown", repo: targetDir, passed: allPassed });
   process.exit(report.passed ? 0 : 1);
 }
 

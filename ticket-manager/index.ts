@@ -16,6 +16,7 @@ import { createTicket, getTicket, getTicketStats, listTickets, updateTicket } fr
 import { buildTicketJsonLd } from "./rdf.ts";
 import { validateTransition } from "./transitions.ts";
 import type { TicketKind, TicketPriority, TicketRecord, TicketStatus } from "./types.ts";
+import { emitEnrichment } from "../lib/enrich.ts";
 
 // ─── CLI Handler ─────────────────────────────────────────────
 
@@ -67,6 +68,7 @@ async function main(): Promise<void> {
           ts: Date.now(),
         };
         await createTicket(sql, ticket);
+        emitEnrichment("ticket_created", { ticketId: ticket._id, projectId: ticket.project_id, assignee: ticket.assignee });
         console.log(`✅ Created: ${ticket._id}`);
         console.log(`   Title: ${ticket.title}`);
         console.log(`   JSON-LD: ${JSON.stringify(buildTicketJsonLd(ticket))}`);

@@ -22,6 +22,7 @@ import { describeTopic, listTopics } from "./lib/redpanda.ts";
 import { replicaStatus, startReplica, stopReplica } from "./lib/replica.ts";
 import { schedulerStatus, startScheduler, stopScheduler } from "./lib/scheduler.ts";
 import { verifyBackup } from "./lib/verify-backup.ts";
+import { captureError } from "../lib/error-groups.ts";
 
 const OPS_PORT = Number(process.env.OPS_PORT ?? "3335");
 const log = createLogger("xtdb-ops-api");

@@ -5,5 +5,30 @@
   "type": "module",
   "dependencies": {
     "postgres": "^3.4.5"
+  },
+  "pi": {
+    "extension": true,
+    "tools": [
+      {
+        "name": "ticket:create",
+        "description": "Create a new ticket"
+      },
+      {
+        "name": "ticket:list",
+        "description": "List tickets with filters"
+      },
+      {
+        "name": "ticket:transition",
+        "description": "Transition ticket status"
+      },
+      {
+        "name": "ticket:link",
+        "description": "Link ticket to entity"
+      },
+      {
+        "name": "ticket:search",
+        "description": "Search tickets by text"
+      }
+    ]
   }
 }

@@ -22,6 +22,9 @@ import { validateBody } from "../lib/validate.ts";
 import * as v from "valibot";
 import { type BuildRequest, getCurrentBuild, runBuild } from "./builder.ts";
 import { closeRecorder, recordBuild } from "./recorder.ts";
+import { shouldBlockDeploy } from "./image-scanner.ts";
+import { emitEnrichment } from "../lib/enrich.ts";
+import { captureError } from "../lib/error-groups.ts";
 
 const PORT = Number(process.env.PORT ?? "3339");
 const log = createLogger("build-service");
@@ -84,6 +87,7 @@ app.post("/api/build", async (c) => {
     try {
       const result = await runBuild(req);
       await recordBuild(result);
+      emitEnrichment("artifact_built", { artifactId: result.id ?? `build-${Date.now()}`, projectId: body.repo, version: body.commit });
       totalBuilds++;
       lastBuildId = result.id;
 
