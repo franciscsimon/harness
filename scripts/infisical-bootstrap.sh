@@ -56,3 +56,22 @@ echo "  1. Create prod/staging environments in Infisical UI"
 echo "  2. Update secrets with real production values"
 echo "  3. Set INFISICAL_TOKEN in CI for automated access"
 echo "  4. Wrap service commands: infisical run --env=dev -- <cmd>"
+
+# ── Machine Identities ──────────────────────────────────────────
+echo "Creating machine identities..."
+
+create_machine_identity() {
+  local name="$1"
+  local description="$2"
+  curl -s -X POST "${INFISICAL_URL}/api/v1/auth/universal-auth/identities" \
+    -H "Authorization: Bearer ${ADMIN_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\": \"${name}\", \"description\": \"${description}\"}" 2>/dev/null || true
+}
+
+create_machine_identity "harness-services" "Shared identity for harness-ui, health-prober, docker-event-collector"
+create_machine_identity "ci-runner" "CI runner pipeline identity"
+create_machine_identity "build-service" "Build service + image scanner identity"
+create_machine_identity "monitoring" "Monitoring services (health-prober, log-scanner)"
+
+echo "Machine identities created (retrieve client IDs from Infisical UI)"

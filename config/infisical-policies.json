@@ -1,0 +1,27 @@
+{
+  "policies": [
+    {
+      "environment": "dev",
+      "permissions": [
+        { "identity": "*", "action": "read", "secretPath": "/*" },
+        { "identity": "admin", "action": "write", "secretPath": "/*" }
+      ]
+    },
+    {
+      "environment": "staging",
+      "permissions": [
+        { "identity": "harness-services", "action": "read", "secretPath": "/*" },
+        { "identity": "ci-runner", "action": "read", "secretPath": "/ci/*" }
+      ]
+    },
+    {
+      "environment": "prod",
+      "permissions": [
+        { "identity": "harness-services", "action": "read", "secretPath": "/harness/*" },
+        { "identity": "ci-runner", "action": "read", "secretPath": "/ci/*" },
+        { "identity": "build-service", "action": "read", "secretPath": "/build/*" },
+        { "identity": "monitoring", "action": "read", "secretPath": "/monitoring/*" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+# Caddy reverse proxy configuration
+# Mount into caddy container at /etc/caddy/Caddyfile
+
+:443 {
+  # Harness UI
+  handle /* {
+    reverse_proxy harness-ui:3336
+  }
+
+  # XTDB Ops API
+  handle /api/xtdb/* {
+    reverse_proxy xtdb-ops-api:3340
+  }
+
+  # Build Service
+  handle /api/build/* {
+    reverse_proxy build-service:3339
+  }
+
+  # CI Runner
+  handle /api/ci/* {
+    reverse_proxy ci-runner:3337
+  }
+
+  # Infisical
+  handle /infisical/* {
+    uri strip_prefix /infisical
+    reverse_proxy infisical:8080
+  }
+}

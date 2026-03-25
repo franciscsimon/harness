@@ -1,0 +1,30 @@
+{
+  "rotations": [
+    {
+      "secretPath": "/xtdb",
+      "secretName": "XTDB_PASSWORD",
+      "interval": "90d",
+      "provider": "custom",
+      "rotateCommand": "scripts/rotate-xtdb-password.sh"
+    },
+    {
+      "secretPath": "/garage",
+      "secretName": "GARAGE_ACCESS_KEY",
+      "interval": "90d",
+      "provider": "custom",
+      "rotateCommand": "scripts/rotate-garage-keys.sh"
+    },
+    {
+      "secretPath": "/keycloak",
+      "secretName": "KEYCLOAK_ADMIN_PASSWORD",
+      "interval": "90d",
+      "provider": "custom",
+      "rotateCommand": "scripts/rotate-keycloak-password.sh"
+    }
+  ],
+  "alertOnFailure": {
+    "enabled": true,
+    "endpoint": "http://harness-ui:3336/api/ci/notify",
+    "payload": { "type": "rotation_failure" }
+  }
+}

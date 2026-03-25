@@ -398,6 +398,11 @@ services:
 
   infisical:
     image: infisical/infisical:latest
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:8080/api/status']
+      interval: 15s
+      timeout: 5s
+      retries: 5
     container_name: infisical
     restart: unless-stopped
     environment:
