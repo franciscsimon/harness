@@ -1,30 +1,48 @@
-# Caddy reverse proxy configuration
-# Mount into caddy container at /etc/caddy/Caddyfile
+# Caddy reverse proxy — single ingress point for all harness services
+# All services are internal to the Docker network; only Caddy exposes port 80.
 
-:443 {
-  # Harness UI
+:80 {
+  # ── Harness UI (default) ──────────────────────────────────────
   handle /* {
     reverse_proxy harness-ui:3336
   }
 
-  # XTDB Ops API
+  # ── XTDB Ops API ──────────────────────────────────────────────
   handle /api/xtdb/* {
     reverse_proxy xtdb-ops-api:3340
   }
 
-  # Build Service
+  # ── Build Service ─────────────────────────────────────────────
   handle /api/build/* {
     reverse_proxy build-service:3339
   }
 
-  # CI Runner
+  # ── CI Runner ─────────────────────────────────────────────────
   handle /api/ci/* {
     reverse_proxy ci-runner:3337
   }
 
-  # Infisical
+  # ── Infisical ─────────────────────────────────────────────────
   handle /infisical/* {
     uri strip_prefix /infisical
     reverse_proxy infisical:8080
+  }
+
+  # ── Temporal UI ───────────────────────────────────────────────
+  handle /temporal/* {
+    uri strip_prefix /temporal
+    reverse_proxy temporal-ui:8080
+  }
+
+  # ── Grafana ───────────────────────────────────────────────────
+  handle /grafana/* {
+    uri strip_prefix /grafana
+    reverse_proxy grafana:3000
+  }
+
+  # ── Prometheus ────────────────────────────────────────────────
+  handle /prometheus/* {
+    uri strip_prefix /prometheus
+    reverse_proxy prometheus:9090
   }
 }

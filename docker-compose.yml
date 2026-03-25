@@ -419,8 +419,6 @@ services:
       DB_CONNECTION_URI: postgresql://infisical:${INFISICAL_DB_PASSWORD:-infisical-dev-password}@infisical-db:5432/infisical
       REDIS_URL: redis://infisical-redis:6379
       SITE_URL: ${INFISICAL_SITE_URL:-http://localhost:8180}
-    ports:
-      - "8180:8080"
     depends_on:
       infisical-db:
         condition: service_healthy
@@ -433,8 +431,6 @@ services:
   temporal:
     image: temporalio/auto-setup:1.25
     container_name: temporal
-    ports:
-      - "7233:7233"
     environment:
       - DB=postgres12_pgx
       - DB_PORT=5432
@@ -456,8 +452,6 @@ services:
   temporal-db:
     image: postgres:16-alpine
     container_name: temporal-db
-    ports:
-      - "5435:5432"
     environment:
       POSTGRES_USER: temporal
       POSTGRES_PASSWORD: ${TEMPORAL_DB_PASSWORD:-temporal}
@@ -475,11 +469,10 @@ services:
   temporal-ui:
     image: temporalio/ui:latest
     container_name: temporal-ui
-    ports:
-      - "8233:8080"
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_CORS_ORIGINS=http://localhost:3336
+      - TEMPORAL_CORS_ORIGINS=http://localhost
+      - TEMPORAL_UI_PUBLIC_PATH=/temporal
     depends_on:
       temporal:
         condition: service_healthy
@@ -523,11 +516,6 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: otel-collector
-    ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "8888:8888"
-      - "8889:8889"
     volumes:
       - ./observability/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
     depends_on:
@@ -547,9 +535,6 @@ services:
   tempo:
     image: grafana/tempo:latest
     container_name: tempo
-    ports:
-      - "3200:3200"
-      - "9095:9095"
     volumes:
       - ./observability/tempo-config.yaml:/etc/tempo/config.yaml
       - tempo-data:/var/tempo
@@ -568,14 +553,13 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
-    ports:
-      - "9090:9090"
     volumes:
       - ./observability/prometheus.yaml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--web.enable-remote-write-receiver"
+      - "--web.external-url=/prometheus"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
       interval: 15s
@@ -590,13 +574,13 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
-    ports:
-      - "3001:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-harness}
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_SERVER_ROOT_URL=http://localhost/grafana
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards
