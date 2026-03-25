@@ -14,3 +14,6 @@ export { agentWorkflow } from "./agent-workflow.js";
 
 // Phase 4: Orchestration workflow
 export { orchestrationWorkflow } from "./orchestration.js";
+
+// Fully automated multi-agent workflow
+export { automatedWorkflow } from "./automated-workflow.js";

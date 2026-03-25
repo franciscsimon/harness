@@ -632,3 +632,18 @@ tasks:
     desc: Tail Temporal worker logs
     cmds:
       - docker compose logs -f temporal-worker
+
+  workflow:run:
+    desc: "Run a multi-agent workflow: task workflow:run -- feature 'add dark mode'"
+    cmds:
+      - npx jiti scripts/run-workflow.ts {{.CLI_ARGS}}
+
+  workflow:list:
+    desc: List available workflows and agents
+    cmds:
+      - npx jiti scripts/run-workflow.ts --list
+
+  workflow:status:
+    desc: "Check workflow status: task workflow:status -- <workflow-id>"
+    cmds:
+      - npx jiti scripts/run-workflow.ts --status {{.CLI_ARGS}}
