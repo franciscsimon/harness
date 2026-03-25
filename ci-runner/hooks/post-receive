@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Soft Serve post-receive hook — enqueues CI jobs via HTTP
-# The runner runs on the host, so we POST to harness-ui which writes the queue file.
+# Soft Serve post-receive hook — enqueues CI jobs.
+#
+# Dual-mode:
+#   1. Temporal (preferred): starts a ciPipeline workflow via Temporal gRPC
+#   2. Fallback: POST to harness-ui HTTP queue (original behavior)
 
 HARNESS_UI="${HARNESS_UI_URL:-http://host.docker.internal:3336}"
-# SOFT_SERVE_REPO_NAME is set by Soft Serve. Fallback to PWD-based detection.
+TEMPORAL_ADDRESS="${TEMPORAL_ADDRESS:-temporal:7233}"
 REPO_NAME="${SOFT_SERVE_REPO_NAME:-$(basename "${PWD:-.}" .git)}"
 
 while read -r oldrev newrev refname; do
@@ -11,7 +14,22 @@ while read -r oldrev newrev refname; do
   [ "$newrev" = "0000000000000000000000000000000000000000" ] && continue
 
   MSG=$(git log -1 --pretty=%s "$newrev" 2>/dev/null || echo "")
+  BRANCH="${refname#refs/heads/}"
 
+  # ── Try Temporal first ──
+  if command -v tctl >/dev/null 2>&1; then
+    WORKFLOW_ID="ci-${REPO_NAME}-${newrev:0:8}-$(date +%s)"
+    tctl --address "$TEMPORAL_ADDRESS" workflow start \
+      --workflow_type ciPipeline \
+      --taskqueue ci-pipeline \
+      --workflow_id "$WORKFLOW_ID" \
+      --input "{\"repoPath\":\"$REPO_NAME\",\"commitSha\":\"$newrev\",\"branch\":\"$BRANCH\"}" \
+      2>/dev/null \
+      && { >&2 echo "✅ Temporal CI workflow started: $WORKFLOW_ID"; continue; } \
+      || >&2 echo "⚠️  Temporal unavailable, falling back to HTTP queue"
+  fi
+
+  # ── Fallback: HTTP queue to harness-ui ──
   PAYLOAD="{\"repo\":\"$REPO_NAME\",\"ref\":\"$refname\",\"commitHash\":\"$newrev\",\"commitMessage\":\"$MSG\",\"pusher\":\"${USER:-unknown}\"}"
 
   wget -q --post-data="$PAYLOAD" --header="Content-Type: application/json" \

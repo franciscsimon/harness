@@ -5,7 +5,7 @@
 
 // Phase 1C: CI pipeline activities
 export { executeDockerStep } from "./docker-execution.js";
-export { recordToXtdb } from "./xtdb-persistence.js";
+export { recordToXtdb, recordCIRunToXtdb } from "./xtdb-persistence.js";
 
 // Phase 3A: Agent spawner activities
 // export { spawnPiAgent } from "./spawn-agent.js";
