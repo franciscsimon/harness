@@ -266,11 +266,41 @@ export default function (pi: ExtensionAPI) {
 
     ctx.ui.setStatus("workflow", JSON.stringify(statusPayload()));
 
+    // Start Temporal workflow if available
+    if (temporalClient) {
+      try {
+        const wfId = `wf-${name}-${Date.now()}`;
+        await temporalClient.workflow.start("agentWorkflow", {
+          workflowId: wfId,
+          taskQueue: "agent-execution",
+          args: [{
+            workflowName: name,
+            task,
+            steps: wf.steps.map((s: any) => ({
+              position: s.position,
+              name: s.name,
+              actionType: (s.actionType ?? "agent").replace("https://schema.org/", ""),
+              agentRole: s.agentRole ?? "worker",
+              transitionMode: s.transitionMode ?? "auto",
+              timeoutMs: s.timeoutMs,
+            })),
+            cwd: ctx.cwd ?? process.cwd(),
+            sessionId: ctx.sessionManager?.getSessionFile?.() ?? "unknown",
+          }],
+        });
+        temporalWorkflowId = wfId;
+        pi.appendEntry("workflow-temporal", { workflowId: wfId });
+      } catch (_err) {
+        // Temporal unavailable — continue with local mode
+      }
+    }
+
     const step = wf.steps[0];
     return (
       `🔄 Workflow "${name}" activated — ${wf.steps.length} steps\n` +
       `Starting step 1: ${step.name} (${step.agentRole})\n` +
-      `Task: ${task}`
+      `Task: ${task}` +
+      (temporalWorkflowId ? `\n📡 Temporal workflow: ${temporalWorkflowId}` : "")
     );
   }
 

@@ -431,6 +431,8 @@ services:
   temporal:
     image: temporalio/auto-setup:1.25
     container_name: temporal
+    ports:
+      - "127.0.0.1:7233:7233"  # gRPC for host pi process only
     environment:
       - DB=postgres12_pgx
       - DB_PORT=5432
