@@ -8,6 +8,21 @@ import { connectXtdb, ensureConnected, type Sql } from "../lib/db.ts";
 import { JSONLD_CONTEXT, piId, piRef } from "../lib/jsonld/context.ts";
 import { loadWorkflowDir, type WorkflowDef, type WorkflowStep } from "./rdf/workflow-graph.ts";
 
+// ── Temporal client (optional — falls back to local state) ──
+let temporalClient: any = null;
+let temporalWorkflowId: string | null = null;
+
+async function connectTemporal(): Promise<void> {
+  try {
+    const { Connection, Client } = await import("@temporalio/client");
+    const address = process.env.TEMPORAL_ADDRESS ?? "localhost:7233";
+    const connection = await Connection.connect({ address });
+    temporalClient = new Client({ connection });
+  } catch {
+    temporalClient = null;
+  }
+}
+
 // ─── Workflow Engine Extension ────────────────────────────────────
 // Composable workflow templates using Schema.org Action + PROV-O.
 // Defines, loads, and runs multi-step agent-role workflows.
