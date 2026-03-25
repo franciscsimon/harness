@@ -94,3 +94,19 @@ function dockerGet<T>(path: string): Promise<T> {
     req.end();
   });
 }
+
+// §2 — Persist container_metrics to XTDB
+let _metricsSql: any = null;
+export function initMetricsDb(sql: any): void { _metricsSql = sql; }
+
+async function persistMetrics(stats: ContainerStats[]): Promise<void> {
+  if (!_metricsSql || stats.length === 0) return;
+  for (const s of stats) {
+    try {
+      await _metricsSql`INSERT INTO container_metrics
+        (_id, container_id, container_name, cpu_pct, mem_usage_mb, mem_limit_mb, mem_pct, net_rx_mb, net_tx_mb, ts, _valid_from)
+        VALUES (${`cm:${s.id}:${s.timestamp}`}, ${s.id}, ${s.name}, ${s.cpuPct}, ${s.memUsageMb},
+          ${s.memLimitMb}, ${s.memPct}, ${s.netRxMb}, ${s.netTxMb}, ${s.timestamp}, CURRENT_TIMESTAMP)`;
+    } catch {}
+  }
+}

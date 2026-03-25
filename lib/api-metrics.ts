@@ -93,3 +93,19 @@ export function apiMetrics(log: Logger, slowThresholdMs = 1000): MiddlewareHandl
     }
   };
 }
+
+// §2 — Persist api_metrics to XTDB (sampled)
+let _apiSql: any = null;
+const SAMPLE_RATE = 0.1; // persist 10% of requests
+export function initApiMetricsDb(sql: any): void { _apiSql = sql; }
+
+export async function persistApiMetric(
+  method: string, path: string, statusCode: number, durationMs: number, service: string,
+): Promise<void> {
+  if (!_apiSql || Math.random() > SAMPLE_RATE) return;
+  try {
+    await _apiSql`INSERT INTO api_metrics
+      (_id, method, path, status_code, duration_ms, service, ts, _valid_from)
+      VALUES (${`am:${service}:${Date.now()}`}, ${method}, ${path}, ${statusCode}, ${durationMs}, ${service}, ${Date.now()}, CURRENT_TIMESTAMP)`;
+  } catch {}
+}

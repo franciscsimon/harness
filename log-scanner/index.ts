@@ -75,3 +75,14 @@ if (process.argv[1]?.includes("log-scanner")) {
     }
   });
 }
+
+// §2 — Persist log_leak_detections to XTDB
+export async function persistLeakFindings(sql: any, findings: LeakFinding[], source: string): Promise<void> {
+  for (const f of findings) {
+    try {
+      await sql`INSERT INTO log_leak_detections
+        (_id, pattern_name, line_number, snippet, source, ts, _valid_from)
+        VALUES (${`leak:${source}:${f.line}:${Date.now()}`}, ${f.patternName}, ${f.line}, ${f.match.slice(0, 500)}, ${source}, ${Date.now()}, CURRENT_TIMESTAMP)`;
+    } catch {}
+  }
+}

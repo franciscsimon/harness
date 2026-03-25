@@ -46,3 +46,18 @@ export function trackQuery(query: string, ms: number, log?: Logger): void {
     }
   }
 }
+
+// §2 — Persist slow queries to XTDB
+let _slowSql: any = null;
+export function initSlowQueryDb(sql: any): void { _slowSql = sql; }
+
+export async function recordSlowQuery(
+  query: string, durationMs: number, source: string,
+): Promise<void> {
+  if (!_slowSql) return;
+  try {
+    await _slowSql`INSERT INTO slow_queries
+      (_id, query_text, duration_ms, source, ts, _valid_from)
+      VALUES (${`sq:${source}:${Date.now()}`}, ${query.slice(0, 2000)}, ${durationMs}, ${source}, ${Date.now()}, CURRENT_TIMESTAMP)`;
+  } catch {}
+}

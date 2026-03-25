@@ -63,3 +63,18 @@ export function rateLimiter(config: RateLimitConfig = {}): MiddlewareHandler {
     await next();
   };
 }
+
+// §2 — Persist rate_limit_events to XTDB
+let _rlSql: any = null;
+export function initRateLimitDb(sql: any): void { _rlSql = sql; }
+
+export async function recordRateLimitEvent(
+  ip: string, path: string, service: string,
+): Promise<void> {
+  if (!_rlSql) return;
+  try {
+    await _rlSql`INSERT INTO rate_limit_events
+      (_id, ip, path, service, ts, _valid_from)
+      VALUES (${`rl:${ip}:${Date.now()}`}, ${ip}, ${path}, ${service}, ${Date.now()}, CURRENT_TIMESTAMP)`;
+  } catch {}
+}

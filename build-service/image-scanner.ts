@@ -114,3 +114,13 @@ export function formatScanReport(result: ScanResult): string {
 
   return report;
 }
+
+// §2 — Persist image_scans to XTDB
+export async function persistScanResult(sql: any, image: string, result: ScanResult): Promise<void> {
+  try {
+    await sql`INSERT INTO image_scans
+      (_id, image, critical_count, high_count, medium_count, low_count, passed, ts, _valid_from)
+      VALUES (${`scan:${image}:${Date.now()}`}, ${image}, ${result.critical}, ${result.high}, ${result.medium}, ${result.low},
+        ${result.critical === 0 && result.high === 0}, ${Date.now()}, CURRENT_TIMESTAMP)`;
+  } catch {}
+}

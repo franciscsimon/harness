@@ -806,3 +806,7 @@ async function seed() {
 seed().catch((_err) => {
   process.exit(1);
 });
+
+// §2 — Ensure jsonld column exists on older tables (schema-on-write: just INSERT with column)
+// XTDB auto-adds columns, so no ALTER TABLE needed. The column appears on first INSERT that includes it.
+// ADR → review link via graph_edges is handled by enrichment (review_complete event).
