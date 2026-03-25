@@ -556,6 +556,172 @@ const schema: TableDef[] = [
       jsonld: "text",
     },
   },
+
+  // ── Phase C: Monitoring Data ─────────────────────────────────────
+  {
+    table: "service_health_checks",
+    columns: {
+      _id: "text",
+      service: "text",
+      status: "text",
+      latency_ms: "bigint",
+      error: "text",
+      ts: "bigint",
+    },
+  },
+  {
+    table: "container_metrics",
+    columns: {
+      _id: "text",
+      container_id: "text",
+      container_name: "text",
+      cpu_percent: "text",
+      memory_mb: "text",
+      memory_limit_mb: "text",
+      network_rx_bytes: "bigint",
+      network_tx_bytes: "bigint",
+      ts: "bigint",
+    },
+  },
+  {
+    table: "slow_queries",
+    columns: {
+      _id: "text",
+      query: "text",
+      duration_ms: "bigint",
+      component: "text",
+      operation: "text",
+      ts: "bigint",
+    },
+  },
+  {
+    table: "api_metrics",
+    columns: {
+      _id: "text",
+      endpoint: "text",
+      method: "text",
+      status_code: "bigint",
+      duration_ms: "bigint",
+      component: "text",
+      ts: "bigint",
+    },
+  },
+
+  // ── Phase C: Security Scan Data ──────────────────────────────────
+  {
+    table: "dependency_audits",
+    columns: {
+      _id: "text",
+      package_name: "text",
+      severity: "text",
+      advisory_url: "text",
+      fixed_version: "text",
+      installed_version: "text",
+      ts: "bigint",
+    },
+  },
+  {
+    table: "image_scans",
+    columns: {
+      _id: "text",
+      image: "text",
+      critical_count: "bigint",
+      high_count: "bigint",
+      medium_count: "bigint",
+      low_count: "bigint",
+      scan_ms: "bigint",
+      passed: "boolean",
+      vulnerabilities_json: "text",
+      ts: "bigint",
+    },
+  },
+  {
+    table: "log_leak_detections",
+    columns: {
+      _id: "text",
+      service: "text",
+      pattern: "text",
+      line: "text",
+      severity: "text",
+      ts: "bigint",
+    },
+  },
+  {
+    table: "rate_limit_events",
+    columns: {
+      _id: "text",
+      key: "text",
+      endpoint: "text",
+      blocked: "boolean",
+      current_count: "bigint",
+      limit_value: "bigint",
+      window_ms: "bigint",
+      ts: "bigint",
+    },
+  },
+
+  // ── Phase C: Review & Quality Data ───────────────────────────────
+  {
+    table: "review_reports",
+    columns: {
+      _id: "text",
+      repo: "text",
+      commit_hash: "text",
+      security_passed: "boolean",
+      style_passed: "boolean",
+      complexity_passed: "boolean",
+      overall_passed: "boolean",
+      details_json: "text",
+      ts: "bigint",
+      jsonld: "text",
+    },
+  },
+  {
+    table: "error_groups",
+    columns: {
+      _id: "text",
+      component: "text",
+      operation: "text",
+      error_type: "text",
+      message: "text",
+      severity: "text",
+      status: "text",
+      first_seen: "bigint",
+      last_seen: "bigint",
+      occurrence_count: "bigint",
+      sample_stack: "text",
+      ticket_id: "text",
+    },
+  },
+
+  // ── Phase C: Graph & Tickets (schema stubs) ──────────────────────
+  {
+    table: "graph_edges",
+    columns: {
+      _id: "text",
+      source_id: "text",
+      source_type: "text",
+      target_id: "text",
+      target_type: "text",
+      relation: "text",
+      weight: "text",
+      metadata_json: "text",
+      ts: "bigint",
+    },
+  },
+  {
+    table: "complexity_scores",
+    columns: {
+      _id: "text",
+      file_path: "text",
+      complexity_score: "text",
+      loc: "bigint",
+      functions: "bigint",
+      max_depth: "bigint",
+      commit_hash: "text",
+      ts: "bigint",
+    },
+  },
 ];
 
 // ─── Seed logic ────────────────────────────────────────────────────
