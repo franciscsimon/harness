@@ -579,6 +579,206 @@ app.post("/api/auth/delete", async (c) => {
 // ── Start ──────────────────────────────────────────────────────────
 
 app.get("/api/metrics", (c) => c.json(getMetricsSummary()));
+
+// ── Phase D: Ticket Pages ──────────────────────────────────────
+
+app.get("/api/tickets", async (c) => {
+  try {
+    const projectId = c.req.query("projectId");
+    const status = c.req.query("status");
+    const limit = Number(c.req.query("limit") ?? 50);
+    const where = [];
+    const params: any[] = [];
+    if (projectId) { where.push("project_id = $1"); params.push(projectId); }
+    if (status) { where.push(`status = $${params.length + 1}`); params.push(status); }
+    const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+    const rows = await sql.unsafe(`SELECT * FROM tickets ${whereClause} ORDER BY ts DESC LIMIT ${limit}`, params);
+    return c.json(rows);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.get("/api/tickets/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const rows = await sql`SELECT * FROM tickets WHERE _id = ${id}`;
+    if (rows.length === 0) return c.json({ error: "Not found" }, 404);
+    return c.json(rows[0]);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.get("/api/tickets/:id/events", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const rows = await sql`SELECT * FROM ticket_events WHERE ticket_id = ${id} ORDER BY ts DESC LIMIT 100`;
+    return c.json(rows);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.get("/api/tickets/:id/links", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const rows = await sql`SELECT * FROM ticket_links WHERE ticket_id = ${id} ORDER BY ts DESC`;
+    return c.json(rows);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.post("/api/tickets", async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.title || !body.project_id) return c.json({ error: "title and project_id required" }, 400);
+    const id = `ticket:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    await sql`INSERT INTO tickets (_id, title, description, status, priority, project_id, assignee, labels_json, ts, _valid_from)
+      VALUES (${id}, ${body.title}, ${body.description ?? ""}, ${"open"}, ${body.priority ?? "medium"},
+        ${body.project_id}, ${body.assignee ?? ""}, ${JSON.stringify(body.labels ?? [])}, ${Date.now()}, CURRENT_TIMESTAMP)`;
+    return c.json({ id }, 201);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.post("/api/tickets/:id/transition", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const { status } = await c.req.json();
+    if (!status) return c.json({ error: "status required" }, 400);
+    await sql`UPDATE tickets SET status = ${status}, _valid_from = CURRENT_TIMESTAMP WHERE _id = ${id}`;
+    await sql`INSERT INTO ticket_events (_id, ticket_id, event_type, actor, details_json, ts, _valid_from)
+      VALUES (${`te:${id}:${Date.now()}`}, ${id}, ${"status_change"}, ${"system"}, ${JSON.stringify({ newStatus: status })}, ${Date.now()}, CURRENT_TIMESTAMP)`;
+    return c.json({ success: true });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.get("/api/tickets/stats", async (c) => {
+  try {
+    const projectId = c.req.query("projectId");
+    const where = projectId ? sql`WHERE project_id = ${projectId}` : sql``;
+    const rows = await sql`SELECT status, COUNT(*)::int as count FROM tickets ${where} GROUP BY status`;
+    return c.json(rows);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+// ── Phase D: Knowledge Graph Pages ─────────────────────────────
+
+app.get("/api/graph/entity/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const edges = await sql`SELECT * FROM graph_edges WHERE source_id = ${id} OR target_id = ${id} ORDER BY ts DESC LIMIT 100`;
+    return c.json({ entityId: id, edges });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.get("/api/graph/explore", async (c) => {
+  try {
+    const limit = Number(c.req.query("limit") ?? 200);
+    const edges = await sql`SELECT * FROM graph_edges ORDER BY ts DESC LIMIT ${limit}`;
+    // Build nodes from edges
+    const nodeSet = new Set<string>();
+    for (const e of edges) {
+      nodeSet.add(`${e.source_type}:${e.source_id}`);
+      nodeSet.add(`${e.target_type}:${e.target_id}`);
+    }
+    const nodes = [...nodeSet].map((n) => {
+      const [type, ...idParts] = n.split(":");
+      return { id: idParts.join(":"), type };
+    });
+    return c.json({ nodes, edges });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.get("/api/graph/timeline", async (c) => {
+  try {
+    const limit = Number(c.req.query("limit") ?? 50);
+    const entityId = c.req.query("entityId");
+    let rows;
+    if (entityId) {
+      rows = await sql`SELECT * FROM graph_edges WHERE source_id = ${entityId} OR target_id = ${entityId} ORDER BY ts DESC LIMIT ${limit}`;
+    } else {
+      rows = await sql`SELECT * FROM graph_edges ORDER BY ts DESC LIMIT ${limit}`;
+    }
+    return c.json(rows);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.get("/api/graph/impact/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const depth = Number(c.req.query("depth") ?? 3);
+    // BFS traversal to find impact radius
+    const visited = new Set<string>([id]);
+    const queue = [{ id, level: 0 }];
+    const impactEdges: any[] = [];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      if (current.level >= depth) continue;
+
+      const edges = await sql`SELECT * FROM graph_edges WHERE source_id = ${current.id} OR target_id = ${current.id}`;
+      for (const edge of edges) {
+        impactEdges.push({ ...edge, level: current.level + 1 });
+        const neighbor = edge.source_id === current.id ? edge.target_id : edge.source_id;
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          queue.push({ id: neighbor, level: current.level + 1 });
+        }
+      }
+    }
+
+    return c.json({ entityId: id, depth, impactRadius: visited.size, edges: impactEdges });
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+// ── Phase D: Quality Pages ─────────────────────────────────────
+
+app.get("/api/quality/complexity", async (c) => {
+  try {
+    const limit = Number(c.req.query("limit") ?? 100);
+    const rows = await sql`SELECT * FROM complexity_scores ORDER BY ts DESC LIMIT ${limit}`;
+    return c.json(rows);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.get("/api/quality/errors", async (c) => {
+  try {
+    const status = c.req.query("status") ?? "new";
+    const rows = await sql`SELECT * FROM error_groups WHERE status = ${status} ORDER BY occurrence_count DESC LIMIT 50`;
+    return c.json(rows);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
+app.get("/api/quality/reviews", async (c) => {
+  try {
+    const limit = Number(c.req.query("limit") ?? 20);
+    const rows = await sql`SELECT * FROM review_reports ORDER BY ts DESC LIMIT ${limit}`;
+    return c.json(rows);
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 500);
+  }
+});
+
 serve({ fetch: app.fetch, port: UI_PORT }, () => {
   log.info({ port: UI_PORT }, "harness-ui listening");
 });
